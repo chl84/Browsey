@@ -2,7 +2,7 @@
 
 Created: 2026-10-03
 Reorganized: 2026-10-03
-Evidence updated: 2026-10-07, after completion of the bounded NT0–NT7 native suite.
+Evidence updated: 2026-10-08, after Google Drive object-identity implementation and candidate acceptance.
 Status: Active engineering follow-up; acceptance is tracked separately.
 Baseline: Browsey 1.0.3, verified implementation through `0bf3ff6`.
 
@@ -31,6 +31,20 @@ themes, thumbnails, Open With, USB formatting, MTP discovery and rclone support.
 Inspect current code and evidence before adding or replacing behavior.
 
 ## Priority 0 Safety and Recovery
+
+- [x] Fix Google Drive identical-name object identity or refuse ambiguous
+  operations safely. The installed
+  [provider-difference run](../operations/linux-release/runs/2026-10-07-google-drive-provider-differences.md)
+  reproduced two object IDs collapsing into one 47-byte row, whose native
+  download returned the other object's 24 bytes twice. Preserve object identity
+  through listing, selection and operations; a row-key-only fix is insufficient.
+  The [2026-10-08 candidate run](../operations/linux-release/runs/2026-10-08-google-drive-object-identity.md)
+  verifies separate rows, exact selected bytes, independent folder navigation,
+  ID-preserving rename, selected-object deletion and unique-target overwrite.
+  Focused regressions cover ambiguous bulk/overwrite refusal and shortcut/native
+  document behavior. General file handling retains its existing hot paths;
+  Google directory transfers alone add a safety preflight. This closes the
+  engineering defect, not the release or broader C6 provider acceptance.
 
 - [ ] Diagnose the reproduced MTP hidden-folder deletion failure and establish
   a safe provider/device workaround or supported boundary. The
@@ -397,8 +411,28 @@ layers. Engineering completion and real-provider acceptance are separate.
     records real native upload/trash, maintainer-confirmed web restoration and
     independent exact original-path/size/SHA-256 verification of one generated
     file. No personal data or bin-wide action was used.
-  - [ ] Google Drive: obtain an approved disposable remote/folder and run
-    the expanded real-provider checklist.
+  - [x] Google Drive bounded installed-build acceptance: the
+    [production run](../operations/linux-release/runs/2026-10-07-google-drive-production.md)
+    verifies native copy/move, an 8 MiB upload, folders, Open With, durable edits
+    after cache clearing/restart, unique edited upload, encrypted ZIP creation/
+    extraction with empty directories, normal trash and permanent delete. Only
+    generated, ownership-marked data was used and cleaned up.
+  - [x] Google Drive installed provider differences: the
+    [difference run](../operations/linux-release/runs/2026-10-07-google-drive-provider-differences.md)
+    verifies case-sensitive upload/rename, exact-name collision refusal,
+    advanced rename, native-document unknown size/DOCX/Open With and shortcut
+    copy/trash/download. Identical-name objects failed in that installed binary;
+    the subsequent candidate fixes the Priority 0 defect above. Neither run
+    closes C6.
+  - [x] Google Drive object-identity production candidate: the
+    [candidate run](../operations/linux-release/runs/2026-10-08-google-drive-object-identity.md)
+    records selected-ID native operations, explicit ambiguous bulk/overwrite
+    refusal, 856 backend and 723 frontend regressions and a local-listing
+    measurement. The installation remains unchanged.
+  - [ ] Google Drive remaining expanded-provider cases: changed sources/concurrent targets, active cancellation/network
+    failures, quota/rate limits, external drag, web restore and scale budgets.
+    Reuse shared OneDrive/rclone evidence for common workflows and prioritize
+    Google-specific behavior rather than repeating the complete OneDrive suite.
   - [ ] Nextcloud: obtain an approved disposable remote/folder and run
     the expanded real-provider checklist.
 
@@ -421,8 +455,8 @@ pending.
 
 Native follow-up on 2026-10-07: the archived NT0–NT7 suite and linked run records
 add bounded real WebKitGTK/Rust evidence to the checked subtasks above. C6 remains
-open for the listed OneDrive requirements and separately approved Google Drive/
-Nextcloud acceptance. Real provider lifecycle transitions and external CI execution
+open for the listed OneDrive requirements, remaining Google Drive cases and
+separately approved Nextcloud acceptance. Real provider lifecycle transitions and external CI execution
 remain NOT_RUN; broader cold-device/mixed-tree budgets remain NOT_AGREED.
 The bounded 12-image storage median targets above are maintainer-approved.
 No broader parent acceptance requirement is closed by this evidence update.

@@ -85,6 +85,10 @@ pub(super) fn invalidate_cloud_dir_listing_cache_path_locked(
     cache: &mut HashMap<String, CachedCloudDirListing>,
     path: &CloudPath,
 ) {
+    if path.is_drive_address() {
+        // Name-only bookmarks and ID navigation may cache the same directory.
+        cache.remove(&path.display_path());
+    }
     let key = path.to_string();
     let subtree_prefix = format!("{key}/");
     cache.retain(|cached_path, _| cached_path != &key && !cached_path.starts_with(&subtree_prefix));

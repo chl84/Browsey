@@ -2,7 +2,10 @@
 
 Date: 2026-10-03. Scope: Unreleased changes after `d6e3c9f`, Linux/Omarchy,
 rclone 1.75.1 and the approved empty `rclone://Onedrive/agent_test_folder`.
-Google Drive and Nextcloud have no approved disposable folder yet. This is not
+At the time of this run, Google Drive and Nextcloud had no approved disposable
+folder. Later bounded Google Drive installed-build acceptance is recorded in the
+[2026-10-07 production run](../../operations/linux-release/runs/2026-10-07-google-drive-production.md).
+This OneDrive run is not
 installed-app, release, quota, provider-web restore or cross-provider signoff.
 
 ## Isolation and cleanup

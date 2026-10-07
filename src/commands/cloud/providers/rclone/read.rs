@@ -2,12 +2,12 @@ use super::{
     error::{is_rclone_not_found_text, map_rclone_error_for_remote},
     logging::{classify_rc_fallback_reason, log_backend_selected},
     parse::{
-        parse_lsjson_items, parse_lsjson_items_value, parse_lsjson_stat_item,
-        parse_lsjson_stat_item_value, LsJsonItem,
+        parse_drive_lsjson_items, parse_drive_lsjson_items_value, parse_lsjson_items,
+        parse_lsjson_items_value, parse_lsjson_stat_item, parse_lsjson_stat_item_value, LsJsonItem,
     },
     CloudCapabilities, CloudCommandError, CloudCommandErrorCode, CloudCommandResult, CloudEntry,
-    CloudEntryKind, CloudPath, RcloneCliError, RcloneCloudProvider, RcloneCommandSpec,
-    RcloneReadBackend, RcloneReadOptions, RcloneSubcommand,
+    CloudEntryKind, CloudPath, CloudProviderKind, RcloneCliError, RcloneCloudProvider,
+    RcloneCommandSpec, RcloneReadBackend, RcloneReadOptions, RcloneSubcommand,
 };
 use chrono::{DateTime, Local};
 use serde_json::Value;
@@ -20,6 +20,25 @@ impl RcloneCloudProvider {
         options: RcloneReadOptions<'_>,
     ) -> CloudCommandResult<Vec<CloudEntry>> {
         self.ensure_runtime_ready()?;
+        let drive = path.is_drive_address()
+            || crate::commands::cloud::cloud_provider_kind_for_remote(path.remote())
+                == Some(CloudProviderKind::Gdrive);
+        if drive {
+            self.is_drive_remote(path)?;
+            if !path.is_root() && path.drive_id().is_none() {
+                let resolved = self
+                    .resolve_drive_path(path, false, options.cancel)?
+                    .ok_or_else(|| {
+                        CloudCommandError::new(
+                            CloudCommandErrorCode::NotFound,
+                            "Google Drive folder no longer exists",
+                        )
+                    })?;
+                if &resolved != path {
+                    return self.list_dir_impl(&resolved, options);
+                }
+            }
+        }
         if matches!(options.backend, RcloneReadBackend::CliOnly) {
             let entries = self.list_dir_via_cli(path, options, false, None)?;
             log_backend_selected("cloud_list_entries", "cli", false, None);
@@ -71,6 +90,30 @@ impl RcloneCloudProvider {
         options: RcloneReadOptions<'_>,
     ) -> CloudCommandResult<Option<CloudEntry>> {
         self.ensure_runtime_ready()?;
+        if !path.is_root()
+            && !path.is_drive_address()
+            && crate::commands::cloud::cloud_provider_kind_for_remote(path.remote())
+                == Some(CloudProviderKind::Gdrive)
+        {
+            if let Some(resolved) = self.resolve_drive_path(path, false, options.cancel)? {
+                if resolved.is_drive_address() {
+                    return self.drive_stat(&resolved, options.cancel);
+                }
+            } else {
+                return Ok(None);
+            }
+        }
+        if path.is_drive_address() {
+            self.is_drive_remote(path)?;
+            if path.drive_id().is_some() {
+                return self.drive_stat(path, options.cancel);
+            }
+            return match self.resolve_drive_path(path, false, options.cancel)? {
+                Some(resolved) if &resolved != path => self.drive_stat(&resolved, options.cancel),
+                _ => Ok(None),
+            };
+        }
+
         if matches!(options.backend, RcloneReadBackend::CliOnly) {
             let entry = self.stat_path_via_cli(path, options, false, None)?;
             log_backend_selected("cloud_stat_entry", "cli", false, None);
@@ -121,10 +164,10 @@ impl RcloneCloudProvider {
         path: &CloudPath,
         options: RcloneReadOptions<'_>,
     ) -> Result<Vec<CloudEntry>, RcloneCliError> {
-        let fs_spec = format!("{}:", path.remote());
+        let (fs_spec, rel) = path.drive_directory_spec();
         let response = self.rc.operations_list_with_options(
             &fs_spec,
-            path.rel_path(),
+            &rel,
             options.rc_timeout,
             options.cancel,
         )?;
@@ -136,13 +179,26 @@ impl RcloneCloudProvider {
                 ))
             })?
             .clone();
-        let items = parse_lsjson_items_value(list).map_err(|error| {
-            RcloneCliError::Io(std::io::Error::other(format!(
-                "Invalid rclone rc operations/list item payload: {error}"
-            )))
-        })?;
-        cloud_entries_from_lsjson_items(path, items, "rclone rc operations/list")
-            .map_err(|error| RcloneCliError::Io(std::io::Error::other(error)))
+        let parsed = if drive_listing(path) {
+            parse_drive_lsjson_items_value(list).and_then(|items| {
+                cloud_entries_from_lsjson_items(
+                    path,
+                    items.into_iter().map(|item| (item.item, item.id)),
+                    "rclone rc operations/list",
+                    true,
+                )
+            })
+        } else {
+            parse_lsjson_items_value(list).and_then(|items| {
+                cloud_entries_from_lsjson_items(
+                    path,
+                    items.into_iter().map(|item| (item, None)),
+                    "rclone rc operations/list",
+                    false,
+                )
+            })
+        };
+        parsed.map_err(|error| RcloneCliError::Io(std::io::Error::other(error)))
     }
 
     pub(super) fn stat_path_via_rc(
@@ -177,7 +233,10 @@ impl RcloneCloudProvider {
         _fallback_reason: Option<&'static str>,
     ) -> CloudCommandResult<Vec<CloudEntry>> {
         let output = self.cli.run_capture_text_with_cancel_and_timeout(
-            RcloneCommandSpec::new(RcloneSubcommand::LsJson).arg(path.to_rclone_remote_spec()),
+            RcloneCommandSpec::new(RcloneSubcommand::LsJson).arg({
+                let (fs, rel) = path.drive_directory_spec();
+                format!("{fs}{rel}")
+            }),
             options.cancel,
             options.cli_timeout,
         );
@@ -194,8 +253,23 @@ impl RcloneCloudProvider {
                 return Err(map_rclone_error_for_remote(path.remote(), error));
             }
         };
-        let items = parse_lsjson_items(&output.stdout)?;
-        cloud_entries_from_lsjson_items(path, items, "rclone lsjson")
+        if drive_listing(path) {
+            let items = parse_drive_lsjson_items(&output.stdout)?;
+            cloud_entries_from_lsjson_items(
+                path,
+                items.into_iter().map(|item| (item.item, item.id)),
+                "rclone lsjson",
+                true,
+            )
+        } else {
+            let items = parse_lsjson_items(&output.stdout)?;
+            cloud_entries_from_lsjson_items(
+                path,
+                items.into_iter().map(|item| (item, None)),
+                "rclone lsjson",
+                false,
+            )
+        }
     }
 
     fn stat_path_via_cli(
@@ -262,20 +336,40 @@ pub(super) fn normalize_cloud_modified_time_value(value: &str) -> String {
         .unwrap_or_else(|_| value.to_string())
 }
 
+fn drive_listing(path: &CloudPath) -> bool {
+    path.is_drive_address()
+        || crate::commands::cloud::cloud_provider_kind_for_remote(path.remote())
+            == Some(CloudProviderKind::Gdrive)
+}
+
 fn cloud_entries_from_lsjson_items(
     path: &CloudPath,
-    items: Vec<LsJsonItem>,
+    items: impl ExactSizeIterator<Item = (LsJsonItem, Option<String>)>,
     source: &str,
+    drive: bool,
 ) -> CloudCommandResult<Vec<CloudEntry>> {
     let mut entries = Vec::with_capacity(items.len());
-    for item in items {
-        let child_path = path.child_path(&item.name).map_err(|error| {
+    for (item, id) in items {
+        let mut child_path = path.child_path(&item.name).map_err(|error| {
             CloudCommandError::new(
                 CloudCommandErrorCode::InvalidPath,
                 format!("Invalid entry name from {source}: {error}"),
             )
         })?;
+        if drive {
+            if let Some(id) = id.as_deref() {
+                child_path = child_path
+                    .with_drive_id(id)
+                    .map_err(crate::commands::cloud::map_cloud_path_error)?;
+            }
+        }
         entries.push(cloud_entry_from_item(&child_path, item));
+    }
+    if drive {
+        let mut addresses = std::collections::HashSet::with_capacity(entries.len());
+        if entries.iter().any(|e| !addresses.insert(&e.path)) {
+            return Err(CloudCommandError::new(CloudCommandErrorCode::InvalidPath, "Google Drive returned duplicate objects without unique IDs; refresh before retrying"));
+        }
     }
     sort_cloud_entries(&mut entries);
     Ok(entries)

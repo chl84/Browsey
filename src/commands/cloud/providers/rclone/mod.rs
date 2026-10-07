@@ -1,3 +1,5 @@
+mod drive;
+pub(crate) use drive::reset_auth as reset_drive_auth;
 mod error;
 pub(crate) use error::classify_rclone_failure_code;
 #[cfg(test)]

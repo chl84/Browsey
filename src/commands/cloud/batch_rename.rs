@@ -50,7 +50,11 @@ pub(super) fn rename_batch(
                 super::cloud_conflict_name_key(Some(provider_kind), path.rel_path()),
             )
         };
-        if !sources.insert(key(&source)) || !targets.insert(key(&target)) {
+        let source_key = source.drive_object_id().map_or_else(
+            || key(&source),
+            |id| (source.remote().to_owned(), format!("//gdrive/{id}")),
+        );
+        if !sources.insert(source_key) || !targets.insert(key(&target)) {
             return Err(CloudCommandError::new(
                 CloudCommandErrorCode::DestinationExists,
                 "Duplicate source or destination in rename plan",
@@ -78,7 +82,7 @@ pub(super) fn rename_batch(
         error: None,
     };
     for (source, target) in pairs {
-        if source == target {
+        if source == target || source.rel_path() == target.rel_path() {
             continue;
         }
         let operation = provider.move_entry(&source, &target, false, false, None);

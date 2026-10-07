@@ -8,6 +8,10 @@ Use this checklist after matrix-based core scenarios pass, to capture Google
 Drive provider behavior and real-account anomalies without redefining core
 semantics.
 
+Reuse shared rclone and OneDrive regression evidence for common workflows.
+Prioritize Google-specific names/identity, native documents, shortcuts and
+provider failures; do not infer those results from OneDrive acceptance.
+
 ## Environment
 
 - [x] Linux machine with Browsey build under test
@@ -36,7 +40,12 @@ Reference behavior: `docs/operations/core-operations/matrix.md`
 - [x] Manual refresh after writes shows consistent state
 - [x] Reopening same folder does not surface stale/ghost entries
 - [x] Errors are user-actionable (not raw provider noise dumps)
-- [x] Duplicate-name behavior matches Browsey conflict preview assumptions
+- [x] Identical-name objects are represented and addressed safely in the
+  [2026-10-08 candidate run](../../operations/linux-release/runs/2026-10-08-google-drive-object-identity.md).
+  Selected-ID listing/download/rename/delete/folder navigation passed;
+  ambiguous bulk transfers and overwrites are refused. The installed-build
+  [2026-10-07 difference run](../../operations/linux-release/runs/2026-10-07-google-drive-provider-differences.md)
+  reproduced two objects collapsing to one row and a download of the other object.
 - [x] Large-file transfer remains stable with progress and cancellation
 - [x] Forced network interruption produces understandable failure state
 
@@ -51,16 +60,35 @@ Historical Linux 1.0 results below are not acceptance of the 1.0.4 additions.
 
 ## 1.0.4 Expansion Acceptance
 
-Pending: no approved disposable Google Drive remote/folder was supplied for
-this expansion. Provider flags and failures have automated fixture coverage;
-those fixtures do not constitute real-account acceptance.
+Partial installed-build acceptance on 2026-10-07 used an explicitly authorized,
+unique ownership-marked directory and a private profile with the installed
+Browsey 1.0.4 executable. See the
+[production run](../../operations/linux-release/runs/2026-10-07-google-drive-production.md)
+for exact binary identity, native workflows, independent byte checks, harness
+corrections and cleanup. Automated fixtures alone do not constitute real-account
+acceptance, and the remaining rows are still open.
 
-- [ ] Marked disposable child only; cleanup verifies ownership, never global trash purge
-- [ ] Durable copies survive restart/cache clearing; Open With uses the local copy
-- [ ] Explicit unique upload, changed cloud source, existing/concurrently created target
-- [ ] Normal trash with `--drive-use-trash=true`; website restore and explicit permanent delete
-- [ ] Password archives, cancellation, retained staging and uploaded extracted trees/empty directories
-- [ ] Advanced rename/duplicate-name conflicts and prepared copy-only external drag
+The subsequent
+[provider-difference run](../../operations/linux-release/runs/2026-10-07-google-drive-provider-differences.md)
+passed case-sensitive names, advanced rename, native-document export and
+shortcut semantics, but confirmed an identical-name integrity defect in the
+installed executable. The subsequent candidate run fixes and validates that
+engineering scope; the installed binary has not been replaced.
+
+- [x] Marked disposable directory only; cleanup verifies ownership, never global trash purge
+- [x] Durable copies survive restart/cache clearing; Open With uses the local copy
+- [x] Explicit unique upload preserves the original and local edits
+- [ ] Changed cloud source and existing/concurrently created upload target
+- [x] Normal trash, independently verified trashed file, and explicit permanent delete
+- [ ] Provider website restore
+- [x] Native password ZIP creation/extraction and uploaded extracted tree/empty directories
+- [ ] Archive cancellation and retained staging under failure
+- [x] Case-distinct upload, case-only rename, exact-name collision refusal and advanced rename
+- [x] Native Google document: unknown-size listing, DOCX download and durable Open With copy
+- [x] Shortcut server-side copy preserves target identity; trash preserves target; local download returns target bytes
+- [x] Identical-name object identity and selected-object download in the candidate
+  (see candidate run; bulk/overwrite boundaries remain explicit)
+- [ ] Prepared copy-only external drag
 - [ ] Network/quota/rate limits, active cancellation and large/deep trees on a dedicated test account
 
 ## Notes
@@ -69,6 +97,9 @@ those fixtures do not constitute real-account acceptance.
   type, and observed provider-specific anomalies.
 - Link any failure to scenario ID(s) and issue(s) from the core checklist run.
 
-Result: Linux 1.0 provider acceptance passed on the validated Linux target
-surface with no release-blocking provider anomalies. See
+Historical result: Linux 1.0 provider acceptance passed on the validated Linux
+target surface. See
 `docs/operations/linux-release/release-candidate-log.md`.
+Current 1.0.4 acceptance is partial. The installed-build identical-name defect
+is fixed and validated in the working-tree production candidate, with the
+documented bulk/overwrite boundaries; broader provider acceptance remains open.

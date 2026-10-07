@@ -48,7 +48,16 @@ impl LocalOrCloudArg {
     pub(super) fn to_os_arg(&self) -> OsString {
         match self {
             Self::Local(path) => path.as_os_str().to_os_string(),
-            Self::Cloud(path) => OsString::from(path.to_rclone_remote_spec()),
+            Self::Cloud(path) => OsString::from(if path.is_drive_address() {
+                if path.drive_id().is_some() {
+                    let (fs, rel) = path.drive_directory_spec();
+                    format!("{fs}{rel}")
+                } else {
+                    path.drive_destination_spec()
+                }
+            } else {
+                path.to_rclone_remote_spec()
+            }),
         }
     }
 

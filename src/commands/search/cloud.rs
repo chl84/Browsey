@@ -94,10 +94,16 @@ fn scan_cloud_search(
 ) -> SearchResult<()> {
     let mut stack = vec![root];
     let mut seen = HashSet::new();
+    let mut visited_directories = HashSet::new();
     let mut facets = ListingFacetBuilder::default();
     while let Some(directory) = stack.pop() {
         if cancelled() {
             return Ok(());
+        }
+        if let Some(id) = directory.drive_target_id() {
+            if !visited_directories.insert(format!("{}/{id}", directory.remote())) {
+                continue;
+            }
         }
         let entries = list(&directory)?;
         if cancelled() {
@@ -109,7 +115,20 @@ fn scan_cloud_search(
             let expected = directory.child_path(&entry.name).map_err(|error| {
                 SearchError::new(SearchErrorCode::InvalidPath, error.to_string())
             })?;
-            if entry.path != expected.to_string() {
+            if entry.path == expected.to_string() {
+                continue;
+            }
+            let actual = CloudPath::parse(&entry.path).map_err(|error| {
+                SearchError::new(SearchErrorCode::InvalidPath, error.to_string())
+            })?;
+            let parent = actual.parent_dir_path();
+            let id_child = actual.is_drive_address()
+                && actual.leaf_name().ok() == Some(entry.name.as_str())
+                && parent.as_ref().is_some_and(|p| {
+                    p.display_path() == directory.display_path()
+                        && (directory.drive_id().is_none() || p.drive_id() == directory.drive_id())
+                });
+            if !id_child {
                 return Err(SearchError::new(
                     SearchErrorCode::InvalidPath,
                     "Cloud search received an entry outside its directory",
@@ -125,9 +144,20 @@ fn scan_cloud_search(
                 continue;
             }
             if entry.kind == "dir" {
-                stack.push(directory.child_path(&entry.name).map_err(|error| {
-                    SearchError::new(SearchErrorCode::InvalidPath, error.to_string())
-                })?);
+                stack.push(
+                    if entry
+                        .path
+                        .strip_prefix("rclone://")
+                        .is_some_and(|p| p.contains("//gdrive/"))
+                    {
+                        CloudPath::parse(&entry.path)
+                    } else {
+                        directory.child_path(&entry.name)
+                    }
+                    .map_err(|error| {
+                        SearchError::new(SearchErrorCode::InvalidPath, error.to_string())
+                    })?,
+                );
             }
             entry.starred = starred.contains(&normalize_key_for_db(Path::new(&entry.path)));
             if matches_query(&entry, query) {

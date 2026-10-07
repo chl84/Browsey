@@ -44,6 +44,8 @@ pub enum RcloneSubcommand {
     ConfigDump,
     Rc,
     LsJson,
+    Backend,
+    BackendTransfer,
     Mkdir,
     DeleteFile,
     Purge,
@@ -56,7 +58,10 @@ pub enum RcloneSubcommand {
 
 impl RcloneSubcommand {
     pub(crate) fn is_transfer(self) -> bool {
-        matches!(self, Self::Move | Self::MoveTo | Self::Copy | Self::CopyTo)
+        matches!(
+            self,
+            Self::Move | Self::MoveTo | Self::Copy | Self::CopyTo | Self::BackendTransfer
+        )
     }
     #[allow(dead_code)]
     pub fn as_str(self) -> &'static str {
@@ -66,6 +71,7 @@ impl RcloneSubcommand {
             Self::ConfigDump => "config",
             Self::Rc => "rc",
             Self::LsJson => "lsjson",
+            Self::Backend | Self::BackendTransfer => "backend",
             Self::Mkdir => "mkdir",
             Self::DeleteFile => "deletefile",
             Self::Purge => "purge",
@@ -83,6 +89,8 @@ impl RcloneSubcommand {
             Self::Rc => Duration::from_secs(45),
             // OneDrive metadata/listing calls can be bursty and occasionally exceed 20s.
             Self::LsJson => Duration::from_secs(60),
+            Self::Backend => Duration::from_secs(60),
+            Self::BackendTransfer => Duration::from_secs(300),
             Self::Mkdir => Duration::from_secs(45),
             Self::DeleteFile | Self::Rmdir => Duration::from_secs(120),
             Self::Purge => Duration::from_secs(300),

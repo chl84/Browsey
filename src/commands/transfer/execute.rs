@@ -320,6 +320,36 @@ fn execute_rclone_transfer(
             "Cannot overwrite a file with a folder or a folder with a file on this route; use Auto-rename or Skip"));
     }
 
+    // Bind legacy Google sources to the metadata's ID before any transfer.
+    // Ordinary local/OneDrive/Nextcloud routes never enter this branch.
+    if let Some(source) = src.cloud_path().filter(|path| {
+        !path.is_drive_address()
+            && cloud::cloud_provider_kind_for_remote(path.remote())
+                == Some(cloud::types::CloudProviderKind::Gdrive)
+    }) {
+        if let Some(entry) = mixed_cloud_provider_for_cli(cli)
+            .stat_path(source)
+            .map_err(map_cloud_error_to_transfer)?
+        {
+            let resolved = CloudPath::parse(&entry.path)
+                .map_err(|e| api_err("invalid_path", e.to_string()))?;
+            if resolved.is_drive_address() {
+                return execute_rclone_transfer(
+                    RcloneTransferContext {
+                        cli,
+                        cloud_remote_for_error_mapping,
+                        cancel,
+                        progress,
+                    },
+                    op,
+                    LocalOrCloudArg::Cloud(resolved),
+                    dst,
+                    options,
+                );
+            }
+        }
+    }
+
     if let Some(result) = progress::try_execute_cloud_to_local_file_transfer_with_progress(
         cli, op, &src, &dst, cancel, progress,
     )? {
@@ -333,6 +363,39 @@ fn execute_rclone_transfer(
     }
 
     let directory = transfer_source_is_directory(cli, &src, cancel)?;
+    if directory {
+        if let Some(target) = dst
+            .cloud_path()
+            .filter(|p| p.is_drive_address() && p.drive_id().is_some())
+        {
+            mixed_cloud_provider_for_cli(cli)
+                .ensure_drive_tree_unambiguous(target, cancel)
+                .map_err(map_cloud_error_to_transfer)?;
+        }
+    }
+    if let Some(source) = src.cloud_path().filter(|path| path.is_drive_address()) {
+        let provider = mixed_cloud_provider_for_cli(cli);
+        if !directory {
+            let destination = dst.local_path().ok_or_else(|| {
+                api_err(
+                    "unsupported",
+                    "ID-addressed mixed transfer needs a local destination",
+                )
+            })?;
+            provider
+                .download_file(source, destination, cancel)
+                .map_err(map_cloud_error_to_transfer)?;
+            if op == MixedTransferOp::Move {
+                provider
+                    .delete_file(source, cancel)
+                    .map_err(map_cloud_error_to_transfer)?;
+            }
+            return Ok(());
+        }
+        provider
+            .ensure_drive_tree_unambiguous(source, cancel)
+            .map_err(map_cloud_error_to_transfer)?;
+    }
     if let Some(progress) = progress {
         emit_transfer_progress(progress, 0, 0, false);
     }
@@ -350,7 +413,19 @@ fn execute_rclone_transfer(
     } else {
         None
     };
-    let subcommand = match (op, directory) {
+    let shortcut_directory_move = directory
+        && op == MixedTransferOp::Move
+        && src
+            .cloud_path()
+            .is_some_and(|path| path.drive_id().is_some_and(|id| id.contains(':')));
+    let subcommand = match (
+        if shortcut_directory_move {
+            MixedTransferOp::Copy
+        } else {
+            op
+        },
+        directory,
+    ) {
         (MixedTransferOp::Copy, true) => RcloneSubcommand::Copy,
         (MixedTransferOp::Copy, false) => RcloneSubcommand::CopyTo,
         (MixedTransferOp::Move, true) => RcloneSubcommand::Move,
@@ -413,7 +488,11 @@ fn execute_rclone_transfer(
         // rclone transfers directory contents; even --create-empty-src-dirs does
         // not create the destination root when the source itself is empty.
         ensure_transferred_directory_root(cli, &dst, cloud_remote_for_error_mapping, cancel)?;
-        if op == MixedTransferOp::Move {
+        if shortcut_directory_move {
+            mixed_cloud_provider_for_cli(cli)
+                .delete_dir_recursive(src.cloud_path().expect("shortcut"), cancel)
+                .map_err(map_cloud_error_to_transfer)?;
+        } else if op == MixedTransferOp::Move {
             remove_moved_source_root(
                 cli,
                 &src,
@@ -469,6 +548,12 @@ fn remove_moved_source_root(
             }
         }
         LocalOrCloudArg::Cloud(path) => {
+            if path.is_drive_address() {
+                return mixed_cloud_provider_for_cli(cli)
+                    .delete_dir_empty(path, cancel)
+                    .map_err(map_cloud_error_to_transfer);
+            }
+
             // rclone's move flags clean descendants, leaving its filesystem root.
             // rmdir removes only an empty root; purge is never used for cleanup.
             match cli.run_capture_text_with_cancel(
@@ -515,7 +600,11 @@ fn ensure_transferred_directory_root(
         }),
         LocalOrCloudArg::Cloud(path) => cli
             .run_capture_text_with_cancel(
-                RcloneCommandSpec::new(RcloneSubcommand::Mkdir).arg(path.to_rclone_remote_spec()),
+                RcloneCommandSpec::new(RcloneSubcommand::Mkdir).arg(if path.is_drive_address() {
+                    path.drive_destination_spec()
+                } else {
+                    path.to_rclone_remote_spec()
+                }),
                 cancel,
             )
             .map(|_| ())
@@ -584,6 +673,18 @@ fn mixed_target_exists(
     let Some(cloud_path) = dst.cloud_path() else {
         return Ok(false);
     };
+    if cloud_path.is_drive_address() {
+        return mixed_cloud_provider_for_cli(cli)
+            .stat_path_with_read_options(
+                cloud_path,
+                RcloneReadOptions {
+                    cancel,
+                    ..Default::default()
+                },
+            )
+            .map(|e| e.is_some())
+            .map_err(map_cloud_error_to_transfer);
+    }
     let spec = RcloneCommandSpec::new(RcloneSubcommand::LsJson)
         .arg("--stat")
         .arg(cloud_path.to_rclone_remote_spec());

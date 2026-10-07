@@ -1,3 +1,4 @@
+import { cloudParentPath } from './cloudPaths'
 import type { Partition } from './model/types'
 import { formatSize } from '@/shared/lib/formatSize'
 
@@ -45,6 +46,7 @@ export const isUnderMount = (path: string, mount: string) => {
 }
 
 export const parentPath = (path: string) => {
+  if (path.startsWith('rclone://')) return cloudParentPath(path)
   const normalized = normalizePath(path)
   if (!normalized || normalized === '/') return '/'
   const driveRoot = normalized.match(/^([A-Za-z]:)\/?$/)

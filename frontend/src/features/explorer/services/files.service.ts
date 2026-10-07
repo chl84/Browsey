@@ -1,3 +1,4 @@
+import { cloudParentPath, joinCloudPath } from '../cloudPaths'
 import { invoke } from '@/shared/lib/tauri'
 import { normalizeError } from '@/shared/lib/error'
 import { createCloudFolder, openCloudEntry, renameCloudEntry } from '@/features/network'
@@ -8,7 +9,6 @@ export const getHomeDirectory = () => homeDir()
 
 const isCloudPath = (path: string) => path.startsWith('rclone://')
 
-const joinCloudPath = (dir: string, name: string) => `${dir.replace(/\/+$/, '')}/${name}`
 
 const entryName = (name: string, kind: 'file' | 'folder' | 'entry') => {
   const trimmed = name.trim()
@@ -16,11 +16,6 @@ const entryName = (name: string, kind: 'file' | 'folder' | 'entry') => {
     throw new Error(`Invalid ${kind} name`)
   }
   return name
-}
-
-const parentCloudPath = (path: string) => {
-  const idx = path.lastIndexOf('/')
-  return idx > 'rclone://'.length ? path.slice(0, idx) : path
 }
 
 export const openEntry = (entry: Entry, options?: { progressEvent?: string }) => {
@@ -35,7 +30,7 @@ export const renameEntry = async (path: string, newName: string) => {
   if (!isCloudPath(path)) {
     return invoke<string>('rename_entry', { path, newName })
   }
-  const dst = joinCloudPath(parentCloudPath(path), newName)
+  const dst = joinCloudPath(cloudParentPath(path), newName)
   await renameCloudEntry(path, dst, { overwrite: false })
   return dst
 }

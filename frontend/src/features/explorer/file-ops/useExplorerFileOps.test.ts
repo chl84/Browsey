@@ -711,6 +711,17 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     moveCloudEntryMock.mockResolvedValue(undefined)
   })
 
+  it('copies a selected Drive ID into an ID-addressed folder with a human destination name', async () => {
+    const src = 'rclone://Google//gdrive/sourceFolder~source/fileB~same.txt'
+    const dest = 'rclone://Google//gdrive/destFolder~dest'
+    setClipboardPathsState('copy', [src])
+    listCloudRemotesMock.mockResolvedValue([{ id: 'Google', provider: 'gdrive' }])
+    const ops = useExplorerFileOps(createDeps())
+    expect(await ops.handlePasteOrMove(dest)).toBe(true)
+    expect(copyCloudEntryMock).toHaveBeenCalledWith(src, `${dest}/~same.txt`, expect.anything())
+    expect(copyCloudEntryMock).toHaveBeenCalledOnce()
+  })
+
   it('uses cloud conflict preview for cloud-to-cloud paste and opens conflict modal', async () => {
     setClipboardPathsState('copy', ['rclone://work/src/report.txt'])
     previewCloudConflictsMock.mockResolvedValue([

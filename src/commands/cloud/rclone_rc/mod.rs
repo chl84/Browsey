@@ -54,6 +54,7 @@ pub enum RcloneRcMethod {
     OperationsPurge,
     OperationsRmdir,
     OperationsCopyFile,
+    OperationsBackendCopyId,
     OperationsMoveFile,
     JobStatus,
     JobStop,
@@ -61,7 +62,10 @@ pub enum RcloneRcMethod {
 
 impl RcloneRcMethod {
     fn is_transfer(self) -> bool {
-        matches!(self, Self::OperationsCopyFile | Self::OperationsMoveFile)
+        matches!(
+            self,
+            Self::OperationsCopyFile | Self::OperationsMoveFile | Self::OperationsBackendCopyId
+        )
     }
     pub fn as_str(self) -> &'static str {
         match self {
@@ -77,6 +81,7 @@ impl RcloneRcMethod {
             Self::OperationsPurge => "operations/purge",
             Self::OperationsRmdir => "operations/rmdir",
             Self::OperationsCopyFile => "operations/copyfile",
+            Self::OperationsBackendCopyId => "backend/command",
             Self::OperationsMoveFile => "operations/movefile",
             Self::JobStatus => "job/status",
             Self::JobStop => "job/stop",
@@ -99,6 +104,7 @@ fn method_timeout(method: RcloneRcMethod) -> Duration {
         | RcloneRcMethod::OperationsPurge
         | RcloneRcMethod::OperationsRmdir
         | RcloneRcMethod::OperationsCopyFile
+        | RcloneRcMethod::OperationsBackendCopyId
         | RcloneRcMethod::OperationsMoveFile
         | RcloneRcMethod::JobStop => RCLONE_RC_WRITE_TIMEOUT,
     }
@@ -119,9 +125,9 @@ fn method_is_retry_safe(method: RcloneRcMethod) -> bool {
 
 fn async_method_timeout_limit(method: RcloneRcMethod) -> Duration {
     match method {
-        RcloneRcMethod::OperationsCopyFile | RcloneRcMethod::OperationsMoveFile => {
-            Duration::from_secs(300)
-        }
+        RcloneRcMethod::OperationsCopyFile
+        | RcloneRcMethod::OperationsMoveFile
+        | RcloneRcMethod::OperationsBackendCopyId => Duration::from_secs(300),
         RcloneRcMethod::OperationsPurge => Duration::from_secs(300),
         RcloneRcMethod::OperationsDeleteFile | RcloneRcMethod::OperationsRmdir => {
             Duration::from_secs(120)
@@ -169,6 +175,7 @@ fn allowlisted_method_from_name(method_name: &str) -> Option<RcloneRcMethod> {
         "operations/purge" => Some(RcloneRcMethod::OperationsPurge),
         "operations/rmdir" => Some(RcloneRcMethod::OperationsRmdir),
         "operations/copyfile" => Some(RcloneRcMethod::OperationsCopyFile),
+        "backend/command" => Some(RcloneRcMethod::OperationsBackendCopyId),
         "operations/movefile" => Some(RcloneRcMethod::OperationsMoveFile),
         "job/status" => Some(RcloneRcMethod::JobStatus),
         "job/stop" => Some(RcloneRcMethod::JobStop),
@@ -273,6 +280,7 @@ impl RcloneRcClient {
             | RcloneRcMethod::OperationsPurge
             | RcloneRcMethod::OperationsRmdir
             | RcloneRcMethod::OperationsCopyFile
+            | RcloneRcMethod::OperationsBackendCopyId
             | RcloneRcMethod::OperationsMoveFile
             | RcloneRcMethod::JobStatus
             | RcloneRcMethod::JobStop => self.is_write_enabled(),

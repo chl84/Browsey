@@ -40,7 +40,11 @@ impl RcloneCloudProvider {
                     .arg("--ignore-existing")
                     .arg("--error-on-no-transfer")
                     .arg(local.as_os_str())
-                    .arg(dst.to_rclone_remote_spec()),
+                    .arg(if dst.is_drive_address() {
+                        dst.drive_destination_spec()
+                    } else {
+                        dst.to_rclone_remote_spec()
+                    }),
                 cancel,
             )
             .map_err(|error| map_rclone_error_for_remote(dst.remote(), error))?;
@@ -89,6 +93,21 @@ impl RcloneCloudProvider {
         cancel: Option<&AtomicBool>,
     ) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
+        if !path.is_drive_address()
+            && crate::commands::cloud::cloud_provider_kind_for_remote(path.remote())
+                == Some(super::CloudProviderKind::Gdrive)
+        {
+            if let Some(resolved) = self.resolve_drive_path(path, false, cancel)? {
+                if resolved.is_drive_address() {
+                    return self.drive_delete(&resolved, true, false, cancel);
+                }
+            }
+        }
+
+        if path.is_drive_address() {
+            return self.drive_delete(path, true, false, cancel);
+        }
+
         if path.is_root() {
             return Err(CloudCommandError::new(
                 CloudCommandErrorCode::InvalidPath,
@@ -159,6 +178,8 @@ impl RcloneCloudProvider {
             ));
         };
 
+        self.ensure_drive_file_destination_unambiguous(dst, cancel)?;
+
         let mut fell_back_from_rc = false;
         let mut fallback_reason: Option<&'static str> = None;
         if self.rc.is_write_enabled() {
@@ -175,13 +196,21 @@ impl RcloneCloudProvider {
             // is safe here, unlike fallback after an unknown write-job outcome.
             if let Ok(before) = before {
                 let local_parent_str = local_parent.to_string_lossy().to_string();
-                let dst_fs = format!("{}:", dst.remote());
+                let (dst_fs, dst_rel) = dst
+                    .parent_dir_path()
+                    .expect("destination parent")
+                    .drive_directory_spec();
+                let dst_rel = if dst_rel.is_empty() {
+                    dst.leaf_name().expect("leaf").to_owned()
+                } else {
+                    format!("{dst_rel}/{}", dst.leaf_name().expect("leaf"))
+                };
                 match self.rc.operations_copyfile_from_local_with_progress(
                     RcCopyFileFromLocalProgressSpec {
                         src_dir: &local_parent_str,
                         src_remote: local_name,
                         dst_fs: &dst_fs,
-                        dst_remote: dst.rel_path(),
+                        dst_remote: &dst_rel,
                         group: progress_group,
                         cancel_token: cancel,
                         refuse_replace,
@@ -230,7 +259,11 @@ impl RcloneCloudProvider {
         }
         let mut spec = RcloneCommandSpec::new(RcloneSubcommand::CopyTo)
             .arg(local_src.as_os_str())
-            .arg(dst.to_rclone_remote_spec());
+            .arg(if dst.is_drive_address() {
+                dst.drive_destination_spec()
+            } else {
+                dst.to_rclone_remote_spec()
+            });
         if refuse_replace {
             spec = spec
                 .arg("--immutable")
@@ -272,6 +305,37 @@ impl RcloneCloudProvider {
         F: FnMut(u64, u64),
     {
         self.ensure_runtime_ready()?;
+        if src.is_drive_address() {
+            self.is_drive_remote(src)?;
+            if self.rc.is_write_enabled() && !crate::fs_utils::is_mtp_destination(local_dest) {
+                let result = self.rc.drive_copy_id_with_progress(
+                    &format!("{}:", src.remote()),
+                    src.drive_target_id().expect("source ID"),
+                    &local_dest.to_string_lossy(),
+                    progress_group,
+                    cancel,
+                    |stats| {
+                        if let Some((bytes, total)) = rc_stats_progress(&stats) {
+                            on_progress(bytes, total);
+                        }
+                    },
+                );
+                match result {
+                    Ok(_) => {
+                        let _ = self.rc.core_stats_delete(progress_group);
+                        return Ok(());
+                    }
+                    Err(error) if !should_fallback_to_cli_after_rc_error(&error) => {
+                        return Err(map_rclone_error_for_remote(src.remote(), error));
+                    }
+                    Err(_) => {
+                        let _ = self.rc.core_stats_delete(progress_group);
+                    }
+                }
+            }
+            return self.drive_download(src, local_dest, cancel);
+        }
+
         if is_cancelled(cancel) {
             return Err(cloud_write_cancelled_error());
         }
@@ -361,6 +425,11 @@ impl RcloneCloudProvider {
         cancel: Option<&AtomicBool>,
     ) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
+        if src.is_drive_address() {
+            self.is_drive_remote(src)?;
+            return self.drive_download(src, local_dest, cancel);
+        }
+
         if is_cancelled(cancel) {
             return Err(cloud_write_cancelled_error());
         }
@@ -383,6 +452,23 @@ impl RcloneCloudProvider {
         cancel: Option<&AtomicBool>,
     ) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
+        if path.is_drive_address() {
+            self.is_drive_remote(path)?;
+        }
+        if path.is_drive_address() && path.drive_id().is_some() {
+            return if self
+                .drive_stat(path, cancel)?
+                .is_some_and(|entry| entry.kind == super::CloudEntryKind::Dir)
+            {
+                Ok(())
+            } else {
+                Err(CloudCommandError::new(
+                    CloudCommandErrorCode::NotFound,
+                    "Selected Google Drive folder no longer exists",
+                ))
+            };
+        }
+
         if is_cancelled(cancel) {
             return Err(cloud_write_cancelled_error());
         }
@@ -411,7 +497,11 @@ impl RcloneCloudProvider {
         let mut attempt = 0usize;
         loop {
             let mkdir_result = self.cli.run_capture_text_with_cancel(
-                RcloneCommandSpec::new(RcloneSubcommand::Mkdir).arg(path.to_rclone_remote_spec()),
+                RcloneCommandSpec::new(RcloneSubcommand::Mkdir).arg(if path.is_drive_address() {
+                    path.drive_destination_spec()
+                } else {
+                    path.to_rclone_remote_spec()
+                }),
                 cancel,
             );
             match mkdir_result {
@@ -491,6 +581,26 @@ impl RcloneCloudProvider {
         cancel: Option<&AtomicBool>,
     ) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
+        if !path.is_drive_address()
+            && crate::commands::cloud::cloud_provider_kind_for_remote(path.remote())
+                == Some(super::CloudProviderKind::Gdrive)
+        {
+            if let Some(resolved) = self.resolve_drive_path(path, false, cancel)? {
+                if resolved.is_drive_address() {
+                    return self.drive_delete(
+                        &resolved,
+                        false,
+                        subcommand == RcloneSubcommand::Rmdir,
+                        cancel,
+                    );
+                }
+            }
+        }
+
+        if path.is_drive_address() {
+            return self.drive_delete(path, false, subcommand == RcloneSubcommand::Rmdir, cancel);
+        }
+
         if path.is_root() {
             return Err(CloudCommandError::new(
                 CloudCommandErrorCode::InvalidPath,
@@ -550,6 +660,27 @@ impl RcloneCloudProvider {
         cancel: Option<&AtomicBool>,
     ) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
+        if !src.is_drive_address()
+            && crate::commands::cloud::cloud_provider_kind_for_remote(src.remote())
+                == Some(super::CloudProviderKind::Gdrive)
+        {
+            if let Some(resolved) = self.resolve_drive_path(src, false, cancel)? {
+                if resolved.is_drive_address() {
+                    return self.drive_transfer(
+                        &resolved,
+                        dst,
+                        mode == TransferMode::Move,
+                        overwrite,
+                        cancel,
+                    );
+                }
+            }
+        }
+
+        if src.is_drive_address() || dst.is_drive_address() {
+            return self.drive_transfer(src, dst, mode == TransferMode::Move, overwrite, cancel);
+        }
+
         if is_cancelled(cancel) {
             return Err(cloud_write_cancelled_error());
         }
@@ -694,7 +825,11 @@ impl RcloneCloudProvider {
         };
         spec = spec
             .arg(src.to_rclone_remote_spec())
-            .arg(dst.to_rclone_remote_spec());
+            .arg(if dst.is_drive_address() {
+                dst.drive_destination_spec()
+            } else {
+                dst.to_rclone_remote_spec()
+            });
         if overwrite {
             spec = spec.arg("--ignore-times");
         }
@@ -712,7 +847,7 @@ impl RcloneCloudProvider {
             // This is one planned, idempotent directory finalization after a
             // successful copy, never a retry after an uncertain write.
             self.cli.run_capture_text_with_cancel(
-                RcloneCommandSpec::new(RcloneSubcommand::Mkdir).arg(dst.to_rclone_remote_spec())
+                RcloneCommandSpec::new(RcloneSubcommand::Mkdir).arg(if dst.is_drive_address() { dst.drive_destination_spec() } else { dst.to_rclone_remote_spec() })
                     .arg("--retries").arg("1").arg("--low-level-retries").arg("1"), cancel,
             ).map_err(|error| {
                 let mapped = map_rclone_error_for_paths(&[src, dst], error);
@@ -846,7 +981,7 @@ impl RcloneCloudProvider {
         Ok(cloud_delete_policy_args(provider))
     }
 
-    fn resolve_provider_kind_for_write_policy(
+    pub(super) fn resolve_provider_kind_for_write_policy(
         &self,
         remote_id: &str,
     ) -> CloudCommandResult<crate::commands::cloud::types::CloudProviderKind> {

@@ -192,6 +192,34 @@ pub(super) struct LsJsonItem {
     pub(super) mod_time: Option<String>,
 }
 
+/// Only Drive listings allocate object IDs. The ordinary parser/layout stays unchanged.
+#[derive(Debug, serde::Deserialize)]
+pub(super) struct DriveLsJsonItem {
+    #[serde(flatten)]
+    pub(super) item: LsJsonItem,
+    #[serde(default, rename = "ID")]
+    pub(super) id: Option<String>,
+}
+
+pub(super) fn parse_drive_lsjson_items(stdout: &str) -> RcloneParseResult<Vec<DriveLsJsonItem>> {
+    serde_json::from_str(stdout).map_err(|_| {
+        parse_err(
+            CloudCommandErrorCode::UnknownError,
+            "Invalid Google Drive listing payload",
+        )
+    })
+}
+pub(super) fn parse_drive_lsjson_items_value(
+    value: Value,
+) -> RcloneParseResult<Vec<DriveLsJsonItem>> {
+    serde_json::from_value(value).map_err(|_| {
+        parse_err(
+            CloudCommandErrorCode::UnknownError,
+            "Invalid Google Drive listing payload",
+        )
+    })
+}
+
 fn deserialize_lsjson_size<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
 where
     D: serde::Deserializer<'de>,

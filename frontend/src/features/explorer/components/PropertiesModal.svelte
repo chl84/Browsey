@@ -6,6 +6,7 @@
   import ComboBox, { type ComboOption } from '../../../shared/ui/ComboBox.svelte'
   import { fullNameTooltip } from '../helpers/fullNameTooltip'
   import { normalizePath, parentPath } from '../utils'
+  import { cloudDisplayPath } from '../cloudPaths'
   import type { Entry, Partition } from '../model/types'
   import { isMtpPartition, isUnmountedPartition, isUnmountedUsb } from '../services/drives.service'
   export let open = false
@@ -108,7 +109,7 @@
 
   $: hiddenBit =
     hidden !== null ? hidden : entry ? (entry.hidden === true || entry.name.startsWith('.')) : false
-  $: parentFolderPath = entry ? parentPath(entry.path) : ''
+  $: parentFolderPath = entry ? cloudDisplayPath(parentPath(entry.path)) : ''
   $: parentFolderLabel = parentFolderDisplayName(parentFolderPath)
 
   let activeTab: Tab = 'basic'

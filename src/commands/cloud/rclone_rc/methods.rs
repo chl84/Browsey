@@ -206,6 +206,28 @@ impl RcloneRcClient {
         )
     }
 
+    pub(crate) fn drive_copy_id_with_progress<F>(
+        &self,
+        fs: &str,
+        id: &str,
+        destination: &str,
+        group: &str,
+        cancel: Option<&AtomicBool>,
+        on_progress: F,
+    ) -> Result<Value, RcloneCliError>
+    where
+        F: FnMut(Value),
+    {
+        self.run_method_async_with_job_control_and_progress(
+            RcloneRcMethod::OperationsBackendCopyId,
+            json!({"fs": fs, "command": "copyid", "arg": [id, destination], "opt": {},
+                "_config": {"IgnoreTimes": true}}),
+            Some(group),
+            cancel,
+            on_progress,
+        )
+    }
+
     pub fn operations_copyfile_to_local_with_progress<F>(
         &self,
         spec: RcCopyFileToLocalProgressSpec<'_>,

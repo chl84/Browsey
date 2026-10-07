@@ -11,6 +11,8 @@ static REMOTE_NAME_CHARACTERS: Lazy<Regex> =
 pub struct CloudPath {
     remote: String,
     path: String,
+    // Present only for Google Drive object addresses. Ordinary paths allocate no ID vector.
+    drive_ids: Option<Vec<Option<String>>>,
 }
 
 impl CloudPath {
@@ -27,10 +29,37 @@ impl CloudPath {
             None => (rest, ""),
         };
         validate_remote(remote)?;
+        if let Some(encoded) = raw_path.strip_prefix("/gdrive/") {
+            let mut names = Vec::new();
+            let mut ids = Vec::new();
+            for segment in encoded.split('/') {
+                let (id, name) = segment.split_once('~').ok_or_else(|| {
+                    CloudPathParseError::new("Invalid Google Drive object address")
+                })?;
+                if !id.is_empty() {
+                    validate_drive_id(id)?;
+                }
+                let name = decode_drive_name(name)?;
+                names.push(name);
+                ids.push((!id.is_empty()).then(|| id.to_owned()));
+            }
+            let path = normalize_rel_path(&names.join("/"))?;
+            if path.is_empty() {
+                return Err(CloudPathParseError::new(
+                    "Empty Google Drive object address",
+                ));
+            }
+            return Ok(Self {
+                remote: remote.to_owned(),
+                path,
+                drive_ids: Some(ids),
+            });
+        }
         let path = normalize_rel_path(raw_path)?;
         Ok(Self {
             remote: remote.to_string(),
             path,
+            drive_ids: None,
         })
     }
 
@@ -53,6 +82,11 @@ impl CloudPath {
     // We intentionally preserve spaces and other non-separator characters as-is; command
     // escaping is handled by `std::process::Command`, not by string shell-escaping here.
     pub fn to_rclone_remote_spec(&self) -> String {
+        if self.drive_ids.is_some() {
+            // An ID address must never silently reach a path-only rclone operation.
+            // ID-aware callers use drive_directory_spec/drive_destination_spec.
+            return ":browsey-id-address-requires-google-drive-handler:".to_owned();
+        }
         if self.path.is_empty() {
             format!("{}:", self.remote)
         } else {
@@ -81,10 +115,106 @@ impl CloudPath {
         } else {
             format!("{}/{}", self.path, name)
         };
+        let drive_ids = self.drive_ids.as_ref().map(|ids| {
+            let mut ids = ids.clone();
+            ids.push(None);
+            ids
+        });
         Ok(Self {
             remote: self.remote.clone(),
             path,
+            drive_ids,
         })
+    }
+
+    pub(crate) fn is_drive_address(&self) -> bool {
+        self.drive_ids.is_some()
+    }
+
+    pub(crate) fn drive_id(&self) -> Option<&str> {
+        self.drive_ids.as_ref()?.last()?.as_deref()
+    }
+
+    /// rclone's shortcut IDs encode target:shortcut. Mutations address the shortcut.
+    pub(crate) fn drive_object_id(&self) -> Option<&str> {
+        self.drive_id()
+            .map(|id| id.rsplit(':').next().unwrap_or(id))
+    }
+
+    pub(crate) fn drive_target_id(&self) -> Option<&str> {
+        self.drive_id().map(|id| id.split(':').next().unwrap_or(id))
+    }
+
+    pub(crate) fn with_drive_id(&self, id: &str) -> Result<Self, CloudPathParseError> {
+        let id = id.replace('\t', ":");
+        validate_drive_id(&id)?;
+        if self.is_root() {
+            return Err(CloudPathParseError::new("Cannot qualify a remote root"));
+        }
+        let mut out = self.clone();
+        let count = self.path.split('/').count();
+        let ids = out.drive_ids.get_or_insert_with(|| vec![None; count]);
+        *ids.last_mut().expect("non-root address") = Some(id);
+        Ok(out)
+    }
+
+    /// ID-scoped directory filesystem, shared by RC and CLI without changing config.
+    pub(crate) fn drive_directory_spec(&self) -> (String, String) {
+        if self.drive_ids.is_none() {
+            return (format!("{}:", self.remote), self.path.clone());
+        }
+        let names: Vec<_> = self.path.split('/').collect();
+        if let Some(ids) = &self.drive_ids {
+            for (index, id) in ids.iter().enumerate().rev() {
+                if let Some(id) = id {
+                    let target = id.split(':').next().unwrap_or(id);
+                    return (
+                        format!("{},root_folder_id={target}:", self.remote),
+                        names[index + 1..].join("/"),
+                    );
+                }
+            }
+        }
+        (format!("{}:", self.remote), self.path.clone())
+    }
+
+    pub(crate) fn drive_destination_spec(&self) -> String {
+        let (fs, rel) = self
+            .parent_dir_path()
+            .unwrap_or_else(|| self.clone())
+            .drive_directory_spec();
+        if self.is_root() {
+            return fs;
+        }
+        let leaf = self.leaf_name().expect("non-root");
+        format!(
+            "{fs}{}{leaf}",
+            if rel.is_empty() {
+                String::new()
+            } else {
+                format!("{rel}/")
+            }
+        )
+    }
+
+    pub(crate) fn contains_drive_ancestor(&self, id: Option<&str>) -> bool {
+        let Some(id) = id else {
+            return false;
+        };
+        self.drive_ids.as_ref().is_some_and(|ids| {
+            ids.iter()
+                .take(ids.len().saturating_sub(1))
+                .flatten()
+                .any(|ancestor| ancestor.split(':').next() == Some(id))
+        })
+    }
+
+    pub(crate) fn display_path(&self) -> String {
+        if self.is_root() {
+            format!("rclone://{}", self.remote)
+        } else {
+            format!("rclone://{}/{}", self.remote, self.path)
+        }
     }
 
     pub fn leaf_name(&self) -> Result<&str, CloudPathParseError> {
@@ -109,15 +239,34 @@ impl CloudPath {
             .rsplit_once('/')
             .map(|(parent, _)| parent)
             .unwrap_or("");
+        let drive_ids = self
+            .drive_ids
+            .as_ref()
+            .and_then(|ids| (ids.len() > 1).then(|| ids[..ids.len() - 1].to_vec()));
         Some(Self {
             remote: self.remote.clone(),
             path: parent_rel.to_string(),
+            drive_ids,
         })
     }
 }
 
 impl fmt::Display for CloudPath {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(ids) = &self.drive_ids {
+            write!(f, "rclone://{}//gdrive", self.remote)?;
+            for (name, id) in self.path.split('/').zip(ids) {
+                let encoded: String =
+                    url::form_urlencoded::byte_serialize(name.as_bytes()).collect();
+                write!(
+                    f,
+                    "/{}~{}",
+                    id.as_deref().unwrap_or(""),
+                    encoded.replace('~', "%7E")
+                )?;
+            }
+            return Ok(());
+        }
         if self.path.is_empty() {
             write!(f, "rclone://{}", self.remote)
         } else {
@@ -206,6 +355,35 @@ fn normalize_rel_path(input: &str) -> Result<String, CloudPathParseError> {
         out.push(segment);
     }
     Ok(out.join("/"))
+}
+
+fn validate_drive_id(id: &str) -> Result<(), CloudPathParseError> {
+    let parts: Vec<_> = id.split(':').collect();
+    if parts.len() > 2
+        || parts.iter().any(|part| {
+            part.is_empty()
+                || part.len() > 256
+                || !part
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
+        })
+    {
+        return Err(CloudPathParseError::new("Invalid Google Drive object ID"));
+    }
+    Ok(())
+}
+
+fn decode_drive_name(encoded: &str) -> Result<String, CloudPathParseError> {
+    // Decode once; path validation below rejects separators, relative segments and NUL.
+    let pair = format!("name={encoded}");
+    let name = url::form_urlencoded::parse(pair.as_bytes())
+        .next()
+        .map(|(_, v)| v.into_owned())
+        .ok_or_else(|| CloudPathParseError::new("Invalid Google Drive object name"))?;
+    if name.is_empty() || name.contains(['/', '\\', '\0']) {
+        return Err(CloudPathParseError::new("Invalid Google Drive object name"));
+    }
+    Ok(name)
 }
 
 #[cfg(test)]
@@ -393,5 +571,84 @@ mod tests {
             nested.parent_dir_path().expect("parent").to_string(),
             "rclone://work/docs"
         );
+    }
+}
+
+#[cfg(test)]
+mod drive_address_tests {
+    use super::CloudPath;
+    #[test]
+    fn same_names_have_distinct_addresses_and_scoped_destinations() {
+        let parent = CloudPath::parse("rclone://Google Disk/folder")
+            .unwrap()
+            .with_drive_id("parentID")
+            .unwrap();
+        let a = parent
+            .child_path("same.txt")
+            .unwrap()
+            .with_drive_id("fileA")
+            .unwrap();
+        let b = parent
+            .child_path("same.txt")
+            .unwrap()
+            .with_drive_id("fileB")
+            .unwrap();
+        assert_ne!(a, b);
+        assert_eq!(a.display_path(), b.display_path());
+        assert_eq!(CloudPath::parse(&a.to_string()).unwrap(), a);
+        assert_eq!(a.parent_dir_path().unwrap(), parent);
+        assert_eq!(
+            a.drive_destination_spec(),
+            "Google Disk,root_folder_id=parentID:same.txt"
+        );
+        assert_eq!(
+            parent.drive_directory_spec(),
+            ("Google Disk,root_folder_id=parentID:".into(), String::new())
+        );
+        assert!(a.to_rclone_remote_spec().starts_with(":browsey-id-address"));
+        assert!(!a.is_root());
+    }
+    #[test]
+    fn names_round_trip_without_leaking_identity_into_the_filename() {
+        for name in ["budget å~100%.txt", "[id]name", "a+b #?.txt", "云盘.txt"] {
+            let path = CloudPath::parse("rclone://work")
+                .unwrap()
+                .child_path(name)
+                .unwrap()
+                .with_drive_id("fileA")
+                .unwrap();
+            assert_eq!(
+                CloudPath::parse(&path.to_string())
+                    .unwrap()
+                    .leaf_name()
+                    .unwrap(),
+                name
+            );
+            assert_eq!(path.parent_dir_path().unwrap().to_string(), "rclone://work");
+        }
+    }
+    #[test]
+    fn shortcut_object_and_target_are_separate() {
+        let path = CloudPath::parse("rclone://work/link.txt")
+            .unwrap()
+            .with_drive_id("targetID\tlinkID")
+            .unwrap();
+        assert_eq!(path.drive_object_id(), Some("linkID"));
+        assert_eq!(path.drive_target_id(), Some("targetID"));
+        assert_eq!(CloudPath::parse(&path.to_string()).unwrap(), path);
+    }
+    #[test]
+    fn rejects_malformed_ids_and_path_escape() {
+        for path in [
+            "rclone://work//gdrive/~",
+            "rclone://work//gdrive/bad,id~file",
+            "rclone://work//gdrive/id~%2e%2e",
+            "rclone://work//gdrive/id~a%2Fb",
+            "rclone://work//gdrive/id~a%00b",
+            "rclone://work//gdrive/id~a%5Cb",
+            "rclone://work//gdrive/id::other~file",
+        ] {
+            assert!(CloudPath::parse(path).is_err(), "{path}");
+        }
     }
 }

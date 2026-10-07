@@ -1,4 +1,5 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { cloudLeafName, cloudParentPath, joinCloudPath as cloudJoin } from '../cloudPaths'
 import { writable, get } from 'svelte/store'
 import type { ActivityApi as SharedActivityApi } from '../hooks/createActivity'
 import { getErrorMessage, normalizeError } from '@/shared/lib/error'
@@ -54,11 +55,6 @@ type PasteOperation = Readonly<{
 const isCloudPath = (path: string) => path.startsWith('rclone://')
 const CLOUD_REFRESH_DEBOUNCE_MS = 200
 
-const cloudLeafName = (path: string) => {
-  const idx = path.lastIndexOf('/')
-  return idx >= 0 ? path.slice(idx + 1) : path
-}
-
 const localLeafName = (path: string) => {
   const normalized = normalizePath(path)
   const idx = normalized.lastIndexOf('/')
@@ -72,8 +68,6 @@ const cloudRemoteId = (path: string) => {
   return slash >= 0 ? rest.slice(0, slash) : rest
 }
 
-const cloudJoin = (dir: string, name: string) => `${dir.replace(/\/+$/, '')}/${name}`
-
 const localJoin = (dir: string, name: string) => {
   const normalized = normalizePath(dir)
   if (normalized === '/') return `/${name}`
@@ -84,14 +78,14 @@ const localJoin = (dir: string, name: string) => {
 const cloudRenameCandidate = (base: string, idx: number) => {
   if (idx === 0) return base
   const slash = base.lastIndexOf('/')
-  const parent = slash >= 0 ? base.slice(0, slash) : ''
-  const original = slash >= 0 ? base.slice(slash + 1) : base
+  const parent = isCloudPath(base) ? cloudParentPath(base) : slash >= 0 ? base.slice(0, slash) : ''
+  const original = cloudLeafName(base)
   const dot = original.lastIndexOf('.')
   const hasExt = dot > 0
   const stem = hasExt ? original.slice(0, dot) : original
   const ext = hasExt ? original.slice(dot + 1) : ''
   const name = hasExt ? `${stem}-${idx}.${ext}` : `${stem}-${idx}`
-  return parent ? `${parent}/${name}` : name
+  return parent ? cloudJoin(parent, name) : name
 }
 
 const cloudConflictNameKey = (provider: CloudProviderKind | null, name: string) => {
@@ -651,7 +645,7 @@ export const useExplorerFileOps = (deps: Deps) => {
           await setClipboardCmd(sys.paths, sys.mode)
           const stubEntries = sys.paths.map((path) => ({
             path,
-            name: path.split('/').pop() ?? path,
+            name: cloudLeafName(path),
             kind: 'file',
             iconId: 12,
           }))

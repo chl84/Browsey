@@ -173,6 +173,7 @@ pub(crate) fn limits_for_staging(remotes: Vec<String>) -> limits::CloudRemotePer
 
 pub(crate) fn invalidate_cloud_caches_for_backend_change() {
     cache::invalidate_all_cloud_caches();
+    providers::rclone::reset_drive_auth();
     if let Err(error) = rclone_rc::reset_backend_state() {
         warn!(error = %error, "failed to reset rclone backend state after config change");
     }

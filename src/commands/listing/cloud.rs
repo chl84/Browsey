@@ -93,8 +93,21 @@ pub(super) async fn list_cloud_dir(
     })?;
     let mut mapped: Vec<FsEntry> = entries.into_iter().map(fs_entry_from_cloud_entry).collect();
     sort_entries(&mut mapped, sort);
+    let current = mapped
+        .first()
+        .filter(|entry| {
+            entry
+                .path
+                .strip_prefix("rclone://")
+                .is_some_and(|p| p.contains("//gdrive/"))
+        })
+        .and_then(|entry| crate::commands::cloud::path::CloudPath::parse(&entry.path).ok())
+        .filter(|path| path.is_drive_address())
+        .and_then(|path| path.parent_dir_path())
+        .map(|path| path.to_string())
+        .unwrap_or_else(|| raw_path.to_owned());
     Ok(DirListing {
-        current: raw_path.to_string(),
+        current,
         entries: mapped,
         pending_metadata_paths: Vec::new(),
     })

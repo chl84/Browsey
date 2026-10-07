@@ -1,3 +1,4 @@
+import { cloudLeafName } from '../cloudPaths'
 import { tick } from 'svelte'
 import { get, type Readable, type Writable } from 'svelte/store'
 import { getErrorMessage } from '@/shared/lib/error'
@@ -229,7 +230,7 @@ export const useExplorerNavigation = (deps: Deps) => {
   }
 
   const openPathAsFile = (path: string) => {
-    const name = path.split(/[\\/]+/).filter((segment) => segment.length > 0).pop() ?? path
+    const name = cloudLeafName(path)
     void deps.open({
       name,
       path,
@@ -309,13 +310,13 @@ export const useExplorerNavigation = (deps: Deps) => {
       try {
         const entry = await statCloudEntry(trimmed)
         if (entry?.kind === 'dir') {
-          if (trimmed !== get(deps.current) && !get(deps.loading)) {
-            await loadDir(trimmed)
+          if (entry.path !== get(deps.current) && !get(deps.loading)) {
+            await loadDir(entry.path)
           }
           return
         }
         if (entry?.kind === 'file') {
-          openPathAsFile(trimmed)
+          openPathAsFile(entry.path)
           deps.setPathInput(get(deps.current))
           return
         }

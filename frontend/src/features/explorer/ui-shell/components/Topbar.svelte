@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { cloudBreadcrumbs, cloudDisplayPath } from '../../cloudPaths'
   export let pathInput = ''
   export let searchMode = false
   export let mode: 'address' | 'filter' = 'address'
@@ -105,28 +106,9 @@ import ProgressBar from '@/shared/ui/ProgressBar.svelte'
 
   const detectSeparator = (path: string) => (path.includes('\\') && !path.includes('/') ? '\\' : '/')
 
-  const buildRcloneBreadcrumbs = (path: string) => {
-    if (!path.startsWith('rclone://')) return null
-    const rest = path.slice('rclone://'.length)
-    const parts = rest.split('/').filter((p) => p.length > 0)
-    if (parts.length === 0) {
-      return [{ label: path, path }]
-    }
-
-    const [remote, ...segments] = parts
-    const crumbs: { label: string; path: string }[] = []
-    let acc = `rclone://${remote}`
-    crumbs.push({ label: remote, path: acc })
-    for (const segment of segments) {
-      acc = `${acc}/${segment}`
-      crumbs.push({ label: segment, path: acc })
-    }
-    return crumbs
-  }
-
   const buildBreadcrumbs = (path: string) => {
     if (!path) return []
-    const rcloneCrumbs = buildRcloneBreadcrumbs(path)
+    const rcloneCrumbs = cloudBreadcrumbs(path)
     if (rcloneCrumbs) return rcloneCrumbs
     const sep = detectSeparator(path)
     const driveMatch = path.match(/^[A-Za-z]:/)
@@ -162,6 +144,7 @@ import ProgressBar from '@/shared/ui/ProgressBar.svelte'
   $: showBreadcrumbs = !focused && !searchMode && mode === 'address'
   $: separatorChar = detectSeparator(pathInput)
   $: breadcrumbs = buildBreadcrumbs(pathInput)
+  $: visibleInput = !searchMode && mode === 'address' ? cloudDisplayPath(pathInput) : pathInput
 </script>
 
 <div class="drag-spacer" data-tauri-drag-region>
@@ -232,7 +215,8 @@ import ProgressBar from '@/shared/ui/ProgressBar.svelte'
         autocomplete="off"
         autocapitalize="off"
         spellcheck="false"
-        bind:value={pathInput}
+        value={visibleInput}
+        on:input={(e) => { pathInput = e.currentTarget.value }}
         bind:this={pathInputEl}
         placeholder={searchMode ? 'Search in current folder…' : 'Path…'}
         aria-label={searchMode ? 'Search' : 'Path'}
