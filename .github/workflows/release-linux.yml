@@ -86,7 +86,7 @@ jobs:
           cp "$deb" "$rpm_file" release-assets/
           cd release-assets
           sha256sum *.deb *.rpm > SHA256SUMS
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: browsey-linux-${{ inputs.tag }}
           path: release-assets/

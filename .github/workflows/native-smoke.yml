@@ -42,7 +42,7 @@ jobs:
       - name: Create allowlisted redacted receipt
         if: always()
         run: node frontend/e2e-native/ci.mjs --summary
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: native-smoke-redacted
