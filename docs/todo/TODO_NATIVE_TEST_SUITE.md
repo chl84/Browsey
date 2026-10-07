@@ -494,7 +494,7 @@ external launches and discovery remain disabled by default.
 - [x] **NT7-1** Separate a short local smoke tier, provider foundation, edge cases
   and opt-in stress/lifecycle tiers. Share helpers and distinguish policy, mock
   and real native evidence without duplicate test bodies.
-- [ ] **NT7-2** Repeat accepted cases with fresh/reused private profiles. Investigate
+- [x] **NT7-2** Repeat accepted cases with fresh/reused private profiles. Investigate
   timing/focus flakes, never hiding them with mutation retries, silent skips or
   arbitrary timeout increases. Verify teardown and retained-run limits.
 - [ ] **NT7-3** Measure listing, first thumbnails, zoom, drag feedback and cancel

@@ -22,7 +22,7 @@ async function captureThumbnails(ui,part) {
   part.observations={artifact,sha256:createHash('sha256').update(raw).digest('hex'),states:samples.length,pendingStates:samples.filter(s=>s.images.some(i=>!i.path.includes('/bad-')&&(!i.decoded||!i.thumbnail))).length}
   return samples
 }
-async function settingsChoice(ui,filter,label) {
+export async function settingsChoice(ui,filter,label) {
   await ui.chord('s');const modal=await ui.browser.$('.settings-modal');await modal.waitForDisplayed({timeout:5000});await ui.fill(await modal.$('.settings-filter'),filter)
   const combo=await modal.$('.combo-btn');await combo.waitForDisplayed({timeout:5000});assert.equal((await modal.$$('.combo-btn')).length,1,'A unique filtered setting is required');await combo.click();await(await modal.$(`.//li[@role="option" and normalize-space(.)="${label}"]`)).click()
   await ui.browser.keys([Key.Escape]);if(await modal.isExisting())await ui.browser.keys([Key.Escape]);await modal.waitForExist({reverse:true,timeout:5000});await ui.idle()

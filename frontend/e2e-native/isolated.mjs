@@ -8,7 +8,7 @@ import {spawn} from 'node:child_process'
 import {validateConfig} from './scope.mjs'
 import {privateJson,processStamp,processGone} from './privacy.mjs'
 
-export const desktopSuites=['smoke','drag','drag-feedback','desktop-services','keyboard','appearance','watchers','archives','open-with']
+export const desktopSuites=['smoke','repeatability','drag','drag-feedback','desktop-services','keyboard','appearance','watchers','archives','open-with']
 export function desktopArguments(args) {
   assert.ok(args.length>=2&&args[0]==='--suite'&&desktopSuites.includes(args[1]),'Explicit supported desktop suite required')
   const providers=args.includes('--targets')?args[args.indexOf('--targets')+1]:'local'
@@ -35,7 +35,7 @@ async function main() {
   const args=process.argv.slice(2),options=desktopArguments(args),config=validateConfig(await privateJson(path.join(repo,'frontend/e2e-native/config.local.json')))
   const local=config.targets.find(t=>t.kind==='local').path,runId=randomUUID()
   const origin={mount:await fs.readlink('/proc/self/ns/mnt'),pid:await fs.readlink('/proc/self/ns/pid'),home:process.env.HOME,runId}
-  const env={PATH:'/usr/bin:/bin',LANG:'C.UTF-8',HOME:'/tmp/native-home',BROWSEY_NATIVE_INPUT_LAYOUT:options.suite==='smoke'?'no':'us',BROWSEY_NATIVE_ISOLATED:JSON.stringify(origin)}
+  const env={PATH:'/usr/bin:/bin',LANG:'C.UTF-8',HOME:'/tmp/native-home',BROWSEY_NATIVE_INPUT_LAYOUT:['smoke','repeatability'].includes(options.suite)?'no':'us',BROWSEY_NATIVE_ISOLATED:JSON.stringify(origin)}
   // No DISPLAY, Wayland, D-Bus, Xauthority, SSH or credential inheritance.
   const command=[...sandboxArgs(repo,local,options.providers.includes('cloud')),'--','/native-node',path.join(repo,'frontend/e2e-native/desktop-bootstrap.mjs'),'--run','--suite',options.suite,'--targets',options.providers,'--run-id',runId,...(args.includes('--a11y')?['--a11y']:[])]
   const child=spawn('/usr/bin/bwrap',command,{env,stdio:'inherit'})

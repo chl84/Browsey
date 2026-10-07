@@ -819,3 +819,14 @@ declare `evidence.kind=REAL_NATIVE`; acceptance requires actual candidate identi
 all declared cases/parts, independent effects and confirmed teardown/retention.
 NT7 raises only the finite registration cap from 128 to 160 to retain old evidence
 and bounded new runs; all byte, ownership, traversal and audit limits remain.
+
+### Lean profile repeatability
+
+Run `node frontend/e2e-native/isolated.mjs --suite repeatability --targets local
+--a11y` (one shell line). It repeats the shared three smoke bodies in separate
+`fresh`/`reused` generated directories within one exclusive session. One deliberate
+owned restart reuses only that run's profile, confirms old process exit before
+new identity capture, verifies persisted Compact density and independently checks
+old/new source and destination trees. Historical profiles/UUIDs are never adopted.
+Two accepted fresh profiles are represented by smoke plus repeatability; this
+is targeted repetition, not another full provider/edge matrix.

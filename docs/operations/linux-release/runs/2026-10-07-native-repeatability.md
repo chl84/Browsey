@@ -35,3 +35,27 @@ case bodies and require explicit scope; ordinary smoke enables no service
 exception or network. The finite count cap is 160 (previously 128), preserving
 126 earlier registrations and the bounded new runs. Total/per-run byte and
 traversal/audit limits stay unchanged; nothing is automatically deleted.
+
+## NT7-2: lean fresh/reused profile repetition
+
+Run `bdaa761a-98a8-46e0-92fb-21804f095228` is real native PASS: seven
+declared cases plus accessibility, 25.0 seconds total. The three smoke bodies
+run in fresh generated directories, then once again after one deliberately
+owned app/driver restart in the same private profile. Compact density survives
+restart; earlier source and undo-target trees remain exact. New app PID/start
+identity and a fresh fixed port pair follow all four confirmed old teardown
+steps. Final four-step teardown, private desktop closure, namespace exit,
+resource release and strict retention PASS (86 entries / 804,953 bytes).
+Together with NT7-1 this covers two accepted fresh profiles and one reused profile.
+No provider repetition, implicit skips, mutation/session retry or timeout increase.
+
+Earlier run `01e0f117-f09d-4234-b88f-270b2415d266` is BLOCKED: the test
+incorrectly expected the temporary grid toggle to persist across startup. The
+native scope explicitly seeds default list view on every launch. Reuse the real
+Settings density control instead; no Browsey product defect was reproduced.
+The failed report and generated files stay retained. Existing restart/report/
+retention policy tests pass (23 tests), including finite count/byte reservation,
+rejection of unresolved uncertainty, old-run reuse and unconfirmed teardown.
+Native lint passes. Registry audit: 131 registrations, 554,731,715 accounted
+bytes, no UNCERTAIN entries; all finite limits remain enforced. Candidate built
+on `0954e32a` with the same app-source SHA as NT7-1; exact identity is private.

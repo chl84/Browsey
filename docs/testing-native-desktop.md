@@ -72,3 +72,7 @@ set before launching the private session bus, avoiding the host journal dependen
 
 The local NT7 `smoke` suite reuses the same isolated desktop and ordinary native
 session restrictions. It enables no desktop service exception or network.
+
+The NT7 `repeatability` suite has the same local-only ordinary restrictions; its
+one restart retains only the already exclusive profile and requires confirmed
+old app/driver teardown. It does not reuse historical run directories.

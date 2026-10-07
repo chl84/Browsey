@@ -11,6 +11,7 @@ import { createLocalSession, Fixtures } from './fixtures.mjs'
 import { NativeUi } from './ui.mjs'
 import { foundation, foundationManifest } from './cases.mjs'
 import {smoke, smokeManifest, selectTier, suiteTier} from './tiers.mjs'
+import {repeatability, repeatabilityManifest} from './repeatability.mjs'
 import { navigation, navigationManifest } from './navigation.mjs'
 import { listing, listingManifest } from './listing.mjs'
 import { selection, selectionManifest } from './selection.mjs'
@@ -61,6 +62,7 @@ const exec = promisify(execFile)
 const suites = { smoke: {run: smoke, manifest: smokeManifest}, foundation: { run: foundation, manifest: foundationManifest },
   navigation: { run: navigation, manifest: navigationManifest }, listing: { run: listing, manifest: listingManifest },
   selection: { run: selection, manifest: selectionManifest }, creation: { run: creation, manifest: creationManifest } }
+suites.repeatability = {run: repeatability, manifest: repeatabilityManifest}
 for (const group of ['editing', 'fileops', 'rename', 'properties', 'history']) suites[group] = {
   run: (plan, fixture, ui, record) => editing(plan, fixture, ui, record, group),
   manifest: plan => editingManifest(plan, group),
@@ -264,7 +266,7 @@ async function main() {
     // structured report; failures afterward retain it in the owned local run.
     await setup(shared('harness-identity'), async () => {
       const harnessHash = createHash('sha256')
-      for (const file of ['tiers.mjs','../../tests/support/native_fixture_archives.py','archives.mjs','open-with.mjs','../../tests/support/native_fixture_x11.py','watchers.mjs','appearance.mjs','keyboard.mjs','desktop-services.mjs','feedback.mjs','desktop-apps.mjs','desktop-bootstrap.mjs','isolated.mjs','desktop.mjs','drag.mjs','cloud-provider.mjs', 'cloud-workspaces.mjs', 'mobile-thumbnails.mjs', 'provider-images.mjs', 'provider-fixtures.mjs', 'providers.mjs', 'links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+      for (const file of ['repeatability.mjs','tiers.mjs','../../tests/support/native_fixture_archives.py','archives.mjs','open-with.mjs','../../tests/support/native_fixture_x11.py','watchers.mjs','appearance.mjs','keyboard.mjs','desktop-services.mjs','feedback.mjs','desktop-apps.mjs','desktop-bootstrap.mjs','isolated.mjs','desktop.mjs','drag.mjs','cloud-provider.mjs', 'cloud-workspaces.mjs', 'mobile-thumbnails.mjs', 'provider-images.mjs', 'provider-fixtures.mjs', 'providers.mjs', 'links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
         harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
       }
       harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))
@@ -368,7 +370,7 @@ async function main() {
       await owned()
     }
     if (options.fullscreen) await setup(shared('owned-window-fullscreen'), fullscreen)
-    if (['editing', 'history', 'interruption','drag','watchers'].includes(options.suite)) {
+    if (['editing', 'history', 'interruption','drag','watchers','repeatability'].includes(options.suite)) {
       report.restarts = []
       let interrupted = false
       ui.restart = ownedRestart({ restarts: report.restarts, persist,

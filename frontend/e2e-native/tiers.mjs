@@ -13,7 +13,7 @@ export async function smoke(plan, fixture, ui, record) {
 
 // Plans select existing bodies. No tier implicitly runs providers or stress.
 export const tiers = Object.freeze({
-  smoke: ['smoke'],
+  smoke: ['smoke', 'repeatability'],
   provider: ['foundation', 'transfers-within', 'transfers-hub', 'transfers-pairs', 'usb', 'usb-access', 'network', 'mobile', 'cloud-provider', 'cloud-working'],
   edge: ['navigation', 'listing', 'selection', 'creation', 'editing', 'fileops', 'rename', 'properties', 'history', 'guards', 'guards-aliases-mobile', 'batches', 'conflicts', 'progress', 'cancellation', 'overwrite', 'moves', 'access', 'iofaults', 'races', 'names', 'links', 'drag', 'drag-feedback', 'keyboard', 'appearance', 'watchers', 'archives', 'open-with', 'desktop-services'],
   stress: ['contents', 'trees', 'limits'],
