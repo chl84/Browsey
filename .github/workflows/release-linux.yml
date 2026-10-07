@@ -60,6 +60,11 @@ jobs:
           rpm_file="target/release/bundle/rpm/Browsey-${APP_VERSION}-1.x86_64.rpm"
           test "$(dpkg-deb -f "$deb" Version)" = "$APP_VERSION"
           test "$(rpm -qp --queryformat '%{VERSION}' "$rpm_file")" = "$APP_VERSION"
+          deb_dependencies=$(dpkg-deb -f "$deb" Depends)
+          [[ "$deb_dependencies" == *"libssl3 | libssl3t64"* ]]
+          rpm_dependencies=$(rpm -qp --requires "$rpm_file")
+          [[ "$rpm_dependencies" == *"libssl.so.3()(64bit)"* ]]
+          [[ "$rpm_dependencies" == *"libcrypto.so.3()(64bit)"* ]]
           dpkg-deb --info "$deb"
           rpm -qp --requires "$rpm_file"
           package_root=$(mktemp -d)
