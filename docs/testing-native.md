@@ -856,3 +856,12 @@ introduced. Agree workload, cache, clock/measurement boundaries, sample count an
 repeatable host baseline before turning a measured budget into a regression gate.
 The old large production-startup script is a separate explicitly opt-in workload
 and is not run by NT7 or by smoke.
+
+### Opt-in Linux CI definition
+
+[CI smoke contract](testing-native-ci.md) defines a disposable, manually dispatched
+local-only runner, sealed matching GTK/WebKit/driver manifest, exclusive profile/
+registry, shared real native smoke and allowlisted redacted artifacts. A local
+metadata/hash check is not a deployed CI result. Personal-account/provider/device
+checks remain separately approved opt-in runs; nothing is silently inferred from
+a successful build.

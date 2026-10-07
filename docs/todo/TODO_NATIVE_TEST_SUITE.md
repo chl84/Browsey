@@ -500,7 +500,7 @@ external launches and discovery remain disabled by default.
 - [x] **NT7-3** Measure listing, first thumbnails, zoom, drag feedback and cancel
   latency with bounded workloads, cache state and sample counts. Agree measured
   host-specific budgets before introducing regression thresholds.
-- [ ] **NT7-4** Define isolated Linux CI smoke with matching GTK/WebKit/driver
+- [x] **NT7-4** Define isolated Linux CI smoke with matching GTK/WebKit/driver
   versions and no personal accounts. Real device/provider checks remain opt-in
   on approved hosts; compilation is not device coverage.
 - [ ] **NT7-5** Map case IDs to acceptance rows and maintain redacted run records.

@@ -105,3 +105,30 @@ thumbnail tests and native lint pass. Budgets remain **NOT_AGREED**, with no har
 regression threshold. Measurement delivery is complete; budget gating requires
 a separately agreed repeated host baseline. No product change or new reproduced
 Browsey defect. Both raw runs remain unchanged and retained.
+
+## NT7-4: isolated opt-in CI definition
+
+[CI contract](../../../testing-native-ci.md) and the manual native-smoke workflow
+require a new single-job Linux image/runner, unprivileged namespace isolation,
+sealed exact GTK/WebKit/driver metadata and executable hashes, and one exclusive
+local-only generated root/profile/registry. A personal/shared workstation is not
+a runner. No provider credentials, PR/fork trigger, mock fallback, normal app
+installation or write/publishing token. Only allowlisted redacted receipts upload;
+raw reports/config/logs/screenshots and recovery data remain private.
+
+Read-only preflight matches GTK 3.24.52 / WebKit 2.52.6 and all four expected tool
+hashes on this accepted host. Actual CI preparation on this ordinary host is
+correctly refused before writes, preserving the existing local config hash.
+Three CI policy tests pass: scope refusal, tool/engine/version mismatch and
+redaction/incomplete-native-evidence rejection. Native lint and workflow YAML
+parse PASS. Image labels/environment markers are provisioning contracts, not
+independent proof that infrastructure is ephemeral.
+
+Local equivalent run `b064913a-272e-4237-a76f-f184f83e3179` is real native
+PASS on a rebuilt candidate at `ea195413`: three shared smoke cases plus AT-SPI,
+11.4 seconds total; all four process teardown steps, private desktop closure,
+namespace exit and retention PASS. The CI redaction helper accepts its complete
+actual report without private paths/credentials. **Dedicated CI execution is
+NOT_RUN**; this deliverable defines and locally verifies the shared smoke/contract,
+not runner deployment or provider/device/distribution acceptance. No new
+reproduced Browsey defect.

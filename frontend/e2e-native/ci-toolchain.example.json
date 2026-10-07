@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "imageId": "browsey-native-arch-gtk3.24.52-webkit2.52.6",
+  "arch": "x64",
+  "gtk": "3.24.52",
+  "webkit": "2.52.6",
+  "driverWebkit": "2.52.6",
+  "tools": {
+    "tauri-driver": "14c4aed13fbef36bfb8f1f4ab0d4c881e84790f2eeec22b9592e47e3cce2ee9a",
+    "WebKitWebDriver": "12a162d99e1379ebc744852330363b2efa628f4c9b111eb28a664f89a6d5155e",
+    "Xvfb": "567a9b39284e303522fdc178059fe60d0e9917b811bd5066fb63260fd198a97c",
+    "bwrap": "7c44fa8e7326e62e81ab3f70ff682bfc0eb3b447b39cf9fbb779a31948364762"
+  }
+}

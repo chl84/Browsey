@@ -1,0 +1,51 @@
+name: Isolated Native Smoke (opt-in)
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_id:
+        description: Approved disposable native image ID from its sealed toolchain manifest
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  native-smoke:
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, Linux, X64, browsey-native-ephemeral]
+    timeout-minutes: 30
+    env:
+      BROWSEY_NATIVE_CI_IMAGE_ID: ${{ inputs.image_id }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Stage provisioned native tools
+        run: |
+          umask 077
+          mkdir -p target/native-tools/bin
+          install -m 755 /opt/browsey-native/bin/{tauri-driver,WebKitWebDriver,Xvfb} target/native-tools/bin/
+      - name: Check image and prepare one private local root
+        run: node frontend/e2e-native/ci.mjs --prepare
+      - name: Install locked frontend dependencies
+        run: npm ci --prefix frontend
+      - name: Native harness policy checks
+        run: |
+          npm --prefix frontend run test:native:policy
+          npm --prefix frontend run lint:native
+      - name: Build separate scoped candidate
+        run: bash scripts/dev/test-native-linux.sh --build
+      - name: Real isolated WebKitGTK smoke
+        run: node frontend/e2e-native/isolated.mjs --suite smoke --targets local --a11y
+      - name: Create allowlisted redacted receipt
+        if: always()
+        run: node frontend/e2e-native/ci.mjs --summary
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-smoke-redacted
+          path: target/native-test/ci-redacted.json
+          if-no-files-found: error
+          retention-days: 7
