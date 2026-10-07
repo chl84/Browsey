@@ -1135,6 +1135,14 @@
   } = useModalsController(createExplorerModalsControllerDeps({
     activityApi,
     reloadCurrent,
+    onHiddenChanged: async (updates) => {
+      const changed = new Map(updates.map(update => [update.path, update.entry]))
+      selected.update(paths => new Set([...paths].map(path => changed.get(path)?.path ?? path)))
+      entries.update(list => list.map(entry => changed.get(entry.path) ?? entry))
+      await reloadCurrent()
+      const message = get(error)
+      if (message) throw new Error(message)
+    },
     showToast,
     getCurrentPath: () => get(current),
     loadPath: (path, opts) => loadRaw(path, opts),

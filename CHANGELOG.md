@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Synchronize the file list and selection after changing Hidden in Properties,
+  including on MTP devices. Subsequent deletion uses the renamed path; completed
+  changes still refresh the explorer if the dialog closes during the operation.
+
 - Let productive rclone copy/move transfers continue beyond five minutes. Use a
   five-minute inactivity limit with operation-local byte/file counters for CLI
   and async RC jobs, retain bounded request timeouts and cancellation, and avoid

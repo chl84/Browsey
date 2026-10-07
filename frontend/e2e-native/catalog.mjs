@@ -28,6 +28,7 @@ import {keyboard, keyboardManifest} from './keyboard.mjs'
 import {services, servicesManifest} from './desktop-services.mjs'
 import {cloudProvider, cloudManifest, cloudWorking} from './cloud-provider.mjs'
 import {editing, editingManifest} from './editing.mjs'
+import {hidden, hiddenManifest} from './hidden.mjs'
 import {overwrites, overwriteManifest} from './overwrite.mjs'
 import {moves, moveManifest} from './moves.mjs'
 import {access, accessManifest} from './access.mjs'
@@ -74,6 +75,7 @@ suites.iofaults = { run: ioFaults, manifest: ioFaultManifest }
 suites.races = { run: races, manifest: raceManifest }
 suites.interruption = { run: interruption, manifest: interruptionManifest }
 suites.names = { run: names, manifest: namesManifest }
+suites.hidden = { run: hidden, manifest: hiddenManifest }
 suites.limits = { run: limits, manifest: limitsManifest }
 suites.contents = { run: contents, manifest: contentsManifest }
 suites.trees = { run: trees, manifest: treesManifest }

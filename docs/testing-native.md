@@ -98,6 +98,12 @@ reads only that exact generated subtree. Productive copy/move has an inactivity
 limit; automation still has a finite per-case observation bound and preserves
 incomplete results as failures.
 
+The [Hidden/delete follow-up](operations/linux-release/runs/2026-10-07-hidden-delete-cleanup.md)
+adds `--suite hidden` in the edge tier. It checks Properties renames, automatic
+list/selection synchronization and nonempty-directory deletion. The local run
+passes; this host's MTP hidden-folder deletion remains a separately recorded
+failure, including with direct GIO and Nautilus.
+
 The opt-in Cargo feature `native-test` adds a fail-closed IPC command/path guard.
 Unknown commands, implicit paths and traversal are rejected. Local symlinks are
 rejected by default; only the explicit local `links` suite may declare exact

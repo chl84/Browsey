@@ -61,6 +61,53 @@ const makeOpenState = (entry: Entry, count = 1): PropertiesState => ({
   ownershipError: null,
 })
 
+describe('properties Hidden rename synchronization', () => {
+  beforeEach(() => { vi.clearAllMocks(); invokeMock.mockReset() })
+
+  it('reports only successful new paths and uses them for subsequent changes', async () => {
+    const onHiddenChanged = vi.fn(async () => {})
+    const modal = createPropertiesModal({ computeDirStats: computeDirStatsMock, showToast: showToastMock, onHiddenChanged })
+    const folder = makeEntry('/run/user/1000/gvfs/mtp:host=Phone/Storage/.test', 'dir')
+    const failed = makeEntry('/run/user/1000/gvfs/mtp:host=Phone/Storage/.occupied', 'dir')
+    modal.state.set({ ...makeOpenState(folder, 2), entry: null, targets: [folder, failed] })
+    const path = folder.path.replace('/.test', '/test')
+    invokeMock.mockResolvedValue({ per_item: [
+      { path: folder.path, ok: true, new_path: path },
+      { path: failed.path, ok: false, new_path: failed.path },
+    ], failures: 1, unexpected_failures: 0 })
+    await modal.toggleHidden(false)
+    expect(onHiddenChanged).toHaveBeenCalledWith([{ path: folder.path, entry: { ...folder, path, name: 'test', nameLower: 'test', hidden: false } }])
+    expect(get(modal.state).targets.map(entry => entry.path)).toEqual([path, failed.path])
+    await modal.toggleHidden(true)
+    expect(invokeMock).toHaveBeenLastCalledWith('set_hidden', { paths: [path, failed.path], hidden: true })
+  })
+
+  it('synchronizes a completed filesystem rename after the dialog closes', async () => {
+    let finish!: (value: unknown) => void
+    invokeMock.mockImplementation(() => new Promise(resolve => { finish = resolve }))
+    const onHiddenChanged = vi.fn(async () => {})
+    const modal = createPropertiesModal({ computeDirStats: computeDirStatsMock, showToast: showToastMock, onHiddenChanged })
+    modal.state.set(makeOpenState(makeEntry('/owned/.test')))
+    const pending = modal.toggleHidden(false)
+    modal.close()
+    finish({ per_item: [{ path: '/owned/.test', ok: true, new_path: '/owned/test' }], failures: 0, unexpected_failures: 0 })
+    await pending
+    expect(onHiddenChanged).toHaveBeenCalledOnce()
+    expect(get(modal.state)).toMatchObject({ open: false, targets: [] })
+  })
+
+  it('preserves the successful rename and distinguishes refresh failure from mutation failure', async () => {
+    const onHiddenChanged = vi.fn(async () => { throw Error('MTP refresh failed') })
+    const modal = createPropertiesModal({ computeDirStats: computeDirStatsMock, showToast: showToastMock, onHiddenChanged })
+    modal.state.set(makeOpenState(makeEntry('/owned/.test')))
+    invokeMock.mockResolvedValue({ per_item: [{ path: '/owned/.test', ok: true, new_path: '/owned/test' }], failures: 0, unexpected_failures: 0 })
+    await modal.toggleHidden(false)
+    expect(get(modal.state).entry?.path).toBe('/owned/test')
+    expect(invokeMock).toHaveBeenCalledOnce()
+    expect(showToastMock).toHaveBeenCalledWith('Hidden state changed, but refresh failed. Press F5 to refresh.')
+  })
+})
+
 describe('properties modal copyParentFolder', () => {
   beforeEach(() => {
     vi.clearAllMocks()

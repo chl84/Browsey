@@ -1,7 +1,7 @@
 import { createDeleteConfirmModal } from '../modals/deleteConfirmModal'
 import type { DeleteConfirmMode } from '../modals/deleteConfirmModal'
 import { createOpenWithModal } from '../modals/openWithModal'
-import { createPropertiesModal } from '../modals/propertiesModal'
+import { createPropertiesModal, type HiddenEntryUpdate } from '../modals/propertiesModal'
 import { createRenameModal } from '../modals/renameModal'
 import { createAdvancedRenameModal } from '../modals/advancedRenameModal'
 import { createNewFolderModal } from '../modals/newFolderModal'
@@ -13,6 +13,7 @@ import type { Entry } from '../model/types'
 type Deps = {
   activityApi: ReturnType<typeof import('./createActivity').createActivity>
   reloadCurrent: () => Promise<void>
+  onHiddenChanged?: (updates: HiddenEntryUpdate[]) => Promise<void>
   showToast: (msg: string, timeout?: number) => void
   getCurrentPath: () => string
   loadPath: (path: string, opts?: { recordHistory?: boolean; silent?: boolean }) => Promise<void>
@@ -27,6 +28,7 @@ type Deps = {
 export const useModalsController = ({
   activityApi,
   reloadCurrent,
+  onHiddenChanged,
   showToast,
   getCurrentPath,
   loadPath,
@@ -45,7 +47,7 @@ export const useModalsController = ({
   const openWithModal = createOpenWithModal({ showToast })
   const openWithState = openWithModal.state
 
-  const propertiesModal = createPropertiesModal({ computeDirStats, showToast })
+  const propertiesModal = createPropertiesModal({ computeDirStats, showToast, onHiddenChanged })
   const propertiesState = propertiesModal.state
 
   const renameModal = createRenameModal({

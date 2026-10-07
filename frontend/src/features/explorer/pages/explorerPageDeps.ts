@@ -147,6 +147,7 @@ export const createExplorerModalsControllerDeps = (
 ): ExplorerModalsControllerDeps => ({
   activityApi: deps.activityApi,
   reloadCurrent: deps.reloadCurrent,
+  onHiddenChanged: deps.onHiddenChanged,
   showToast: deps.showToast,
   getCurrentPath: deps.getCurrentPath,
   loadPath: deps.loadPath,

@@ -42,6 +42,8 @@ export function requirements(item) {
       'no-selection', 'repeated-dispatch', 'permanent-delete-warning', 'cancelled-delete', 'independent-preservation']]
     if (operation === 'properties') return [provider, ['selected-properties', 'size-type', 'permission-capabilities',
       'ownership-capabilities', 'properties-tabs', 'properties-focus', 'independent-preservation']]
+    if (operation === 'hidden') return [provider, ['hidden-rename', 'current-path-selection', 'automatic-list-refresh',
+      'nonempty-directory-delete', 'independent-sentinel-preservation']]
     if (operation === 'history') return [provider, ['local-move-undo-redo', 'local-rename-undo-redo',
       'local-delete-undo-redo', 'local-overwrite-undo-redo', 'redo-invalidation', 'history-50-limit', 'owned-restart-history']]
     if (operation === 'creation') return [provider, ['file-create', 'directory-create', 'empty-created-contents',

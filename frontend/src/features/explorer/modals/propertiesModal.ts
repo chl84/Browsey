@@ -297,12 +297,15 @@ const userOwnershipErrorMessage = (code: string | null, message: string): string
   return userPermissionsErrorMessage(code, message)
 }
 
+export type HiddenEntryUpdate = { path: string; entry: Entry }
+
 type Deps = {
   computeDirStats: (
     paths: string[],
     onProgress?: (bytes: number, items: number) => void,
   ) => Promise<{ total: number; items: number }>
   showToast: (msg: string, timeout?: number) => void
+  onHiddenChanged?: (updates: HiddenEntryUpdate[]) => Promise<void>
 }
 
 export const createPropertiesModal = (deps: Deps) => {
@@ -862,14 +865,34 @@ export const createPropertiesModal = (deps: Deps) => {
         return
       }
 
-      if (activeToken !== token) return
+      const results = Array.isArray(batch.per_item) ? batch.per_item : []
+      const updates = targets.flatMap((target, idx): HiddenEntryUpdate[] => {
+        const result = results[idx]
+        if (!result?.ok) return []
+        const path = result.new_path || target.path
+        const name = stdPathName(path)
+        return [{ path: target.path, entry: { ...target, path, name, nameLower: name.toLowerCase(), hidden: next } }]
+      })
+      // The filesystem change still needs to reach the explorer if the dialog
+      // was closed or replaced while the command was running.
+      const notifyChanged = async () => {
+        if (updates.length === 0) return
+        try {
+          await deps.onHiddenChanged?.(updates)
+        } catch {
+          showToast('Hidden state changed, but refresh failed. Press F5 to refresh.')
+        }
+      }
+      if (activeToken !== token) {
+        await notifyChanged()
+        return
+      }
       if (batch.unexpected_failures > 0) {
         console.warn(
           `Hidden toggle failures: ${batch.failures} selected item(s), ${batch.unexpected_failures} unexpected`,
         )
       }
 
-      const results = Array.isArray(batch.per_item) ? batch.per_item : []
       const failures = targets
         .map((target, idx) => ({ target, result: results[idx] }))
         .filter(({ result }) => !result || !result.ok)
@@ -901,6 +924,7 @@ export const createPropertiesModal = (deps: Deps) => {
       if (failures.length > 0) {
         showToast(`Hidden toggle skipped for: ${failures.join(', ')}`)
       }
+      await notifyChanged()
     },
   }
 }

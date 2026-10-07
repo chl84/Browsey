@@ -32,6 +32,13 @@ Inspect current code and evidence before adding or replacing behavior.
 
 ## Priority 0 Safety and Recovery
 
+- [ ] Diagnose the reproduced MTP hidden-folder deletion failure and establish
+  a safe provider/device workaround or supported boundary. The
+  [Hidden/delete follow-up](../operations/linux-release/runs/2026-10-07-hidden-delete-cleanup.md)
+  separates Browsey's corrected stale Properties paths from direct-GIO and
+  Nautilus failures, including a hidden folder never renamed. Do not replay
+  deletion or accept a provider success receipt without checking the result.
+
 - [x] Review the remaining concurrent-writer/final-check windows and document
   the smallest justified mitigation or explicit supported boundary. Use the
   [content-verification audit](../audits/daily-driver/copy-content-verification.md)

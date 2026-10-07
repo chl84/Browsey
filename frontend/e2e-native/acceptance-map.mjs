@@ -26,6 +26,7 @@ export const acceptanceRules = Object.freeze([
   {family: 'navigation/listing', pattern: /^(navigation|listing)-/, rows: ['A2-1', 'A4-4']},
   {family: 'selection', pattern: /^selection-/, rows: ['A2-1']},
   {family: 'Properties', pattern: /^properties-/, rows: ['A2-2', 'A4-1']},
+  {family: 'Hidden rename/delete', pattern: /^hidden-/, rows: ['A0-2', 'A2-2', 'A4-1']},
   {family: 'input/create/rename', pattern: /^(input|create|creation|rename)-/, rows: ['A0-2', 'A2-1', 'A2-2']},
   {family: 'copy/move/fileops', pattern: /^(copy|move|fileops)-/, rows: ['A0-2', 'A0-3']},
   {family: 'delete', pattern: /^delete-/, rows: ['A0-2', 'A0-3', 'A4-3']},

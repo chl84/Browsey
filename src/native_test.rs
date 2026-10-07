@@ -178,6 +178,7 @@ fn authorize(roots: &[String], command: &str, body: &Value) -> Result<Vec<String
             | "create_folder"
             | "rename_entry"
             | "rename_entries"
+            | "set_hidden"
             | "delete_entry"
             | "delete_entries"
             | "network_delete_entries"
@@ -240,6 +241,9 @@ fn authorize(roots: &[String], command: &str, body: &Value) -> Result<Vec<String
     }
     for raw in &paths {
         check_path(roots, raw)?;
+        if command == "set_hidden" && roots.iter().any(|root| Path::new(root) == Path::new(raw)) {
+            return Err("Native-test Hidden changes must not rename a session root");
+        }
     }
     Ok(paths.into_iter().map(str::to_string).collect())
 }
@@ -904,6 +908,15 @@ mod tests {
         let roots = roots();
         let mut inspected = Vec::new();
         for (command, body) in [
+            ("set_hidden", json!({"paths":[roots[0]], "hidden":false})),
+            (
+                "set_hidden",
+                json!({"paths":[format!("{}/", roots[0])], "hidden":false}),
+            ),
+            (
+                "set_hidden",
+                json!({"paths":[format!("{}/fixture", roots[0]), "/personal"], "hidden":false}),
+            ),
             ("search_stream", json!({})),
             ("search_stream", json!({"path":null})),
             ("search_stream", json!({"path":"/synthetic/outside"})),
