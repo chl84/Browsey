@@ -4,6 +4,9 @@
 
 ## v1.0.5 — 2026-10-08
 
+- Update the frontend and documentation build's transitive `source-map-js`
+  dependency to 1.2.2 to resolve GHSA-68fv-2mgg-jv7q.
+
 - Preserve Google Drive object IDs through listing, selection and file operations.
   Identical-name files and folders remain separate, and downloads, rename and
   deletion address the selected object. Refuse ambiguous bulk transfers and
