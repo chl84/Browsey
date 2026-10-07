@@ -1,4 +1,11 @@
+use once_cell::sync::Lazy;
+use regex::Regex;
 use std::fmt;
+
+// Match rclone's config-name alphabet (fs/fspath), using Unicode letter/number
+// categories rather than Rust's broader alphabetic property or Unicode `\w`.
+static REMOTE_NAME_CHARACTERS: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\A[\p{L}\p{N}_.+@ -]+\z").expect("remote name regex"));
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CloudPath {
@@ -144,9 +151,9 @@ fn validate_remote(remote: &str) -> Result<(), CloudPathParseError> {
     if remote.is_empty() {
         return Err(CloudPathParseError::new("Missing remote name"));
     }
-    if remote.starts_with('.') {
+    if remote.starts_with('-') {
         return Err(CloudPathParseError::new(
-            "Remote name must not start with a dot",
+            "Remote name must not start with '-'",
         ));
     }
     if remote.contains('/') || remote.contains('\\') {
@@ -164,10 +171,7 @@ fn validate_remote(remote: &str) -> Result<(), CloudPathParseError> {
             "Remote name must not have leading/trailing spaces",
         ));
     }
-    if !remote
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
-    {
+    if !REMOTE_NAME_CHARACTERS.is_match(remote) {
         return Err(CloudPathParseError::new(
             "Remote name contains unsupported characters",
         ));
@@ -225,6 +229,65 @@ mod tests {
         assert_eq!(path.rel_path(), "projects/demo.txt");
         assert!(!path.is_root());
         assert_eq!(path.to_string(), "rclone://work-onedrive/projects/demo.txt");
+    }
+
+    #[test]
+    fn preserves_valid_rclone_remote_names() {
+        for remote in [
+            "Google Disk",
+            "Google  Disk",
+            "Arbeid Å₂",
+            "云盘１２",
+            "Team+Archive@home",
+            ".hidden-drive",
+            "work-",
+            "work - backup",
+            ".",
+            "..",
+        ] {
+            let root_raw = format!("rclone://{remote}");
+            let root = CloudPath::parse(&root_raw).expect("valid rclone remote name");
+            assert_eq!(root.remote(), remote);
+            assert!(root.is_root());
+            assert_eq!(root.to_string(), root_raw);
+            assert_eq!(root.to_rclone_remote_spec(), format!("{remote}:"));
+
+            let child = root.child_path("Docs 2026").expect("child");
+            let raw = format!("{root_raw}/Docs 2026");
+            assert_eq!(child.to_string(), raw);
+            assert_eq!(CloudPath::parse(&raw).expect("round trip"), child);
+            assert_eq!(child.to_rclone_remote_spec(), format!("{remote}:Docs 2026"));
+            assert_eq!(child.parent_dir_path(), Some(root));
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_rclone_remote_names() {
+        for remote in [
+            "",
+            " Google Disk",
+            "Google Disk ",
+            "-work",
+            "work:name",
+            "work\\name",
+            "work\0name",
+            "work\nname",
+            "work\tname",
+            "work\u{00a0}name",
+            "work,name",
+            "work=name",
+            "work#name",
+            "work%20name",
+            "work?name",
+            "work;name",
+            "work$(name)",
+            "work`name`",
+            "work😀",
+            "A\u{030a}",
+        ] {
+            let raw = format!("rclone://{remote}");
+            assert!(CloudPath::parse(&raw).is_err(), "must reject {raw:?}");
+        }
     }
 
     #[test]

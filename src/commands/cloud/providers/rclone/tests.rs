@@ -776,6 +776,51 @@ fn fake_rclone_shim_lists_remotes_and_directory_entries() {
 
 #[cfg(unix)]
 #[test]
+fn discovered_remote_names_are_preserved_through_cli_listing_and_stat() {
+    for remote in ["Google Disk", "Arbeid Å₂", "Team+Archive@home"] {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.set_remote_provider_type(remote, "drive");
+        sandbox.write_remote_file(remote, "Docs 2026/note + draft.txt", "hello cloud");
+        let provider = sandbox.provider();
+
+        let remotes = provider.list_remotes().expect("discover remote");
+        assert_eq!(remotes.len(), 1);
+        assert_eq!(remotes[0].id, remote);
+        assert_eq!(remotes[0].provider, CloudProviderKind::Gdrive);
+        let root = CloudPath::parse(&remotes[0].root_path).expect("parse discovered root");
+        let options = RcloneReadOptions {
+            backend: super::RcloneReadBackend::CliOnly,
+            ..RcloneReadOptions::default()
+        };
+        let folders = provider
+            .list_dir_with_read_options(&root, options)
+            .expect("list discovered root");
+        assert_eq!(folders.len(), 1);
+        let folder = CloudPath::parse(&folders[0].path).expect("parse listed folder");
+        assert_eq!(
+            folder.to_rclone_remote_spec(),
+            format!("{remote}:Docs 2026")
+        );
+        let files = provider
+            .list_dir_with_read_options(&folder, options)
+            .expect("list nested folder");
+        assert_eq!(files.len(), 1);
+        assert_eq!(
+            files[0].path,
+            format!("rclone://{remote}/Docs 2026/note + draft.txt")
+        );
+        let file = CloudPath::parse(&files[0].path).expect("parse listed file");
+        let stat = provider
+            .stat_path_with_read_options(&file, options)
+            .expect("stat listed file")
+            .expect("file exists");
+        assert_eq!(stat.path, files[0].path);
+        assert_eq!(stat.size, Some("hello cloud".len() as u64));
+    }
+}
+
+#[cfg(unix)]
+#[test]
 fn interactive_list_dir_falls_back_from_rc_to_cli() {
     let sandbox = FakeRcloneSandbox::new();
     sandbox.mkdir_remote("work", "Docs");

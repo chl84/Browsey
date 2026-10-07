@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Accept valid rclone remote names containing spaces, Unicode letters/numbers,
+  `+`, `@` and leading dots. Preserve names unchanged during cloud navigation
+  and provider calls, fixing rejected remotes such as `Google Disk`.
+
 - Complete NT7 with explicit native test tiers, shared local smoke and lean
   fresh/reused private-profile checks. Record bounded UI timing baselines, define
   opt-in isolated Linux CI and map case IDs to broader acceptance rows. Archive
