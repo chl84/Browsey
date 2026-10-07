@@ -2,9 +2,11 @@
 
 ## Unreleased
 
-- Separate explicit native smoke, provider, edge, stress and lifecycle tiers.
-  Reuse foundation bodies for a short isolated local smoke; record real native
-  evidence separately from policy/mock checks and verify the private keyboard.
+- Complete NT7 with explicit native test tiers, shared local smoke and lean
+  fresh/reused private-profile checks. Record bounded UI timing baselines, define
+  opt-in isolated Linux CI and map case IDs to broader acceptance rows. Archive
+  the completed NT0–NT7 fixture-scoped track; lifecycle, CI deployment and broader
+  installed/distribution signoff remain separate.
 
 - Verify private native Open With/default-program behavior with two exact generated
   handlers: spaced filename arguments, failed launch, checkbox cancellation and

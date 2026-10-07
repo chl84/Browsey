@@ -1,7 +1,7 @@
 # Native selection verification
 
 Date: 2026-10-05. Scope: NT1-3 in the
-[native suite TODO](../../../todo/TODO_NATIVE_TEST_SUITE.md). The new selection
+[native suite TODO](../../../todo-archive/TODO_NATIVE_TEST_SUITE.md). The new selection
 suite drives real WebKitGTK and Rust in the isolated native candidate.
 
 ## Cases and independent verification

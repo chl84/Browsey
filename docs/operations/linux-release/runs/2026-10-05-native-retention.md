@@ -1,7 +1,7 @@
 # Native privacy and retention verification
 
 Date: 2026-10-05. Scope: NT0-6 in the
-[native suite TODO](../../../todo/TODO_NATIVE_TEST_SUITE.md). This increment
+[native suite TODO](../../../todo-archive/TODO_NATIVE_TEST_SUITE.md). This increment
 changes the harness and documentation; Browsey application source is unchanged.
 Native verification uses fresh owned local fixtures. Cleanup deletion is verified
 only on generated temporary fixtures; existing real runs and remote data remain.

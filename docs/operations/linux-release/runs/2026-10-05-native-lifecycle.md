@@ -1,7 +1,7 @@
 # Native startup and teardown fault verification
 
 Date: 2026-10-05. Scope: NT0-4 in the
-[native suite TODO](../../../todo/TODO_NATIVE_TEST_SUITE.md). Only fresh generated
+[native suite TODO](../../../todo-archive/TODO_NATIVE_TEST_SUITE.md). Only fresh generated
 local runs and test-owned child processes/loopback listeners were used. The
 installed Browsey, personal windows, shared services and external providers were
 not controlled. This completes harness fault coverage, not device lifecycle or

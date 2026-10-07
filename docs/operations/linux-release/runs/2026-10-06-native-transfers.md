@@ -1,7 +1,7 @@
 # Native transfer matrix and conflict verification
 
 Date: 2026-10-06. Scope: NT2-1 through NT2-6 in the
-[native suite TODO](../../../todo/TODO_NATIVE_TEST_SUITE.md). Real WebKitGTK and
+[native suite TODO](../../../todo-archive/TODO_NATIVE_TEST_SUITE.md). Real WebKitGTK and
 Rust run in exclusive UUID subtrees of the five approved fixture folders. Only
 the separate candidate, private profile and captured drivers are controlled.
 Norwegian input and owned fullscreen are used; mobile is part of the matrix.

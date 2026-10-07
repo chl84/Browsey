@@ -1,7 +1,7 @@
 # Native editing, history and Properties verification
 
 Date: 2026-10-05. Scope: NT1-5 through NT1-8 in the
-[native suite TODO](../../../todo/TODO_NATIVE_TEST_SUITE.md). This run uses real
+[native suite TODO](../../../todo-archive/TODO_NATIVE_TEST_SUITE.md). This run uses real
 WebKitGTK and Rust in exclusive owned runs on the five approved fixture targets.
 Only the separately built candidate and its private profile are controlled.
 

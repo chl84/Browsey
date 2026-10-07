@@ -7,6 +7,7 @@ import {promisify} from 'node:util'
 import {randomUUID} from 'node:crypto'
 import {fileURLToPath} from 'node:url'
 import {fileSha256} from './candidate.mjs'
+import {acceptanceRows} from './acceptance-map.mjs'
 import {noLinks, validatePath, validateConfig, makePlan} from './scope.mjs'
 import {privateJson, privateStat, writePrivate} from './privacy.mjs'
 const exec = promisify(execFile)
@@ -58,7 +59,7 @@ export function redactedCiReport(report) {
     build: {commit: report.build?.commit ?? null, dirty: report.build?.dirty ?? null, sourceSha256: report.build?.sourceSha256 ?? null, binarySha256: report.build?.sha256 ?? null},
     harnessSha256: report.harnessSha256,
     host: {platform: report.host.platform, kernel: report.host.kernel, arch: report.host.arch, node: report.host.node, gtkWebkit: report.host.gtkWebkit, inputLayout: report.host.inputLayout},
-    tools: {tauriDriverSha256: report.tools?.tauriDriverSha256 ?? null, webkitDriverSha256: report.tools?.webkitDriverSha256 ?? null}, cases: report.cases.map(item => ({id: item.id, status: item.status, parts: item.parts.map(part => ({id: part.id, status: part.status}))})),
+    tools: {tauriDriverSha256: report.tools?.tauriDriverSha256 ?? null, webkitDriverSha256: report.tools?.webkitDriverSha256 ?? null}, cases: report.cases.map(item => ({id: item.id, status: item.status, acceptanceRows: acceptanceRows(item.id), parts: item.parts.map(part => ({id: part.id, status: part.status}))})),
     teardown: accepted ? 'PASS' : 'UNACCEPTED', retention: report.retention?.status ?? 'UNACCEPTED',
     notTested: ['Providers/devices/accounts', 'Installed production app', 'Other distributions/platforms', 'Performance budgets', 'Lifecycle transitions']}
 }

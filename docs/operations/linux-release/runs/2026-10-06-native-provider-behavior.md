@@ -1,7 +1,7 @@
 # Native provider behavior
 
 Date: 2026-10-06. Scope: NT5-1 through NT5-5 in the
-[native suite TODO](../../../todo/TODO_NATIVE_TEST_SUITE.md).
+[native suite TODO](../../../todo-archive/TODO_NATIVE_TEST_SUITE.md).
 Tests use the separately built native-test WebKitGTK candidate, private profile
 and generated owned UUID files. No installed app or personal settings are used.
 Every completed part is committed separately. Actual device/provider results

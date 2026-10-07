@@ -2,7 +2,7 @@
 
 Date: 2026-10-05. Tester: maintainer-directed coding agent.
 Scope: NT0-1 through NT0-5 in the
-[native suite plan](../../../todo/TODO_NATIVE_TEST_SUITE.md).
+[native suite plan](../../../todo-archive/TODO_NATIVE_TEST_SUITE.md).
 This is generated-fixture acceptance of a separate debug candidate, not installed
 Browsey, whole-provider/device acceptance or release signoff.
 

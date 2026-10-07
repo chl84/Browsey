@@ -6,8 +6,9 @@ Place active execution TODO documents in this directory.
   engineering follow-ups, the completed maintainability follow-up (M1–M4), and
   reproduced validation findings, with optional
   decisions and release rules kept out of the implementation checkbox count.
-- [Native test suite](TODO_NATIVE_TEST_SUITE.md): prioritized harness development,
-  real Browsey foundation/edge-case coverage and bounded provider verification.
+- [Completed native test suite](../todo-archive/TODO_NATIVE_TEST_SUITE.md): archived
+  NT0–NT7 development and bounded native verification; broader acceptance remains
+  in the validation checklist and case/acceptance index.
 - [Daily-driver validation](../operations/linux-release/daily-driver-validation-checklist.md):
   outstanding acceptance for existing capabilities, not missing features.
 - [Verified safety work](../todo-archive/TODO_DAILY_DRIVER_SAFETY_COMPLETED.md):

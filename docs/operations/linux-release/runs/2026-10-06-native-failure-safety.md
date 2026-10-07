@@ -1,7 +1,7 @@
 # Native progress, cancellation and failure safety
 
 Date: 2026-10-06. Scope: NT3-1 through NT3-8 in the
-[native suite TODO](../../../todo/TODO_NATIVE_TEST_SUITE.md). Each part has
+[native suite TODO](../../../todo-archive/TODO_NATIVE_TEST_SUITE.md). Each part has
 separate acceptance and a separate commit. Real WebKitGTK and Rust run in
 exclusive UUID subtrees of the approved local, USB, network, cloud and mobile
 fixture folders, using a separate debug candidate with `native-test` enabled.

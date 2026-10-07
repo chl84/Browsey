@@ -1,7 +1,7 @@
 # Native desktop interaction
 
 Date: 2026-10-07 (Europe/Oslo). Scope: NT6-1 through NT6-8 in the
-[native suite TODO](../../../todo/TODO_NATIVE_TEST_SUITE.md). Each completed
+[native suite TODO](../../../todo-archive/TODO_NATIVE_TEST_SUITE.md). Each completed
 part receives its own commit. Final production build and push follow completion
 of all eight parts; no installed Browsey instance is changed.
 

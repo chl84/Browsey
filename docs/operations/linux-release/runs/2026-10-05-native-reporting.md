@@ -1,7 +1,7 @@
 # Native case and provider reporting verification
 
 Date: 2026-10-05. Scope: NT0-5 in the
-[native suite TODO](../../../todo/TODO_NATIVE_TEST_SUITE.md). App source and
+[native suite TODO](../../../todo-archive/TODO_NATIVE_TEST_SUITE.md). App source and
 foundation operation semantics did not change. Fresh owned local/USB fixtures,
 synthetic policy fixtures and exact approved-path preflight checks were used;
 personal windows, installed Browsey and shared services were not controlled.

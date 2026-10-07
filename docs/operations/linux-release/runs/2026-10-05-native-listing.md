@@ -1,7 +1,7 @@
 # Native listing and recursive search verification
 
 Date: 2026-10-05. Scope: NT1-2 in the
-[native suite TODO](../../../todo/TODO_NATIVE_TEST_SUITE.md). Shared cases cover
+[native suite TODO](../../../todo-archive/TODO_NATIVE_TEST_SUITE.md). Shared cases cover
 local disk, USB, network, OneDrive and mobile in a guarded native candidate with
 real WebKitGTK and Rust. Fixtures and reads remain inside exclusive owned runs.
 

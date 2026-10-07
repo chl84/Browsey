@@ -1,7 +1,14 @@
 # Browsey Native Test Suite TODO
 
 Created: 2026-10-05
-Status: Active suite development and scoped native verification.
+Status: Archived 2026-10-07: declared NT0–NT7 deliverables and bounded native
+verification complete; broader installed/device/distribution acceptance stays open.
+
+Completion evidence: [case/acceptance index](../operations/linux-release/native-case-acceptance.md)
+and [NT7 record](../operations/linux-release/runs/2026-10-07-native-repeatability.md).
+NT5-5 and NT7-4 deliver contracts/definitions; unapproved real lifecycle transitions
+and external CI execution remain NOT_RUN. Performance budgets remain NOT_AGREED
+and no hard gate is introduced. Existing broader acceptance rows are not closed.
 
 Goal: Build reusable tests of basic file operations and edge cases in a real
 Browsey window, using WebKitGTK, the Rust backend and independent checks of
@@ -14,8 +21,9 @@ The [native suite guide](../testing-native.md) covers the separate candidate,
 private profile, approved-root configuration, WebDriver, AT-SPI and reporting.
 Shared create, rename, permanent-delete, copy/move and local copy undo/redo cases
 already exist in `frontend/e2e-native/cases.mjs`. Extend these rather than building
-parallel suites for each provider. Policy tests and backend path-access checks
-have passed; a complete five-provider native UI run has not been accepted.
+parallel suites for each provider. Initial planning recorded policy/backend checks before native provider acceptance.
+Completed increments now link their exact case/provider parts and fresh local
+retests below; preserved failed full reports are never rewritten as PASS.
 
 Expected operation semantics remain in the
 [core operations matrix](../operations/core-operations/matrix.md) and its
@@ -503,11 +511,11 @@ external launches and discovery remain disabled by default.
 - [x] **NT7-4** Define isolated Linux CI smoke with matching GTK/WebKit/driver
   versions and no personal accounts. Real device/provider checks remain opt-in
   on approved hosts; compilation is not device coverage.
-- [ ] **NT7-5** Map case IDs to acceptance rows and maintain redacted run records.
+- [x] **NT7-5** Map case IDs to acceptance rows and maintain redacted run records.
   Add only reproduced defects to the engineering backlog; archive this track
   when its declared deliverables and verification scope are complete.
 
-## Recommended first increment
+## Historical first increment
 
 Start with NT0-1 through NT0-5 and the existing foundation, fixing harness
 failures before adding cases. Next tackle NT1/NT2 and NT3, especially cross-boundary

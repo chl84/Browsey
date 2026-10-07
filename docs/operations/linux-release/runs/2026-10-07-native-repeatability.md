@@ -1,7 +1,7 @@
 # Native repeatability and acceptance
 
 Date: 2026-10-07 (Europe/Oslo). Scope: NT7-1–NT7-5 in the
-[native suite TODO](../../../todo/TODO_NATIVE_TEST_SUITE.md). One commit per part;
+[native suite TODO](../../../todo-archive/TODO_NATIVE_TEST_SUITE.md). One commit per part;
 a clean production build and push follow completion. No normal app installation.
 
 ## NT7-1: explicit tiers and shared smoke
@@ -132,3 +132,49 @@ actual report without private paths/credentials. **Dedicated CI execution is
 NOT_RUN**; this deliverable defines and locally verifies the shared smoke/contract,
 not runner deployment or provider/device/distribution acceptance. No new
 reproduced Browsey defect.
+
+## NT7-5: traceability and scoped archive
+
+[Case-to-acceptance index](../native-case-acceptance.md) maps 26 case families
+from the shared 47-suite executable registry to supporting daily-driver rows.
+Every declaration is checked against representative synthetic configurations and
+all-pairs routes for valid tiers, case/part requirements and mapping. Actual native
+reports and allowlisted CI receipts now include acceptanceRows; reused-profile
+cases retain sourceCaseId. Unknown families fail report generation. The read-only
+smoke plan previews its three mapped bodies without creating a run.
+
+Run `e90efb8f-e7bf-4ce1-8e6b-7e6a83e9f05f` is real native PASS on the
+rebuilt candidate at `296b342f`: three shared smoke cases + AT-SPI, 12.3 seconds
+total. Case/row mappings are present in the actual private report and accepted
+redacted projection. Exact files, four process teardown steps, private desktop
+closure, outside namespace exit and retention all PASS.
+
+All 51 declared NT0–NT7 items are checked and the
+[originally named plan](../../../todo-archive/TODO_NATIVE_TEST_SUITE.md) is archived
+with its exact contracts and exclusions. Active indexes and 149 changed/new local
+Markdown links are verified. Existing broader acceptance parent checkboxes are
+unchanged. CI deployment/execution remains NOT_RUN, unapproved device transitions
+remain NOT_RUN, host performance budgets remain NOT_AGREED, and this is not
+installed-build/distribution or ordinary-use signoff. No new reproduced Browsey
+defect enters the engineering backlog. Original failed/blocked runs stay retained.
+
+## Final verification and delivery contract
+
+Fresh final checks: native policy 168 PASS, native ESLint PASS, frontend type/Svelte
+check 0 errors/0 warnings, Rust formatting PASS, backend error-hardening guard PASS
+(existing nonblocking advisory remains), blocking Semgrep 3 rules / 161 command
+targets / zero findings, strict documentation consistency 20 PASS. Registry audit:
+135 registrations / 570,273,162 accounted bytes / zero UNCERTAIN. NT7 added nine
+retained runs: six accepted native runs and three separately preserved blocked
+attempts. Test/recovery data and all finite byte/audit limits are preserved.
+
+No Rust/frontend product source changed in NT7: app-source SHA remains
+`9179ac91b95bc56ec79e93ede5d472750d6c32d488c59821f0f5a68870928373`.
+Prior full application unit-test evidence stays dated in the NT6 record; it is not
+claimed as a fresh NT7 run. This increment changes test infrastructure/evidence.
+
+One commit per NT7 part. The final clean production build follows the fifth
+commit, without native-test features and without installation. Its exact source
+commit, clean-tree status, feature check, executable SHA/size and push identity
+are recorded in ignored `target/native-test/production-build.json` after delivery.
+Only that completed production build permits the requested final push.

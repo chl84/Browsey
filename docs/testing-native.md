@@ -65,7 +65,7 @@ fixes and retained earlier attempts.
 The [transfer matrix and conflict record](operations/linux-release/runs/2026-10-06-native-transfers.md)
 tracks NT2-1 through NT2-6, with separate acceptance and commits for each point.
 
-The [native test suite TODO](todo/TODO_NATIVE_TEST_SUITE.md) prioritizes harness
+The [native test suite TODO](todo-archive/TODO_NATIVE_TEST_SUITE.md) prioritizes harness
 stability, basic operations, transfer boundaries, failure safety and edge cases.
 It tracks suite work; accepted candidate outcomes stay in the daily-driver
 validation checklist and its run records.
@@ -405,8 +405,10 @@ Enter, then independent file verification. W3C actions explicitly press/release
 Shift for `_`. Only one keyboard layout is required for the first increment;
 non-BMP emoji entry remains outside this input acceptance. Set
 `BROWSEY_NATIVE_INPUT_LAYOUT=no` (or the actually verified layout) to annotate a
-run; this variable does not change the desktop layout. Temporary desktop layout
-changes require maintainer authorization and restoration afterward.
+run; ordinary runner annotation does not change the desktop layout. The approved
+isolated wrapper sets and verifies only its authenticated private Xvfb map (no
+for smoke/repeatability, us for other desktop cases). Host desktop layout changes
+require maintainer authorization and restoration afterward.
 
 ## Owned-folder navigation cases
 
@@ -865,3 +867,13 @@ registry, shared real native smoke and allowlisted redacted artifacts. A local
 metadata/hash check is not a deployed CI result. Personal-account/provider/device
 checks remain separately approved opt-in runs; nothing is silently inferred from
 a successful build.
+
+### Case-to-acceptance traceability
+
+[Native case index](operations/linux-release/native-case-acceptance.md) maps
+all declared families to supporting daily-driver rows. The shared executable
+registry and mapping are validated together; new unknown families fail closed.
+Reports store mappings per case, while reused-profile cases also preserve
+sourceCaseId. Archive completion covers this plan's explicit deliverables and
+verified fixture scope; it does not promote unrun CI/lifecycle checks, budget
+agreement, broader parent acceptance or installed-build signoff to PASS.

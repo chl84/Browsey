@@ -1,7 +1,7 @@
 # Native owned-folder navigation verification
 
 Date: 2026-10-05. Scope: NT1-1 in the
-[native suite TODO](../../../todo/TODO_NATIVE_TEST_SUITE.md). Reusable navigation
+[native suite TODO](../../../todo-archive/TODO_NATIVE_TEST_SUITE.md). Reusable navigation
 cases cover local disk, USB, network, OneDrive and mobile in a separate guarded
 Browsey candidate with real WebKitGTK and Rust. Only generated data under this
 session's approved test roots is accessed.

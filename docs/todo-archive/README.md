@@ -2,6 +2,13 @@
 
 This folder is used to archive completed TODO lists.
 
+## Native test suite
+
+- [NT0–NT7 suite](TODO_NATIVE_TEST_SUITE.md): completed scoped development and
+  verification, archived 2026-10-07. Case/provider evidence and exclusions are
+  linked; external CI execution, unapproved device lifecycle and broader
+  installed/distribution signoff are not inferred from archive completion.
+
 ## Daily-driver safety increments
 
 - [Verified safety work](TODO_DAILY_DRIVER_SAFETY_COMPLETED.md): 33 completed

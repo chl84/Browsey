@@ -1,7 +1,7 @@
 # Native name, content, tree and link edges
 
 Date: 2026-10-06. Scope: NT4-1 through NT4-5 in the
-[native suite TODO](../../../todo/TODO_NATIVE_TEST_SUITE.md). Each part is
+[native suite TODO](../../../todo-archive/TODO_NATIVE_TEST_SUITE.md). Each part is
 accepted separately and committed separately. Tests use the separately built
 WebKitGTK/native-test candidate and generated owned UUID fixture directories;
 there is no control or installation of the normal Browsey application.

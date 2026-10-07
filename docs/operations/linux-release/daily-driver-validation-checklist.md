@@ -132,6 +132,13 @@ provider outages; network/mobile failure modes remain separate. Exact trees,
 accessibility and owned teardown/private audits pass. NT2-1 through NT2-6 are
 complete within their declared scopes; broader parent rows remain open.
 
+The [NT7 repeatability/automation record](runs/2026-10-07-native-repeatability.md)
+adds shared smoke tiers, lean fresh/reused private profiles, bounded timing
+baselines, an opt-in CI definition and the [case-to-row index](native-case-acceptance.md).
+The NT0–NT7 suite track is archived for its declared fixture scopes. Dedicated CI
+execution, unapproved device transitions, host budget agreement and broader
+installed/distribution checks stay open. No parent checkbox below changes.
+
 ## Run Discipline
 
 The [scoped native acceptance suite](../../testing-native.md) provides reusable

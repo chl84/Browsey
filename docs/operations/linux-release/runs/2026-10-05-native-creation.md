@@ -1,7 +1,7 @@
 # Native creation verification
 
 Date: 2026-10-05. Scope: NT1-4 in the
-[native suite TODO](../../../todo/TODO_NATIVE_TEST_SUITE.md). The separate
+[native suite TODO](../../../todo-archive/TODO_NATIVE_TEST_SUITE.md). The separate
 creation suite uses real WebKitGTK and Rust inside exclusive owned runs.
 
 ## Cases and fixes

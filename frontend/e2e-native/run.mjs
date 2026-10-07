@@ -9,48 +9,29 @@ import os from 'node:os'
 import { validateConfig, makePlan, candidateEnvironment, child, noLinks } from './scope.mjs'
 import { createLocalSession, Fixtures } from './fixtures.mjs'
 import { NativeUi } from './ui.mjs'
-import { foundation, foundationManifest } from './cases.mjs'
-import {smoke, smokeManifest, selectTier, suiteTier} from './tiers.mjs'
-import {repeatability, repeatabilityManifest} from './repeatability.mjs'
-import {measurements, measurementManifest, measurementProbes} from './measurements.mjs'
-import { navigation, navigationManifest } from './navigation.mjs'
-import { listing, listingManifest } from './listing.mjs'
-import { selection, selectionManifest } from './selection.mjs'
-import { creation, creationManifest } from './creation.mjs'
-import { names, namesManifest } from './names.mjs'
-import { limits, limitsManifest } from './limits.mjs'
-import { contents, contentsManifest } from './contents.mjs'
-import { trees, treesManifest } from './trees.mjs'
-import { links, linksManifest } from './links.mjs'
-import { usb, usbManifest, network, networkManifest, networkProbes, mobile, mobileManifest } from './providers.mjs'
-import {startDesktop,fixtureLauncher} from './desktop.mjs'
+import {selectTier, suiteTier} from './tiers.mjs'
+import {measurementProbes} from './measurements.mjs'
+import {networkProbes} from './providers.mjs'
+import {startDesktop, fixtureLauncher} from './desktop.mjs'
 import {desktopApplications} from './desktop-apps.mjs'
-import {drag,dragManifest} from './drag.mjs'
-import {feedback,feedbackManifest} from './feedback.mjs'
-import {openWith,openWithManifest} from './open-with.mjs'
-import {archives,archivesManifest} from './archives.mjs'
-import {watchers,watchersManifest,watchersProbes} from './watchers.mjs'
-import {appearance,appearanceManifest,appearanceProbes} from './appearance.mjs'
-import {keyboard,keyboardManifest,keyboardProbes} from './keyboard.mjs'
-import {services,servicesManifest} from './desktop-services.mjs'
+import {watchersProbes} from './watchers.mjs'
+import {appearanceProbes} from './appearance.mjs'
+import {keyboardProbes} from './keyboard.mjs'
 import {desktopSuites} from './isolated.mjs'
-import {cloudProvider,cloudManifest,cloudProbes,cloudLocations,cloudWorking} from './cloud-provider.mjs'
-import { linkPlan } from './link-policy.mjs'
-import { editing, editingManifest } from './editing.mjs'
-import { overwrites, overwriteManifest, overwriteProbes } from './overwrite.mjs'
-import { moves, moveManifest, moveProbes, moveFaults } from './moves.mjs'
-import { access, accessManifest } from './access.mjs'
-import { ioFaults, ioFaultManifest, ioFaultProbes } from './iofaults.mjs'
-import { races, raceManifest, raceProbes } from './races.mjs'
-import { interruption, interruptionManifest, interruptionProbes } from './interruption.mjs'
-import { ownedRestart } from './restart.mjs'
-import { cancellations, cancellationManifest, cancellationProbes } from './cancellation.mjs'
-import { transfers, transferManifest } from './transfers.mjs'
-import { batches, batchManifest, batchFaults } from './batch.mjs'
-import { guards, guardManifest } from './guards.mjs'
-import { conflicts, conflictManifest } from './conflicts.mjs'
-import { routeEvidence } from './routing.mjs'
-import { progress, progressManifest, progressProbes } from './progress.mjs'
+import {cloudProbes, cloudLocations} from './cloud-provider.mjs'
+import {linkPlan} from './link-policy.mjs'
+import {overwriteProbes} from './overwrite.mjs'
+import {moveProbes, moveFaults} from './moves.mjs'
+import {ioFaultProbes} from './iofaults.mjs'
+import {raceProbes} from './races.mjs'
+import {interruptionProbes} from './interruption.mjs'
+import {ownedRestart} from './restart.mjs'
+import {cancellationProbes} from './cancellation.mjs'
+import {batchFaults} from './batch.mjs'
+import {routeEvidence} from './routing.mjs'
+import {progressProbes} from './progress.mjs'
+import {suites} from './catalog.mjs'
+import {acceptanceRows} from './acceptance-map.mjs'
 
 import { verifyCandidate, fileSha256 } from './candidate.mjs'
 import { createReport, recordSetup, recordCase, finishReport, summarizeProviders } from './report.mjs'
@@ -60,52 +41,6 @@ import { bounded, trackChild, checkPorts, waitDriver, ownedNativeDriverPid, asse
   captureCandidate, assertCandidateAlive, candidateState, stopCandidate, teardown, applyTeardown } from './lifecycle.mjs'
 
 const exec = promisify(execFile)
-const suites = { smoke: {run: smoke, manifest: smokeManifest}, foundation: { run: foundation, manifest: foundationManifest },
-  navigation: { run: navigation, manifest: navigationManifest }, listing: { run: listing, manifest: listingManifest },
-  selection: { run: selection, manifest: selectionManifest }, creation: { run: creation, manifest: creationManifest } }
-suites.measurements = {run: measurements, manifest: measurementManifest}
-suites.repeatability = {run: repeatability, manifest: repeatabilityManifest}
-for (const group of ['editing', 'fileops', 'rename', 'properties', 'history']) suites[group] = {
-  run: (plan, fixture, ui, record) => editing(plan, fixture, ui, record, group),
-  manifest: plan => editingManifest(plan, group),
-}
-suites['transfers-within'] = { run: transfers, manifest: transferManifest }
-suites['transfers-hub'] = { run: (plan, fixture, ui, record) => transfers(plan, fixture, ui, record, 'hub'),
-  manifest: plan => transferManifest(plan, 'hub') }
-suites['transfers-pairs'] = { run: (plan, fixture, ui, record) => transfers(plan, fixture, ui, record, 'pairs'),
-  manifest: plan => transferManifest(plan, 'pairs') }
-suites['guards-aliases-mobile'] = { run: (plan, fixture, ui, record) => guards(plan, fixture, ui, record, 'remaining'),
-  manifest: plan => guardManifest(plan, 'remaining') }
-suites.batches = { run: batches, manifest: batchManifest }
-suites.guards = { run: guards, manifest: guardManifest }
-suites.conflicts = { run: conflicts, manifest: conflictManifest }
-suites.progress = { run: progress, manifest: progressManifest }
-suites.cancellation = { run: cancellations, manifest: cancellationManifest }
-suites.overwrite = { run: overwrites, manifest: overwriteManifest }
-suites.moves = { run: moves, manifest: moveManifest }
-suites.access = { run: access, manifest: accessManifest }
-suites.iofaults = { run: ioFaults, manifest: ioFaultManifest }
-suites.races = { run: races, manifest: raceManifest }
-suites.interruption = { run: interruption, manifest: interruptionManifest }
-suites.names = { run: names, manifest: namesManifest }
-suites.limits = { run: limits, manifest: limitsManifest }
-suites.contents = { run: contents, manifest: contentsManifest }
-suites.trees = { run: trees, manifest: treesManifest }
-suites.links = { run: links, manifest: linksManifest }
-suites['cloud-working'] = { run: cloudWorking, manifest: plan=>cloudManifest(plan,'working') }
-suites['cloud-provider'] = { run: cloudProvider, manifest: cloudManifest }
-suites.mobile = { run: mobile, manifest: mobileManifest }
-suites.network = { run: network, manifest: networkManifest }
-suites.drag = {run:drag,manifest:dragManifest}
-suites['drag-feedback'] = {run:feedback,manifest:feedbackManifest}
-suites['open-with']={run:openWith,manifest:openWithManifest}
-suites.archives={run:archives,manifest:archivesManifest}
-suites.watchers={run:watchers,manifest:watchersManifest}
-suites.appearance={run:appearance,manifest:appearanceManifest}
-suites.keyboard={run:keyboard,manifest:keyboardManifest}
-suites['desktop-services'] = {run:services,manifest:servicesManifest}
-suites.usb = { run: usb, manifest: usbManifest }
-suites['usb-access'] = { run: (plan,fixture,ui,record)=>access(plan,fixture,ui,record,'usb'), manifest: plan=>{usbManifest(plan);return accessManifest(plan,'usb')} }
 const repo = fileURLToPath(new URL('../..', import.meta.url))
 const candidate = path.join(repo, 'target/native-test/browsey')
 // Inherited by the scoped app/drivers only; no desktop/global permission change.
@@ -183,7 +118,8 @@ async function main() {
     'Owned leaf-link acceptance requires --targets local; other providers are deferred')
   const plan = makePlan(config, options.runId??randomUUID())
   if (mode === '--plan') {
-    console.log(JSON.stringify({ ...plan, note: 'Plan only: no target files were inspected or changed' }, null, 2))
+    const cases = suites[options.suite].manifest(plan).map(item => ({id: item.id, acceptanceRows: acceptanceRows(item.sourceCaseId ?? item.id)}))
+    console.log(JSON.stringify({ ...plan, suite: options.suite, tier: suiteTier(options.suite), cases, note: 'Plan only: no target files were inspected or changed' }, null, 2))
     return
   }
   if (mode === '--check') {
@@ -214,6 +150,7 @@ async function main() {
   const manifest = options.fault ? [{ id: 'lifecycle-owned-window', name: 'Native lifecycle: owned window identity', providers: ['local'] }]
     : suites[options.suite].manifest(plan)
   if (options.a11y) manifest.push({ id: 'accessibility-local', name: 'AT-SPI: owned candidate accessibility tree', providers: ['local'] })
+  for (const item of manifest) item.acceptanceRows = acceptanceRows(item.sourceCaseId ?? item.id)
   const report = createReport(plan, configured, manifest)
   const local = plan.targets.find(target => target.kind === 'local')
   const artifacts = child(local.run, 'artifacts')
@@ -268,7 +205,7 @@ async function main() {
     // structured report; failures afterward retain it in the owned local run.
     await setup(shared('harness-identity'), async () => {
       const harnessHash = createHash('sha256')
-      for (const file of ['metrics.mjs','measurements.mjs','repeatability.mjs','tiers.mjs','../../tests/support/native_fixture_archives.py','archives.mjs','open-with.mjs','../../tests/support/native_fixture_x11.py','watchers.mjs','appearance.mjs','keyboard.mjs','desktop-services.mjs','feedback.mjs','desktop-apps.mjs','desktop-bootstrap.mjs','isolated.mjs','desktop.mjs','drag.mjs','cloud-provider.mjs', 'cloud-workspaces.mjs', 'mobile-thumbnails.mjs', 'provider-images.mjs', 'provider-fixtures.mjs', 'providers.mjs', 'links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+      for (const file of ['acceptance-map.mjs','catalog.mjs','metrics.mjs','measurements.mjs','repeatability.mjs','tiers.mjs','../../tests/support/native_fixture_archives.py','archives.mjs','open-with.mjs','../../tests/support/native_fixture_x11.py','watchers.mjs','appearance.mjs','keyboard.mjs','desktop-services.mjs','feedback.mjs','desktop-apps.mjs','desktop-bootstrap.mjs','isolated.mjs','desktop.mjs','drag.mjs','cloud-provider.mjs', 'cloud-workspaces.mjs', 'mobile-thumbnails.mjs', 'provider-images.mjs', 'provider-fixtures.mjs', 'providers.mjs', 'links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
         harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
       }
       harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))
