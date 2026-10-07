@@ -8,7 +8,7 @@ import {spawn} from 'node:child_process'
 import {validateConfig} from './scope.mjs'
 import {privateJson,processStamp,processGone} from './privacy.mjs'
 
-export const desktopSuites=['smoke','repeatability','drag','drag-feedback','desktop-services','keyboard','appearance','watchers','archives','open-with']
+export const desktopSuites=['smoke','repeatability','measurements','cancellation','drag','drag-feedback','desktop-services','keyboard','appearance','watchers','archives','open-with']
 export function desktopArguments(args) {
   assert.ok(args.length>=2&&args[0]==='--suite'&&desktopSuites.includes(args[1]),'Explicit supported desktop suite required')
   const providers=args.includes('--targets')?args[args.indexOf('--targets')+1]:'local'

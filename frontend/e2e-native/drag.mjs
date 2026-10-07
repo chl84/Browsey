@@ -23,15 +23,15 @@ export async function observeDrag(ui) {
     const state={events:[],frames:[],handlers:[],nativeListeners:[],lastPoint:null};window.__nativeDragObservation=state
     const nodes=new WeakMap();let sequence=0
     for(const event of ['tauri://drag-enter','tauri://drag-over','tauri://drag-drop','tauri://drag-leave']) {
-      const handler=window.__TAURI_INTERNALS__.transformCallback(e=>{if(e.payload?.position)state.lastPoint={x:e.payload.position.x/(window.devicePixelRatio||1),y:e.payload.position.y/(window.devicePixelRatio||1)};if(state.events.length<1024)state.events.push({type:event,time:performance.now(),payload:e.payload})})
+      const handler=window.__TAURI_INTERNALS__.transformCallback(e=>{if(e.payload?.position)state.lastPoint={x:e.payload.position.x/(window.devicePixelRatio||1),y:e.payload.position.y/(window.devicePixelRatio||1),time:performance.now()};if(state.events.length<1024)state.events.push({type:event,time:performance.now(),payload:e.payload})})
       const eventId=await window.__TAURI_INTERNALS__.invoke('plugin:event|listen',{event,target:{kind:'Webview',label:'main'},handler})
       state.nativeListeners.push({event,eventId})
     }
     for(const type of ['dragstart','dragover','drop','dragend','dragleave']) {
-      const handler=e=>{if(type==='dragover'||type==='dragstart')state.lastPoint={x:e.clientX,y:e.clientY};if(state.events.length<1024)state.events.push({type,trusted:e.isTrusted,time:performance.now(),x:e.clientX,y:e.clientY,ctrl:e.ctrlKey,shift:e.shiftKey,effect:e.dataTransfer?.dropEffect,allowed:e.dataTransfer?.effectAllowed,selection:type==='dragstart'?[...document.querySelectorAll('[data-path].selected')].map(n=>n.dataset.path):undefined})}
+      const handler=e=>{if(type==='dragover'||type==='dragstart')state.lastPoint={x:e.clientX,y:e.clientY,time:performance.now()};if(state.events.length<1024)state.events.push({type,trusted:e.isTrusted,time:performance.now(),x:e.clientX,y:e.clientY,ctrl:e.ctrlKey,shift:e.shiftKey,effect:e.dataTransfer?.dropEffect,allowed:e.dataTransfer?.effectAllowed,selection:type==='dragstart'?[...document.querySelectorAll('[data-path].selected')].map(n=>n.dataset.path):undefined})}
       document.addEventListener(type,handler,true);state.handlers.push([type,handler])
     }
-    const frame=time=>{const ghost=document.querySelector('.ghost');if(ghost&&!nodes.has(ghost))nodes.set(ghost,++sequence);if(state.frames.length<1024)state.frames.push({time,ghost:!!ghost,node:ghost?nodes.get(ghost):null,point:state.lastPoint,text:ghost?.textContent.trim(),left:ghost?.getBoundingClientRect().left,top:ghost?.getBoundingClientRect().top});state.raf=requestAnimationFrame(frame)}
+    const frame=time=>{const ghost=document.querySelector('.ghost');if(ghost&&!nodes.has(ghost))nodes.set(ghost,++sequence);if(state.frames.length<1024)state.frames.push({time:performance.now(),vsyncTime:time,ghost:!!ghost,node:ghost?nodes.get(ghost):null,point:state.lastPoint,text:ghost?.textContent.trim(),left:ghost?.getBoundingClientRect().left,top:ghost?.getBoundingClientRect().top});state.raf=requestAnimationFrame(frame)}
     state.raf=requestAnimationFrame(frame)
   })
 }

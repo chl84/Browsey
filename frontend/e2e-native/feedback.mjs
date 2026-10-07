@@ -5,6 +5,7 @@ import {recordPart} from './report.mjs'
 import {verifyTree} from './editing.mjs'
 import {releasedResources} from './resources.mjs'
 import {nativeInput,ownedWindow,observeDrag,endDragObservation,elementPoint,dragPoints} from './drag.mjs'
+import {feedbackLatencies} from './metrics.mjs'
 const parts=['list-rows-cancel','list-background-copy','grid-cards-cancel','grid-background-copy']
 export const feedbackManifest=plan=>{assert.deepEqual(plan.targets.map(t=>t.kind),['local']);return [{id:'desktop-feedback',name:'Native drag feedback under listing load',providers:['local'],partIds:parts}]}
 export async function feedback(plan,fixture,ui,record) {
@@ -33,6 +34,7 @@ export async function feedback(plan,fixture,ui,record) {
       assert.ok(frames.some(f=>f.text.includes('Copy')),'Allowed background/folder hover must recover the label')
       const samples=frames.filter(f=>f.point).map(f=>({time:f.time,delta:Math.hypot(f.left-f.point.x-12,f.top-f.point.y-12)}))
       part.measurement={eventCount:events.length,frameCount:frames.length,distinctPositions:new Set(frames.map(f=>`${f.left},${f.top}`)).size,matchedFrames:samples.filter(s=>s.delta===0).length,maxObservedDelta:Math.max(...samples.map(s=>s.delta)),scope:'Observed native pointer/event-to-frame positions; no invented performance threshold'}
+      part.measurement.latency=feedbackLatencies(frames)
       assert.ok(part.measurement.distinctPositions>=10&&part.measurement.matchedFrames>=10,'Feedback must visibly follow real input across many positions')
       await ui.browser.waitUntil(async()=>!await(await ui.browser.$('.ghost')).isExisting(),{timeout:5000,timeoutMsg:'Cannot-drop feedback remained stuck after release'})
       result.phase='verification';if(id.endsWith('copy'))expected.set('destination/000-source.txt','source\n')

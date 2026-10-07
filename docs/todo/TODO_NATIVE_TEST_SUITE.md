@@ -497,7 +497,7 @@ external launches and discovery remain disabled by default.
 - [x] **NT7-2** Repeat accepted cases with fresh/reused private profiles. Investigate
   timing/focus flakes, never hiding them with mutation retries, silent skips or
   arbitrary timeout increases. Verify teardown and retained-run limits.
-- [ ] **NT7-3** Measure listing, first thumbnails, zoom, drag feedback and cancel
+- [x] **NT7-3** Measure listing, first thumbnails, zoom, drag feedback and cancel
   latency with bounded workloads, cache state and sample counts. Agree measured
   host-specific budgets before introducing regression thresholds.
 - [ ] **NT7-4** Define isolated Linux CI smoke with matching GTK/WebKit/driver

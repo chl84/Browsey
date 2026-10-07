@@ -12,6 +12,7 @@ import { NativeUi } from './ui.mjs'
 import { foundation, foundationManifest } from './cases.mjs'
 import {smoke, smokeManifest, selectTier, suiteTier} from './tiers.mjs'
 import {repeatability, repeatabilityManifest} from './repeatability.mjs'
+import {measurements, measurementManifest, measurementProbes} from './measurements.mjs'
 import { navigation, navigationManifest } from './navigation.mjs'
 import { listing, listingManifest } from './listing.mjs'
 import { selection, selectionManifest } from './selection.mjs'
@@ -62,6 +63,7 @@ const exec = promisify(execFile)
 const suites = { smoke: {run: smoke, manifest: smokeManifest}, foundation: { run: foundation, manifest: foundationManifest },
   navigation: { run: navigation, manifest: navigationManifest }, listing: { run: listing, manifest: listingManifest },
   selection: { run: selection, manifest: selectionManifest }, creation: { run: creation, manifest: creationManifest } }
+suites.measurements = {run: measurements, manifest: measurementManifest}
 suites.repeatability = {run: repeatability, manifest: repeatabilityManifest}
 for (const group of ['editing', 'fileops', 'rename', 'properties', 'history']) suites[group] = {
   run: (plan, fixture, ui, record) => editing(plan, fixture, ui, record, group),
@@ -227,7 +229,7 @@ async function main() {
   if (['cloud-provider','cloud-working'].includes(options.suite)) report.notTested.push('External editors (preparation only, launch disabled)', 'Real service quota/rate/auth outage (exact candidate faults only)', 'Google Drive/Nextcloud (no approved roots/credentials)')
   if (options.suite === 'cloud-working') report.notTested.push('Cloud-cloud copy/download and conflict Cancel/Skip prefix (explicitly outside this follow-up manifest)')
   if (options.suite === 'links') report.notTested.push('Link behavior on USB/network/cloud/mobile', 'Directory symlinks and outside referents (not authorized)')
-  if (['drag','drag-feedback'].includes(options.suite)) report.notTested = report.notTested.filter(item => item !== 'Native drag/drop')
+  if (['drag','drag-feedback','measurements'].includes(options.suite)) report.notTested = report.notTested.filter(item => item !== 'Native drag/drop')
   if (options.suite === 'desktop-services') {report.notTested=report.notTested.filter(item=>item!=='Trash/format');report.notTested.push('Format and personal/global trash (outside isolated scope)', 'Clipboard on shared Wayland/desktop services')}
   if (options.suite==='watchers')report.notTested=report.notTested.filter(item=>item!=='Watcher behavior (disabled in scoped candidate)')
   if(options.suite==='archives'){report.notTested=report.notTested.filter(item=>item!=='Archive/password and broader transfer-conflict handling');report.notTested.push('Encrypted ZIP native UI only; other encrypted codecs covered by existing Rust tests','Large archive cancellation; other cloud providers; broader transfer conflicts')}
@@ -266,7 +268,7 @@ async function main() {
     // structured report; failures afterward retain it in the owned local run.
     await setup(shared('harness-identity'), async () => {
       const harnessHash = createHash('sha256')
-      for (const file of ['repeatability.mjs','tiers.mjs','../../tests/support/native_fixture_archives.py','archives.mjs','open-with.mjs','../../tests/support/native_fixture_x11.py','watchers.mjs','appearance.mjs','keyboard.mjs','desktop-services.mjs','feedback.mjs','desktop-apps.mjs','desktop-bootstrap.mjs','isolated.mjs','desktop.mjs','drag.mjs','cloud-provider.mjs', 'cloud-workspaces.mjs', 'mobile-thumbnails.mjs', 'provider-images.mjs', 'provider-fixtures.mjs', 'providers.mjs', 'links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+      for (const file of ['metrics.mjs','measurements.mjs','repeatability.mjs','tiers.mjs','../../tests/support/native_fixture_archives.py','archives.mjs','open-with.mjs','../../tests/support/native_fixture_x11.py','watchers.mjs','appearance.mjs','keyboard.mjs','desktop-services.mjs','feedback.mjs','desktop-apps.mjs','desktop-bootstrap.mjs','isolated.mjs','desktop.mjs','drag.mjs','cloud-provider.mjs', 'cloud-workspaces.mjs', 'mobile-thumbnails.mjs', 'provider-images.mjs', 'provider-fixtures.mjs', 'providers.mjs', 'links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
         harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
       }
       harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))
@@ -287,7 +289,7 @@ async function main() {
       ...(['desktop-services','watchers','archives','open-with'].includes(options.suite)?{desktop:options.suite}:{}),
       ...(['cloud-provider','cloud-working'].includes(options.suite) ? { workspaceSource: cloudLocations(plan).source } : {}),
       ...(options.suite === 'links' ? { links: linkPlan(plan) } : {}),
-      ...(['cloud-provider','cloud-working'].includes(options.suite) ? { probes: cloudProbes(plan) } : options.suite === 'network' ? { probes: networkProbes(plan) } : options.suite === 'watchers' ? {probes:watchersProbes(plan)} : options.suite === 'appearance' ? {probes:appearanceProbes(plan)} : options.suite === 'keyboard' ? {probes:keyboardProbes(plan)} : options.suite === 'progress' ? { probes: progressProbes(plan) } : options.suite === 'cancellation' ? { probes: cancellationProbes(plan) } : options.suite === 'overwrite' ? { probes: overwriteProbes(plan) } : options.suite === 'moves' ? { probes: moveProbes(plan) } : options.suite === 'iofaults' ? { probes: ioFaultProbes(plan) } : options.suite === 'races' ? { probes: raceProbes(plan) } : options.suite === 'interruption' ? { probes: interruptionProbes(plan) } : {}),
+      ...(['cloud-provider','cloud-working'].includes(options.suite) ? { probes: cloudProbes(plan) } : options.suite === 'network' ? { probes: networkProbes(plan) } : options.suite === 'watchers' ? {probes:watchersProbes(plan)} : options.suite === 'measurements' ? {probes:measurementProbes(plan)} : options.suite === 'appearance' ? {probes:appearanceProbes(plan)} : options.suite === 'keyboard' ? {probes:keyboardProbes(plan)} : options.suite === 'progress' ? { probes: progressProbes(plan) } : options.suite === 'cancellation' ? { probes: cancellationProbes(plan) } : options.suite === 'overwrite' ? { probes: overwriteProbes(plan) } : options.suite === 'moves' ? { probes: moveProbes(plan) } : options.suite === 'iofaults' ? { probes: ioFaultProbes(plan) } : options.suite === 'races' ? { probes: raceProbes(plan) } : options.suite === 'interruption' ? { probes: interruptionProbes(plan) } : {}),
       ...(options.suite === 'batches' ? { faults: batchFaults(plan) } : options.suite === 'moves' ? { faults: moveFaults(plan) } : {}) }
     if (session.faults) report.faults = session.faults.map(fault => ({ id: fault.id,
       kind: fault.source ? 'owned-source-dispatch' : 'owned-list-refresh', status: 'NOT_RUN', uses: 0 }))
@@ -349,7 +351,7 @@ async function main() {
       ui.desktop={repo,plan,local,env,candidate}
       Object.assign(ui,desktopApplications({repo,plan,local,env,candidate,tools,report,persist}))
     }
-    if (['progress', 'cancellation', 'overwrite', 'moves', 'access', 'iofaults', 'races', 'interruption'].includes(options.suite)) ui.waitTimeout = 180_000
+    if (['progress', 'cancellation', 'overwrite', 'moves', 'access', 'iofaults', 'races', 'interruption', 'measurements'].includes(options.suite)) ui.waitTimeout = 180_000
     if (options.suite === 'transfers-pairs') ui.transferEvidence = routeEvidence(`${profile}/data/browsey/logs/browsey.log`)
     const captureIdentity = async () => {
       ui.browser = browser

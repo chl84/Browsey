@@ -830,3 +830,29 @@ new identity capture, verifies persisted Compact density and independently check
 old/new source and destination trees. Historical profiles/UUIDs are never adopted.
 Two accepted fresh profiles are represented by smoke plus repeatability; this
 is targeted repetition, not another full provider/edge matrix.
+
+### Bounded native timing baseline
+
+Run `node frontend/e2e-native/isolated.mjs --suite measurements --targets local
+--a11y` as one shell line. It reuses appearance, feedback and cancellation bodies
+with 48 generated tiny RGB PNGs, two fallback inputs, one late PNG, 120 filler
+files per four drag scenarios and at most three 64 KiB cancellation inputs.
+It adds three warm navigation samples and six existing real Ctrl-wheel steps.
+A fresh private profile provides cold private app/thumbnail cache; generated files
+and OS page cache are warm. No global cache flushing or provider stress.
+
+Reports store sample counts/values and monotonic-clock boundaries. Listing/zoom
+include driver, guards and XTest process overhead. Thumbnail/drag/cancel feedback
+use browser observation timestamps, not verifier round trips. Drag measures first
+matching rAF layout after a delivered pointer event, not upstream queue or final
+composited pixels. Cancel measures trusted click → Cancelling label and cleared
+activity/operation with terminal toast; backend task/callback release and stopped
+writes are checked independently. The full verifier waits for toast expiry and
+is recorded separately. Cold listing/first-thumbnail counts are one per profile;
+small samples are descriptive and cannot establish a release percentile budget.
+
+Host-specific budgets are **NOT_AGREED**. No automatic performance threshold is
+introduced. Agree workload, cache, clock/measurement boundaries, sample count and
+repeatable host baseline before turning a measured budget into a regression gate.
+The old large production-startup script is a separate explicitly opt-in workload
+and is not run by NT7 or by smoke.

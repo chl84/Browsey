@@ -76,3 +76,7 @@ session restrictions. It enables no desktop service exception or network.
 The NT7 `repeatability` suite has the same local-only ordinary restrictions; its
 one restart retains only the already exclusive profile and requires confirmed
 old app/driver teardown. It does not reuse historical run directories.
+
+The local NT7 `measurements` and `cancellation` suites use ordinary scoped IPC
+and exact generated transfer probes on the private desktop. They enable no
+external desktop service, personal account, network or lifecycle transition.

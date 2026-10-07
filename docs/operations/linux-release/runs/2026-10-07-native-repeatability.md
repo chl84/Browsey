@@ -59,3 +59,49 @@ rejection of unresolved uncertainty, old-run reuse and unconfirmed teardown.
 Native lint passes. Registry audit: 131 registrations, 554,731,715 accounted
 bytes, no UNCERTAIN entries; all finite limits remain enforced. Candidate built
 on `0954e32a` with the same app-source SHA as NT7-1; exact identity is private.
+
+## NT7-3: measured, bounded local baseline
+
+Run `33396cdd-fd03-4782-aff5-8c0f31d8e99e` is native PASS: 15 declared
+parts plus accessibility, 57.1 seconds total. Shared appearance, four feedback
+and three cancellation bodies preserve exact generated files, fallback behavior,
+zoom geometry and stopped writes. Main four-step teardown, private desktop
+closure, namespace exit and retention PASS (792 entries / 12,813,617 bytes).
+Fresh private app/thumbnail cache; warm generated file/OS page cache. GTK/WebKit
+and host match NT7-1; actual input map is verified private US for these gestures.
+
+| Metric / measurement boundary | Samples | Observed ms |
+| --- | ---: | --- |
+| First 50-entry list, guarded navigation + WebDriver | 1 | 232 |
+| First decoded thumbnail, observer before grid toggle | 1 | 128 |
+| Warm 50-entry grid navigation + all decoded thumbnails + WebDriver | 3 | 297 / 385 / 391 |
+| Real Ctrl-wheel dispatch → observed CSS size (guards/Python/driver included) | 6 | 336–465; median 366 |
+| Delivered pointer → first matching rAF layout, list/cancel | 39 | median 1; p95 10; max 20 |
+| Same, list/copy | 51 | median 1; p95 7; max 16 |
+| Same, grid/cancel | 44 | median 1; p95 2; max 8 |
+| Same, grid/copy | 57 | median 0; p95 5; max 10 |
+
+These are descriptive observations, not backend-only listing/render timings or
+final compositor latency. Browser clock resolution can produce zero-ms samples;
+that does not establish zero real input latency. Workloads: 48 tiny RGB PNGs + two
+fallbacks, one late PNG, 120 filler files for each drag scenario. No content
+download/provider stress or system-wide cold-cache reset.
+
+The first cancel wall-clock metric mistakenly included the existing verifier's
+five-second toast-expiry wait. Functional cancellation passed; that raw metric
+is **not cancellation latency** and is superseded by trusted-click/DOM timestamps.
+Run `263805e0-ce37-447e-8745-61c8f61abcf1` is a fresh native cancellation
+PASS (three parts + accessibility, 22.7 seconds total). Before/middle/between-file
+acknowledgement is 5 / 3 / 4 ms; terminal cleared activity with failure toast is
+30 / 42 / 25 ms (one sample per checkpoint). Source/destination readbacks repeat
+after quiescence; backend tasks and callbacks release. All teardown/retention PASS.
+Full verification round trips stay separately recorded at 5.1–5.2 seconds.
+The exact generated five-second checkpoints are interruptible on cancellation;
+no injected hold or toast dwell is labelled normal disk throughput/response.
+
+Three timing-policy tests reject absent/negative/unbounded evidence, stale frame
+pairs and toast-expiry timing confusion; eight focused timing/progress/cancel/
+thumbnail tests and native lint pass. Budgets remain **NOT_AGREED**, with no hard
+regression threshold. Measurement delivery is complete; budget gating requires
+a separately agreed repeated host baseline. No product change or new reproduced
+Browsey defect. Both raw runs remain unchanged and retained.

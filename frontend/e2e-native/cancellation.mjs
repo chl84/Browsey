@@ -1,9 +1,11 @@
 /* global window */
 import assert from 'node:assert/strict'
+import {performance} from 'node:perf_hooks'
 import {child} from './scope.mjs'
 import {verifyTree} from './editing.mjs'
 import {recordPart} from './report.mjs'
 import {progressRoutes,beginPaste,endTransferObservation,waitActivityGone} from './progress.mjs'
+import {measuredSamples,cancelFeedbackTimings} from './metrics.mjs'
 
 export const cancellationCases=plan=>[
   ...progressRoutes(plan).map(c=>({...c,point:'before',phase:[c.from,c.to].includes('cloud')?'validation':'start'})),
@@ -50,6 +52,7 @@ export function assertCancelledOutput(content,actual) {
 }
 export async function cancelHeld(ui,plan,id) {
   const checkpoint=await heldProbe(ui,plan.runId,id)
+  const started=performance.now()
   await (await ui.browser.$('[aria-label="Cancel task"]')).click()
   const feedback=await ui.expectedToast(/Paste failed:.*cancel/i,600_000)
   await waitActivityGone(ui)
@@ -57,7 +60,8 @@ export async function cancelHeld(ui,plan,id) {
   assert.ok(observations.some(s=>s.label==='Cancelling…'),'The real Cancel button must enter cancelling state')
   assert.equal((await ui.handshake(plan.runId)).cancelTasks,0,'Finished cancel tasks must be released')
   assert.deepEqual(await transferListeners(ui),[],'Finished transfer callbacks must be unregistered')
-  return {checkpoint,feedback,observations}
+  return {checkpoint,feedback,observations,latency:cancelFeedbackTimings(observations),verificationRoundTrip:measuredSamples([performance.now()-started],
+    'Node monotonic clock: full verification including WebDriver, readiness polling and waiting for the terminal toast to expire; not cancellation latency')}
 }
 export async function cancellations(plan,fixture,ui,record) {
   for(const c of cancellationCases(plan)) await record(`Copy cancellation: ${c.from} to ${c.to}, ${c.point}`,async result=>{

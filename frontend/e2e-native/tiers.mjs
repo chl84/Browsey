@@ -16,7 +16,7 @@ export const tiers = Object.freeze({
   smoke: ['smoke', 'repeatability'],
   provider: ['foundation', 'transfers-within', 'transfers-hub', 'transfers-pairs', 'usb', 'usb-access', 'network', 'mobile', 'cloud-provider', 'cloud-working'],
   edge: ['navigation', 'listing', 'selection', 'creation', 'editing', 'fileops', 'rename', 'properties', 'history', 'guards', 'guards-aliases-mobile', 'batches', 'conflicts', 'progress', 'cancellation', 'overwrite', 'moves', 'access', 'iofaults', 'races', 'names', 'links', 'drag', 'drag-feedback', 'keyboard', 'appearance', 'watchers', 'archives', 'open-with', 'desktop-services'],
-  stress: ['contents', 'trees', 'limits'],
+  stress: ['measurements', 'contents', 'trees', 'limits'],
   lifecycle: ['interruption'],
 })
 export function selectTier(tier, suite, fault = null) {

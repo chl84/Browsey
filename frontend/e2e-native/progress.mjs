@@ -1,4 +1,4 @@
-/* global window, document, MutationObserver */
+/* global window, document, MutationObserver, performance */
 import assert from 'node:assert/strict'
 import { child } from './scope.mjs'
 import { verifyTree } from './editing.mjs'
@@ -24,25 +24,28 @@ export const progressProbes=plan=>progressRoutes(plan).flatMap(c=>parts.map(part
 export async function startTransferObservation(ui) {
   await ui.browser.execute(()=>{
     if(window.__browseyTransferObservation) throw Error('Transfer observer already exists')
-    const samples=[]
+    const samples=[];let lastSignature,cancelRequestedAt=null
     const capture=()=>{
       const pill=document.querySelector('.pill.progress'),main=document.querySelector('main.shell')
       const state={label:pill?.querySelector('span')?.textContent??null,detail:pill?.querySelector('.detail')?.textContent??null,
         percent:pill?.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')??null,
         active:main?.getAttribute('data-operation-active')==='true',visible:!!pill?.getClientRects().length,
-        cancel:!!pill?.querySelector('[aria-label="Cancel task"]'),toast:document.querySelector('.toast[role="status"]')?.textContent.trim()??''}
-      if(samples.length<256&&JSON.stringify(samples.at(-1))!==JSON.stringify(state)) samples.push(state)
+        cancel:!!pill?.querySelector('[aria-label="Cancel task"]'),toast:document.querySelector('.toast[role="status"]')?.textContent.trim()??'',cancelRequestedAt}
+      const signature=JSON.stringify(state)
+      if(samples.length<256&&lastSignature!==signature) {samples.push({...state,time:performance.now()});lastSignature=signature}
     }
+    const click=event=>{if(event.isTrusted&&event.target.closest?.('[aria-label="Cancel task"]')){cancelRequestedAt=performance.now();capture()}}
+    document.addEventListener('click',click,true)
     const observer=new MutationObserver(capture)
     observer.observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true})
-    window.__browseyTransferObservation={samples,observer,capture};capture()
+    window.__browseyTransferObservation={samples,observer,capture,click};capture()
   })
 }
 export async function endTransferObservation(ui) {
   return ui.browser.execute(()=>{
     const state=window.__browseyTransferObservation
     if(!state) throw Error('No owned transfer observer')
-    state.capture();state.observer.disconnect();delete window.__browseyTransferObservation;return state.samples
+    state.capture();state.observer.disconnect();document.removeEventListener('click',state.click,true);delete window.__browseyTransferObservation;return state.samples
   })
 }
 export async function beginPaste(ui,to,{conflict}={}) {

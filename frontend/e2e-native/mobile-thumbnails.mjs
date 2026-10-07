@@ -1,16 +1,17 @@
-/* global window, document, MutationObserver */
+/* global window, document, MutationObserver, performance */
 import assert from 'node:assert/strict'
 export async function startThumbnailObservation(ui) {
   await ui.browser.execute(()=>{
     if(window.__browseyThumbnailObservation) throw Error('Thumbnail observer already exists')
-    const samples=[]
+    const samples=[];let lastSignature
     const capture=()=>{
       const cards=[...document.querySelectorAll('.grid [data-path]')].filter(n=>n.getClientRects().length)
       const state={order:cards.map(n=>n.dataset.path),images:cards.map(n=>{
         const img=n.querySelector('img.icon'),source=decodeURIComponent(img?.src??'')
         return {path:n.dataset.path,thumbnail:source.includes('/browsey/thumbs/'),decoded:!!img?.complete&&img.naturalWidth>0,width:img?.naturalWidth??0,height:img?.naturalHeight??0}
       })}
-      if(samples.length<256&&JSON.stringify(samples.at(-1))!==JSON.stringify(state)) samples.push(state)
+      const signature=JSON.stringify(state)
+      if(samples.length<256&&lastSignature!==signature) {samples.push({...state,time:performance.now()});lastSignature=signature}
     }
     const observer=new MutationObserver(capture);observer.observe(document.body,{subtree:true,childList:true,attributes:true})
     document.addEventListener('load',capture,true);window.__browseyThumbnailObservation={samples,observer,capture};capture()
