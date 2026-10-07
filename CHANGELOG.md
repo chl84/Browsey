@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## v1.0.5 — 2026-10-08
+
+- Preserve Google Drive object IDs through listing, selection and file operations.
+  Identical-name files and folders remain separate, and downloads, rename and
+  deletion address the selected object. Refuse ambiguous bulk transfers and
+  overwrites before writes; retain existing local and other-provider code paths.
+
 - Synchronize the file list and selection after changing Hidden in Properties,
   including on MTP devices. Subsequent deletion uses the renamed path; completed
   changes still refresh the explorer if the dialog closes during the operation.

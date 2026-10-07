@@ -3,7 +3,7 @@
 A clean, keyboard-friendly file explorer, inspired by GNOME Nautilus.
 Browsey combines a Svelte interface with a Rust backend, built on Tauri 2.
 
-Downloads: [Browsey 1.0.4](https://github.com/chl84/Browsey/releases/tag/v1.0.4).
+Downloads: [Browsey 1.0.5 (planned release)](https://github.com/chl84/Browsey/releases/tag/v1.0.5) · [Latest published release](https://github.com/chl84/Browsey/releases/latest).
 
 [Documentation](https://chl84.github.io/Browsey/) · [Installation](docs/installation.md) · [User guide](docs/usage.md) · [Changelog](CHANGELOG.md)
 
@@ -29,15 +29,15 @@ Downloads: [Browsey 1.0.4](https://github.com/chl84/Browsey/releases/tag/v1.0.4)
 
 ## Status
 
-Browsey `1.0.4` is Linux-first. Published packages target Linux x86_64. See the [release notes](docs/releases/1.0.4.md) for changes, checksums, tested workflows, and outstanding validation.
+Browsey `1.0.5` is Linux-first. Release preparation is in progress; planned RPM and DEB packages target Linux x86_64. See the [release notes](docs/releases/1.0.5.md) for changes, validation evidence, and outstanding release checks.
 
 - Linux: RPM and DEB packages; GTK 3 and WebKitGTK 4.1 are required.
-- Windows: maintenance mode; no new Windows installer is included in 1.0.4.
+- Windows: maintenance mode; no new Windows installer is included in 1.0.5.
 - macOS: not supported.
 
 ## Getting started
 
-Download the package for your distribution from the release link above:
+Download the package for your distribution from the latest published release above:
 RPM for Fedora-family systems, or DEB for Ubuntu/Debian-family systems.
 The [installation guide](docs/installation.md) covers dependencies, checksum
 verification, installation, upgrades, and the user-local source installer.
