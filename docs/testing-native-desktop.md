@@ -69,3 +69,6 @@ altering any retained permissions or removing render cache data.
 AT-SPI uses its supported `ATSPI_DBUS_IMPLEMENTATION=dbus-daemon` selection
 ([upstream launcher](https://github.com/GNOME/at-spi2-core/blob/main/bus/at-spi-bus-launcher.c)),
 set before launching the private session bus, avoiding the host journal dependency.
+
+The local NT7 `smoke` suite reuses the same isolated desktop and ordinary native
+session restrictions. It enables no desktop service exception or network.

@@ -49,7 +49,23 @@ async function transferCase(source, target, label, move, fixture, ui, record) {
   }, { id: label, providers: [...new Set([source.kind, target.kind])] })
 }
 
-export async function foundation(plan, fixture, ui, record) {
+export function selectedFoundationManifest(plan, ids) {
+  const manifest = foundationManifest(plan)
+  assert.ok(Array.isArray(ids) && ids.length > 0 && new Set(ids).size === ids.length)
+  assert.ok(ids.every(id => manifest.some(item => item.id === id)), 'Unknown foundation case')
+  for (const target of plan.targets) {
+    if (ids.includes(`rename-${target.kind}`)) assert.ok(ids.includes(`create-${target.kind}`), 'Rename requires create')
+    if (ids.includes(`delete-${target.kind}`)) assert.ok(ids.includes(`rename-${target.kind}`), 'Delete requires rename')
+  }
+  return manifest.filter(item => ids.includes(item.id))
+}
+
+export async function foundation(plan, fixture, ui, record, ids = null) {
+  if (ids) {
+    const selected = new Set(selectedFoundationManifest(plan, ids).map(item => item.id))
+    const original = record
+    record = (name, action, metadata) => selected.has(metadata.id) ? original(name, action, metadata) : undefined
+  }
   const local = plan.targets.find(target => target.kind === 'local')
   await record('local: exact path/name input after modifier release', async (result = {}) => {
     result.phase = 'setup'

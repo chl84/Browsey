@@ -5,7 +5,7 @@ import { child, noLinks } from './scope.mjs'
 import { validateLinkPolicy, verifyOwnedSymlink, verifyOwnedHardlink } from './link-policy.mjs'
 
 export const retentionPolicy = Object.freeze({ schema: 1, successDays: 7, maxRunBytes: 128 * 1024 * 1024,
-  maxTotalBytes: 896 * 1024 * 1024, maxRuns: 128, maxEntries: 10_000, maxDepth: 32, auditMs: 10_000 })
+  maxTotalBytes: 896 * 1024 * 1024, maxRuns: 160, maxEntries: 10_000, maxDepth: 32, auditMs: 10_000 })
 export const rootHash = root => createHash('sha256').update(root).digest('hex')
 
 export function privateStat(stat, directory = false) {

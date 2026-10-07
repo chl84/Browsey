@@ -36,6 +36,11 @@ export async function startDesktop(repo,plan,env) {
       try {await exec('/usr/bin/xprop',['-root','_NET_SUPPORTING_WM_CHECK'],{env:displayEnv,timeout:1000});ready=true;break} catch {await new Promise(r=>setTimeout(r,100))}
     }
     assert.ok(ready,'Owned virtual display did not start')
+    const layout=process.env.BROWSEY_NATIVE_INPUT_LAYOUT
+    assert.ok(['us','no'].includes(layout),'Explicit private keyboard layout required')
+    await exec('/usr/bin/setxkbmap',['-display',':91','-layout',layout],{env:displayEnv,timeout:2000})
+    evidence.keyboard=(await exec('/usr/bin/setxkbmap',['-display',':91','-query'],{env:displayEnv,timeout:2000})).stdout.trim()
+    assert.match(evidence.keyboard,new RegExp('layout:\\s+'+layout+'(?:\\s|$)'))
     const wrong=path.join(local.run,'r/wrong-authority');await writePrivate(wrong,'')
     await assert.rejects(exec('/usr/bin/xprop',['-root'],{env:{...displayEnv,XAUTHORITY:wrong},timeout:2000}),'A client without the private cookie must be denied')
     const runtime='/tmp/browsey-native-'+plan.runId;await fs.mkdir(runtime,{mode:0o700})

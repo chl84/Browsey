@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Separate explicit native smoke, provider, edge, stress and lifecycle tiers.
+  Reuse foundation bodies for a short isolated local smoke; record real native
+  evidence separately from policy/mock checks and verify the private keyboard.
+
 - Verify private native Open With/default-program behavior with two exact generated
   handlers: spaced filename arguments, failed launch, checkbox cancellation and
   private MIME changes. Complete NT6-1–NT6-8 with 73 accepted native parts and

@@ -479,7 +479,7 @@ Private profiles can contain OAuth tokens; securely handle retained runs.
 
 New runs register an ownership nonce and approved-local-root hash in private,
 ignored `target/native-test/.retention` metadata. Preflight reserves 128 MiB before
-creating an owned run. Limits are 128 registered runs and 896 MiB of accounted
+creating an owned run. Limits are 160 registered runs and 896 MiB of accounted
 local data/reservations, with 128 MiB, 10,000 entries, depth 32 and a checked
 10-second elapsed budget per local tree audit. These are fail-closed accounting
 guards, not filesystem quotas or hard deadlines for stalled filesystem calls.
@@ -802,3 +802,20 @@ filename argument, two recorded subprocesses, failure feedback, default-checkbox
 changes and cancellation without association changes. Independent content/MIME
 checks and exact subprocess exit evidence complement owned application teardown.
 All NT6 results and limitations are recorded in the linked desktop interaction run.
+
+## NT7 execution tiers
+
+`--tier smoke --targets local` selects three shared foundation bodies: exact
+Unicode input after modifiers, file/directory copy and copy undo/redo. Run it
+on the approved private desktop with
+`node frontend/e2e-native/isolated.mjs --suite smoke --targets local`.
+`--tier provider` defaults to foundation and requires explicitly selected approved
+roots. `--tier edge|stress|lifecycle` requires an explicit member `--suite`; see
+`frontend/e2e-native/tiers.mjs`. No provider/device, stress or lifecycle expansion
+is implicit. Existing suite commands remain supported and report their tier.
+
+Policy/mock tests validate selection and refusal only. Native reports separately
+declare `evidence.kind=REAL_NATIVE`; acceptance requires actual candidate identity,
+all declared cases/parts, independent effects and confirmed teardown/retention.
+NT7 raises only the finite registration cap from 128 to 160 to retain old evidence
+and bounded new runs; all byte, ownership, traversal and audit limits remain.

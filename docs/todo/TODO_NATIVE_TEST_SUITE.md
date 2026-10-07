@@ -491,7 +491,7 @@ external launches and discovery remain disabled by default.
 
 ## Priority 7 Repeatability automation and acceptance
 
-- [ ] **NT7-1** Separate a short local smoke tier, provider foundation, edge cases
+- [x] **NT7-1** Separate a short local smoke tier, provider foundation, edge cases
   and opt-in stress/lifecycle tiers. Share helpers and distinguish policy, mock
   and real native evidence without duplicate test bodies.
 - [ ] **NT7-2** Repeat accepted cases with fresh/reused private profiles. Investigate
