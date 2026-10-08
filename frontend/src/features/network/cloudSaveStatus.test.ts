@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { cloudSaveSummary, mergeCloudSaveStatus } from './cloudSaveStatus'
 import type { CloudWritebackStatus } from './cloud.service'
-const row = (id: string, status: CloudWritebackStatus['status'], sequence: number): CloudWritebackStatus => ({ id, name: 'same.txt', sourcePath: `rclone://test/${id}`, status, message: null, sequence, bytes: 8, total: 8 })
+const row = (id: string, status: CloudWritebackStatus['status'], sequence: number): CloudWritebackStatus => ({ id, name: 'same.txt', sourcePath: `rclone://test/${id}`, status, message: null, sequence, bytes: 8, total: 8, saveCompleted: false })
 it('retains both working copies with identical filenames', () => {
   const rows = mergeCloudSaveStatus([row('first', 'saved', 1)], row('second', 'uploading', 2))
   expect(rows).toHaveLength(2)

@@ -14,7 +14,8 @@ use std::{
 };
 
 static WORKSPACE_LOCK: Mutex<()> = Mutex::new(());
-type StatusCallback = std::sync::Arc<dyn Fn(&CloudWorkingCopy, u64, u64) + Send + Sync>;
+// The final flag marks a confirmed write, not a check of an unchanged copy.
+type StatusCallback = std::sync::Arc<dyn Fn(&CloudWorkingCopy, u64, u64, bool) + Send + Sync>;
 mod cleanup;
 mod monitor;
 mod sync;
@@ -32,7 +33,7 @@ pub(super) fn register_open_copy(
         copy.save_status = CloudSaveStatus::Error;
         copy.save_message = Some(error.message().into());
         sync::persist(&root()?, copy)?;
-        monitor::callback(app)(copy, 0, 0);
+        monitor::callback(app)(copy, 0, 0, false);
     }
     Ok(())
 }

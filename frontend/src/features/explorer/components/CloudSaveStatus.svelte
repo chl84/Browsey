@@ -12,6 +12,7 @@
   let notificationHidden = false
   let notificationKey = ''
   let notificationTimer: ReturnType<typeof setTimeout> | undefined
+  let completedSave: CloudWritebackStatus | null = null
   const removed = new Set<string>()
   const updateNotification = (key: string, duration: number) => {
     // Repeated snapshots must not prolong or revive the same notification.
@@ -26,7 +27,8 @@
   $: attention = !!statusError || attentionRows.length > 0
   $: key = attention
     ? JSON.stringify([statusError, attentionRows.map(row => [row.id, row.status, row.message] as const).sort((a, b) => a[0].localeCompare(b[0]))])
-    : rows.length && !savingRows.length ? 'saved' : ''
+    : completedSave && rows.some(row => row.id === completedSave?.id && row.status === 'saved') && !savingRows.length
+      ? `saved:${completedSave.sequence}` : ''
   $: updateNotification(key, attention ? 0 : key ? 4000 : 0)
   $: summary = notificationHidden && attention ? cloudSaveSummary(savingRows) : statusError || cloudSaveSummary(rows)
   onMount(() => {
@@ -37,11 +39,20 @@
         if (disposed) return
         removed.add(event.payload)
         rows = rows.filter(row => row.id !== event.payload)
+        if (completedSave?.id === event.payload) completedSave = null
       })
       if (disposed) { offRemoved(); return }
       unlisten.push(offRemoved)
       const off = await listen<CloudWritebackStatus>('cloud-writeback', event => {
-        if (!disposed && !removed.has(event.payload.id)) { rows = mergeCloudSaveStatus(rows, event.payload); statusError = '' }
+        if (disposed || removed.has(event.payload.id)) return
+        const next = mergeCloudSaveStatus(rows, event.payload)
+        if (next === rows) return
+        rows = next
+        // Snapshots and unchanged-copy checks are state, not new save notices.
+        // Only a confirmed write (including journal recovery) starts the timer.
+        if (event.payload.saveCompleted) completedSave = event.payload
+        else if (event.payload.status !== 'saved') completedSave = null
+        statusError = ''
       })
       if (disposed) { off(); return }
       unlisten.push(off)
@@ -51,7 +62,7 @@
     return () => { disposed = true; for (const off of unlisten) off(); clearTimeout(notificationTimer) }
   })
 </script>
-{#if (rows.length || statusError) && (!notificationHidden || savingRows.length)}
+{#if savingRows.length || ((attention || key) && !notificationHidden)}
   <div class="cloud-save-status" class:attention={attention && !notificationHidden}>
     <button type="button" on:click={() => dialog?.show()} aria-label={`Cloud saves: ${summary}`}>
       Cloud saves · <span role="status" aria-live="polite">{summary}</span>

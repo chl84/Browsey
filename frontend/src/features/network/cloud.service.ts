@@ -147,6 +147,7 @@ export type CloudWritebackStatus = {
   bytes: number
   total: number
   sequence: number
+  saveCompleted: boolean
 }
 export const cloudWritebackStatuses = () => invoke<CloudWritebackStatus[]>('cloud_writeback_statuses')
 export const saveCloudWorkingCopy = (id: string, progressEvent?: string) =>

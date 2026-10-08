@@ -4,7 +4,9 @@ When you open a supported cloud file normally or with Open With, Browsey creates
 an independent private working copy. Save in your editor as usual. Browsey watches
 that copy's directory and waits 1.5 seconds after changes before uploading a stable
 snapshot to the original. Keep Browsey running. **Cloud saves · Saved** means the
-provider confirmed the save; completed byte progress alone does not.
+provider confirmed the save; completed byte progress alone does not. Checking
+unchanged working copies at startup is silent. A newly confirmed save or recovered
+upload still shows the badge, including when saving resumes after a restart.
 The Saved badge disappears after four seconds. Close a need-attention notice with
 its × button; new or changed problems show a new notice. Pending saves remain
 visible, and working-copy status and recovery details stay in Settings.

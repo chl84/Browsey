@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Keep unchanged cloud-copy startup checks silent; show Saved only after a
+  confirmed write, while preserving conflict and error notifications.
+
 - Add local storage sizes and confirmed manual cleanup for cloud working copies.
   Unchanged selected copies move to the trash; edits, active saves, conflicts and
   recovery files are retained, and cloud originals remain untouched.

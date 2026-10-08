@@ -12,6 +12,57 @@ const expectDisabledAction = async (dialog: Locator, trigger: string, option: st
   await expect(dialog).toBeVisible()
 }
 
+test('startup Saved state stays silent across restarts while real saves still notify and expire', async ({ page }) => {
+  await page.addInitScript(() => {
+    ;(window as unknown as { __BROWSEY_E2E__: unknown }).__BROWSEY_E2E__ = {
+      calls: [],
+      cloudStatuses: [{ id: 'startup-copy', name: 'saved.txt', sourcePath: 'rclone://test/saved.txt',
+        status: 'saved', message: null, bytes: 0, total: 0, sequence: 1, saveCompleted: true }],
+      cloudCopies: [{ id: 'startup-copy', sourcePath: 'rclone://test/saved.txt', localPath: '/mock/private/saved.txt',
+        originalSize: 8, originalModified: null, originalHash: 'hash', createdAt: 1,
+        dirty: false, uploadedPath: null, autoSave: true, saveStatus: 'saved', storageBytes: 1234 }],
+    }
+  })
+  await page.goto('/')
+  const notice = page.getByRole('button', { name: 'Cloud saves: Saved', exact: true })
+  const waitForSnapshot = async () => {
+    await expect.poll(() => page.evaluate(() => (window as unknown as {
+      __BROWSEY_E2E__: { calls: Array<{ cmd: string }> }
+    }).__BROWSEY_E2E__.calls.some(call => call.cmd === 'cloud_writeback_statuses'))).toBe(true)
+  }
+  await waitForSnapshot()
+  await expect(notice).toHaveCount(0)
+  await page.reload()
+  await waitForSnapshot()
+  await expect(notice).toHaveCount(0)
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('browsey-e2e-cloud-writeback', { detail: {
+    id: 'startup-copy', name: 'saved.txt', sourcePath: 'rclone://test/saved.txt',
+    status: 'saved', message: null, bytes: 0, total: 0, sequence: 2, saveCompleted: false,
+  } })))
+  await expect(notice).toHaveCount(0)
+  // Historical status remains available in Working copies despite no notice.
+  await page.keyboard.press('Control+s')
+  await page.getByPlaceholder('Filter settings').fill('cloud')
+  await page.getByRole('button', { name: 'Working copies…' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Cloud working copies', exact: true })
+  await expect(dialog.getByText('Saved to cloud', { exact: true })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await page.keyboard.press('Escape')
+  await page.clock.install()
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('browsey-e2e-cloud-writeback', { detail: {
+    id: 'startup-copy', name: 'saved.txt', sourcePath: 'rclone://test/saved.txt',
+    status: 'saved', message: null, bytes: 0, total: 0, sequence: 3, saveCompleted: true,
+  } })))
+  await expect(notice).toBeVisible()
+  await page.clock.fastForward(3000)
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('browsey-e2e-cloud-writeback', { detail: {
+    id: 'startup-copy', name: 'saved.txt', sourcePath: 'rclone://test/saved.txt',
+    status: 'saved', message: null, bytes: 0, total: 0, sequence: 4, saveCompleted: false,
+  } })))
+  await page.clock.fastForward(1000)
+  await expect(notice).toHaveCount(0)
+})
+
 test('working-copy action menus stay visible at the end of a scrolled list and support repeated keyboard actions', async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 720 })
   await page.addInitScript(() => {
@@ -230,7 +281,7 @@ test('cloud saving stays visible until confirmation and conflicts preserve recov
   await expect(dialog.getByRole('option', { name: 'Open copy', exact: true })).not.toHaveAttribute('aria-disabled', 'true')
   await dialog.getByRole('combobox', { name: 'Actions for rclone://test/same.txt', exact: true }).press('Escape')
   await dialog.getByRole('button', { name: 'Close', exact: true }).click()
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('browsey-e2e-cloud-writeback', { detail: { id: '1-2-3', name: 'same.txt', sourcePath: 'rclone://test/same.txt', status: 'saved', bytes: 0, total: 0, sequence: 4 } })))
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('browsey-e2e-cloud-writeback', { detail: { id: '1-2-3', name: 'same.txt', sourcePath: 'rclone://test/same.txt', status: 'saved', bytes: 0, total: 0, sequence: 4, saveCompleted: true } })))
   await expect(page.getByRole('button', { name: 'Cloud saves: Saved', exact: true })).toBeVisible()
   // A manual edit made after a confirmed save must remain actionable when the
   // dialog is reopened; old live Saved events cannot override a fresh listing.

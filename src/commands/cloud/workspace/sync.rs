@@ -208,7 +208,7 @@ pub(super) fn save_original_at(
             };
             copy.save_message = Some(error.message().into());
             persist(base, &copy)?;
-            on_status(&copy, 0, 0);
+            on_status(&copy, 0, 0, false);
         }
         result.map(|()| copy)
     })
@@ -237,6 +237,7 @@ fn save_inner(
         copy.write_version = Some(version);
         persist(base, copy)?;
     }
+    let mut save_completed = false;
     if let Some(pending) = copy.pending_save.clone() {
         pending_path(base, copy, &pending)?;
         let current = provider.cloud_write_version(&source, Some(&pending.version), Some(&stop))?;
@@ -247,13 +248,14 @@ fn save_inner(
                 return Err(CloudCommandError::new(CloudCommandErrorCode::Conflict,"The cloud file changed while saving; your local edits and upload snapshot are kept"));
             }
             commit(base, copy, &pending, current)?;
+            save_completed = true;
         }
     }
     if !copy.dirty && copy.pending_save.is_none() {
         copy.save_status = CloudSaveStatus::Saved;
         copy.save_message = None;
         persist(base, copy)?;
-        on_status(copy, 0, 0);
+        on_status(copy, 0, 0, save_completed);
         return Ok(());
     }
     if copy
@@ -277,7 +279,7 @@ fn save_inner(
     copy.save_status = CloudSaveStatus::Uploading;
     copy.save_message = None;
     persist(base, copy)?;
-    on_status(copy, 0, fs::metadata(&path).map_err(io_error)?.len());
+    on_status(copy, 0, fs::metadata(&path).map_err(io_error)?.len(), false);
     let event_copy = copy.clone();
     let callback = on_status.clone();
     let mut last = std::time::Instant::now();
@@ -285,7 +287,7 @@ fn save_inner(
     let tick = Arc::new(Mutex::new(move |bytes, total| {
         if last.elapsed() >= std::time::Duration::from_millis(200) || bytes == total {
             last = std::time::Instant::now();
-            callback(&event_copy, bytes, total);
+            callback(&event_copy, bytes, total, false);
         }
     }));
     let mut version = provider.replace_cloud_file(
@@ -308,7 +310,7 @@ fn save_inner(
         }
     }
     commit(base, copy, &pending, version)?;
-    on_status(copy, 0, 0);
+    on_status(copy, 0, 0, true);
     Ok(())
 }
 
@@ -386,13 +388,61 @@ mod tests {
         f: &CloudWriteFixture,
         copy: &CloudWorkingCopy,
     ) -> CloudCommandResult<CloudWorkingCopy> {
+        save_with_status(f, copy, Arc::new(|_, _, _, _| {}))
+    }
+    fn save_with_status(
+        f: &CloudWriteFixture,
+        copy: &CloudWorkingCopy,
+        on_status: StatusCallback,
+    ) -> CloudCommandResult<CloudWorkingCopy> {
         save_original_at(
             &f.base.join("workspaces"),
             &copy.id,
             &f.provider,
             Arc::new(AtomicBool::new(false)),
-            Arc::new(|_, _, _| {}),
+            on_status,
         )
+    }
+    type CapturedStatuses = Arc<Mutex<Vec<(CloudSaveStatus, bool)>>>;
+    fn capture_status() -> (CapturedStatuses, StatusCallback) {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let captured = events.clone();
+        let callback: StatusCallback = Arc::new(move |copy, _, _, completed| {
+            captured.lock().unwrap().push((copy.save_status, completed));
+        });
+        (events, callback)
+    }
+    #[test]
+    fn unchanged_checks_are_silent_but_confirmed_writes_notify_including_empty_files() {
+        for bytes in [b"local edited".as_slice(), b"".as_slice()] {
+            let f = CloudWriteFixture::new(CloudProviderKind::Gdrive);
+            let original = copy(&f);
+            fs::write(&original.local_path, b"original").unwrap();
+            let (events, callback) = capture_status();
+            let clean = save_with_status(&f, &original, callback.clone()).unwrap();
+            assert_eq!(
+                events.lock().unwrap().as_slice(),
+                &[(CloudSaveStatus::Saved, false)]
+            );
+            assert!(f.state.lock().unwrap().puts.is_empty());
+
+            events.lock().unwrap().clear();
+            fs::write(&original.local_path, bytes).unwrap();
+            let saved = save_with_status(&f, &clean, callback.clone()).unwrap();
+            let writes = events.lock().unwrap().clone();
+            assert!(writes.contains(&(CloudSaveStatus::Uploading, false)));
+            assert_eq!(writes.last(), Some(&(CloudSaveStatus::Saved, true)));
+            assert_eq!(writes.iter().filter(|(_, completed)| *completed).count(), 1);
+            assert_eq!(f.state.lock().unwrap().puts.len(), 1);
+
+            events.lock().unwrap().clear();
+            save_with_status(&f, &saved, callback).unwrap();
+            assert_eq!(
+                events.lock().unwrap().as_slice(),
+                &[(CloudSaveStatus::Saved, false)]
+            );
+            assert_eq!(f.state.lock().unwrap().puts.len(), 1);
+        }
     }
     #[test]
     fn a_lost_response_is_recovered_after_reloading_without_a_second_write() {
@@ -408,7 +458,12 @@ mod tests {
             let retained = load_at(&f.base.join("workspaces"), &original.id).unwrap();
             assert!(retained.pending_save.is_some());
             assert!(retained.dirty);
-            let saved = save(&f, &retained).unwrap();
+            let (events, callback) = capture_status();
+            let saved = save_with_status(&f, &retained, callback).unwrap();
+            assert_eq!(
+                events.lock().unwrap().as_slice(),
+                &[(CloudSaveStatus::Saved, true)]
+            );
             assert_eq!(saved.save_status, CloudSaveStatus::Saved);
             assert!(!saved.dirty);
             assert!(saved.pending_save.is_none());
@@ -421,10 +476,18 @@ mod tests {
         let f = CloudWriteFixture::new(CloudProviderKind::Gdrive);
         let original = copy(&f);
         f.state.lock().unwrap().race = true;
+        let (events, callback) = capture_status();
         assert_eq!(
-            save(&f, &original).unwrap_err().code(),
+            save_with_status(&f, &original, callback)
+                .unwrap_err()
+                .code(),
             CloudCommandErrorCode::Conflict
         );
+        assert!(events
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|(_, completed)| !completed));
         let retained = load_at(&f.base.join("workspaces"), &original.id).unwrap();
         assert_eq!(retained.save_status, CloudSaveStatus::Conflict);
         assert_eq!(fs::read(&retained.local_path).unwrap(), b"local edited");
@@ -450,7 +513,7 @@ mod tests {
             &original.id,
             &f.provider,
             Arc::new(AtomicBool::new(false)),
-            Arc::new(move |copy, bytes, _| {
+            Arc::new(move |copy, bytes, _, _| {
                 if copy.save_status == CloudSaveStatus::Uploading && bytes > 0 {
                     fs::write(&local, b"newer editor save").unwrap();
                 }

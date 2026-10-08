@@ -25,6 +25,7 @@ pub struct CloudWritebackStatus {
     pub bytes: u64,
     pub total: u64,
     pub sequence: u64,
+    pub save_completed: bool,
 }
 pub(super) fn status(copy: &CloudWorkingCopy, bytes: u64, total: u64) -> CloudWritebackStatus {
     static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
@@ -41,6 +42,7 @@ pub(super) fn status(copy: &CloudWorkingCopy, bytes: u64, total: u64) -> CloudWr
         bytes,
         total,
         sequence: SEQUENCE.fetch_add(1, Ordering::Relaxed),
+        save_completed: false,
     }
 }
 enum Message {
@@ -87,8 +89,9 @@ pub(super) fn forget(app: &tauri::AppHandle, id: &str) {
 }
 pub(super) fn callback(app: &tauri::AppHandle) -> StatusCallback {
     let app = app.clone();
-    Arc::new(move |copy, bytes, total| {
-        let value = status(copy, bytes, total);
+    Arc::new(move |copy, bytes, total, save_completed| {
+        let mut value = status(copy, bytes, total);
+        value.save_completed = save_completed;
         if let Some(state) = app.try_state::<CloudWritebackState>() {
             let Ok(removed) = state.removed.lock() else {
                 return;
@@ -145,17 +148,16 @@ pub(crate) fn start_cloud_writeback(app: &tauri::AppHandle) {
             let Some(id) = entry.file_name().to_str().map(str::to_owned) else {
                 continue;
             };
-            if let Ok(mut copy) = load_manifest_at(&base, &id, false) {
+            if let Ok(copy) = load_manifest_at(&base, &id, false) {
                 if copy.auto_save {
-                    if schedule(&copy) {
-                        copy.save_status = CloudSaveStatus::Pending;
-                    }
+                    // Keep the persisted status while checking. Clean copies
+                    // must not look like new saves just because we restarted.
                     if let Err(error) = register(&app, &copy) {
                         let mut copy = copy;
                         copy.save_status = CloudSaveStatus::Error;
                         copy.save_message = Some(error.message().into());
                         let _ = sync::persist(&base, &copy);
-                        callback(&app)(&copy, 0, 0);
+                        callback(&app)(&copy, 0, 0, false);
                     }
                 }
             }
@@ -180,7 +182,7 @@ pub(super) fn register(app: &tauri::AppHandle, copy: &CloudWorkingCopy) -> Cloud
         // Scoped native-test builds deliberately do not start background uploads.
         return Ok(());
     };
-    callback(app)(copy, 0, 0);
+    callback(app)(copy, 0, 0, false);
     let mut running = state.running.lock().map_err(|_| {
         CloudCommandError::new(
             CloudCommandErrorCode::TaskFailed,
@@ -340,7 +342,7 @@ fn run(
                                 if let Ok(base) = root() {
                                     let _ = sync::persist(&base, &copy);
                                 }
-                                on_status(&copy, 0, 0);
+                                on_status(&copy, 0, 0, false);
                             } else {
                                 watched.insert(directory);
                             }
@@ -373,7 +375,7 @@ fn run(
                         attempts.remove(&copy.id);
                         if copy.save_status != CloudSaveStatus::Pending {
                             copy.save_status = CloudSaveStatus::Pending;
-                            on_status(copy, 0, 0);
+                            on_status(copy, 0, 0, false);
                         }
                     }
                 }
@@ -469,7 +471,7 @@ fn run(
                         if let Ok(base) = root() {
                             let _ = sync::persist(&base, &copy);
                         }
-                        on_status(&copy, 0, 0);
+                        on_status(&copy, 0, 0, false);
                     }
                     let retry = matches!(
                         error.code(),
