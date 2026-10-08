@@ -631,6 +631,7 @@ button:focus-visible,
   width: min(var(--modal-width, 420px), 92vw);
   max-height: 92vh;
   overflow: auto;
+  overscroll-behavior: contain;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 0;

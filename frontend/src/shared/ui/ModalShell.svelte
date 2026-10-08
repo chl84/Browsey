@@ -171,6 +171,11 @@
     if (!modalEl) return
     applyContainedWheelScrollAssist(modalEl, event)
   }
+
+  const handleOverlayWheel = (event: WheelEvent) => {
+    // The backdrop belongs to this dialog too; do not scroll one underneath.
+    if (!event.ctrlKey && event.cancelable) event.preventDefault()
+  }
 </script>
 
 {#if open}
@@ -181,6 +186,7 @@
     on:pointerdown={handleOverlayPointerDown}
     on:click={handleOverlayClick}
     on:keydown={handleKeydown}
+    on:wheel|stopPropagation={handleOverlayWheel}
   >
     <div
       class={`modal ${modalClass}`.trim()}
@@ -192,7 +198,7 @@
       style={modalWidth ? `--modal-width: ${modalWidth};` : undefined}
       on:click|stopPropagation
       on:keydown={handleKeydown}
-      on:wheel={handleWheel}
+      on:wheel|stopPropagation={handleWheel}
       bind:this={modalEl}
     >
       {#if title || $$slots.header}

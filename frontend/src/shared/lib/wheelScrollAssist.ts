@@ -240,7 +240,14 @@ export const applyContainedWheelScrollAssist = (
   boundary: HTMLElement,
   event: WheelEvent,
 ) => {
+  if (event.defaultPrevented || event.ctrlKey || event.deltaY === 0) return false
   const scrollEl = findNearestScrollContainer(boundary, event.target)
-  if (!scrollEl) return false
+  if (!scrollEl) {
+    // Short dialogs and non-scrollable headers still consume wheel defaults.
+    // Stopping propagation alone does not prevent native scroll chaining.
+    if (!event.cancelable) return false
+    event.preventDefault()
+    return true
+  }
   return applyWheelScrollAssist(scrollEl, event)
 }

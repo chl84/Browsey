@@ -44,7 +44,7 @@ describe('applyContainedWheelScrollAssist', () => {
     expect(modal.scrollTop).toBe(0)
   })
 
-  it('returns false when no scrollable ancestor exists', () => {
+  it('contains wheel defaults when no scrollable ancestor exists', () => {
     const modal = document.createElement('div')
     const content = document.createElement('div')
 
@@ -59,7 +59,35 @@ describe('applyContainedWheelScrollAssist', () => {
 
     const handled = applyContainedWheelScrollAssist(modal, event)
 
-    expect(handled).toBe(false)
+    expect(handled).toBe(true)
+    expect(event.defaultPrevented).toBe(true)
+  })
+
+  it('preserves Ctrl-wheel zoom and non-cancelable native wheel bursts', () => {
+    const modal = document.createElement('div')
+    modal.style.overflowY = 'auto'
+    defineScrollableMetrics(modal, { clientHeight: 200, scrollHeight: 600 })
+    document.body.append(modal)
+    for (const options of [{ ctrlKey: true, cancelable: true }, { cancelable: false }]) {
+      const event = new WheelEvent('wheel', { deltaY: 40, ...options })
+      Object.defineProperty(event, 'target', { value: modal })
+      expect(applyContainedWheelScrollAssist(modal, event)).toBe(false)
+      expect(event.defaultPrevented).toBe(false)
+      expect(modal.scrollTop).toBe(0)
+    }
+    // Later cancelable events in a native burst also retain their default.
+    const event = new WheelEvent('wheel', { deltaY: 40, cancelable: true })
+    Object.defineProperty(event, 'target', { value: modal })
+    expect(applyContainedWheelScrollAssist(modal, event)).toBe(false)
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it('preserves horizontal scrolling inside a dialog', () => {
+    const modal = document.createElement('div')
+    document.body.append(modal)
+    const event = new WheelEvent('wheel', { deltaX: 40, deltaY: 0, cancelable: true })
+    Object.defineProperty(event, 'target', { value: modal })
+    expect(applyContainedWheelScrollAssist(modal, event)).toBe(false)
     expect(event.defaultPrevented).toBe(false)
   })
 })

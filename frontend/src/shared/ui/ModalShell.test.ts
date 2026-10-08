@@ -50,3 +50,45 @@ it('does not steal focus from another connected control during close', async () 
   expect(document.activeElement).toBe(other)
   trigger.remove(); other.remove(); target.remove()
 })
+
+it.each(['header', 'backdrop', 'list', 'top edge', 'bottom edge'])(
+  'contains a nested dialog wheel event over its %s', async area => {
+    const target = document.createElement('div')
+    document.body.append(target)
+    const outer = mount(ModalShell, { target, props: { open: true, title: 'Settings' } })
+    await tick()
+    const outerDialog = target.querySelector<HTMLElement>('[role="dialog"]')!
+    const settingsPanel = document.createElement('div')
+    settingsPanel.style.overflowY = 'auto'
+    Object.defineProperties(settingsPanel, {
+      clientHeight: { value: 200 }, scrollHeight: { value: 800 },
+    })
+    settingsPanel.scrollTop = 100
+    outerDialog.append(settingsPanel)
+    const inner = mount(ModalShell, { target: settingsPanel, props: { open: true, title: 'Cloud working copies' } })
+    await tick()
+    try {
+      const dialog = settingsPanel.querySelector<HTMLElement>('[role="dialog"]')!
+      const list = document.createElement('div')
+      list.style.overflowY = 'auto'
+      Object.defineProperties(list, {
+        clientHeight: { value: 100 }, scrollHeight: { value: 400 },
+      })
+      dialog.append(list)
+      list.scrollTop = area === 'top edge' ? 0 : area === 'bottom edge' ? 300 : 100
+      const wheelTarget = area === 'header' ? dialog.querySelector('header')!
+        : area === 'backdrop' ? dialog.parentElement! : list
+      const event = new WheelEvent('wheel', { deltaY: area === 'top edge' ? -40 : 40, bubbles: true, cancelable: true })
+      const initialListTop = list.scrollTop
+      wheelTarget.dispatchEvent(event)
+      expect(settingsPanel.scrollTop).toBe(100)
+      expect(event.defaultPrevented).toBe(true)
+      if (area === 'list') expect(list.scrollTop).toBeGreaterThan(initialListTop)
+      else expect(list.scrollTop).toBe(initialListTop)
+    } finally {
+      await unmount(inner)
+      await unmount(outer)
+      target.remove()
+    }
+  },
+)

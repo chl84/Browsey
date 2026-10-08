@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Contain wheel scrolling in nested dialogs so cloud working copies and their
+  backdrop cannot scroll Settings underneath.
+
 - Keep unchanged cloud-copy startup checks silent; show Saved only after a
   confirmed write, while preserving conflict and error notifications.
 

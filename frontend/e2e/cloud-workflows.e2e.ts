@@ -12,6 +12,83 @@ const expectDisabledAction = async (dialog: Locator, trigger: string, option: st
   await expect(dialog).toBeVisible()
 }
 
+for (const count of [2, 12]) {
+  test(`cloud dialog contains wheel scrolling with ${count} working copies`, async ({ page }) => {
+    await page.setViewportSize({ width: 1000, height: 800 })
+    await page.addInitScript(copyCount => {
+      ;(window as unknown as { __BROWSEY_E2E__: unknown }).__BROWSEY_E2E__ = {
+        calls: [], cloudCopies: Array.from({ length: copyCount }, (_, index) => ({
+          id: `wheel-${index}`, sourcePath: `rclone://test/copy-${index}.txt`, localPath: `/mock/private/copy-${index}.txt`,
+          originalSize: 8, originalModified: null, originalHash: 'hash', createdAt: 1,
+          dirty: false, uploadedPath: null, saveStatus: 'saved', storageBytes: 100,
+        })),
+      }
+    }, count)
+    await page.goto('/')
+    await page.keyboard.press('Control+s')
+    const settings = page.locator('.settings-modal')
+    await settings.getByRole('button', { name: 'Working copies…', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'Cloud working copies', exact: true })
+    await expect(dialog.locator('.copies section')).toHaveCount(count)
+    const settingsPanel = settings.locator('.settings-panel')
+    const start = await settingsPanel.evaluate(element => {
+      element.scrollTop = 100
+      return { top: element.scrollTop, max: element.scrollHeight - element.clientHeight }
+    })
+    expect(start.max).toBeGreaterThan(start.top)
+    const wheelOver = async (locator: Locator, deltaY: number) => {
+      const box = await locator.boundingBox()
+      if (!box) throw new Error('Wheel target is not visible')
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await page.mouse.wheel(0, deltaY)
+      // Native wheel defaults settle asynchronously on the compositor thread.
+      await page.waitForTimeout(150)
+    }
+    await wheelOver(dialog.locator('header'), 120)
+    expect(await settingsPanel.evaluate(element => element.scrollTop)).toBe(start.top)
+    await wheelOver(dialog.getByRole('button', { name: 'Close', exact: true }), -120)
+    expect(await settingsPanel.evaluate(element => element.scrollTop)).toBe(start.top)
+    const copies = dialog.locator('.copies')
+    if (count === 12) {
+      await copies.evaluate(element => { element.scrollTop = 0 })
+      await wheelOver(copies, 120)
+      expect(await copies.evaluate(element => element.scrollTop)).toBeGreaterThan(0)
+      expect(await settingsPanel.evaluate(element => element.scrollTop)).toBe(start.top)
+      for (const direction of [-1, 1]) {
+        const edge = await copies.evaluate((element, sign) => {
+          element.scrollTop = sign < 0 ? 0 : element.scrollHeight
+          return element.scrollTop
+        }, direction)
+        await wheelOver(copies, direction * 120)
+        expect(await copies.evaluate(element => element.scrollTop)).toBe(edge)
+        expect(await settingsPanel.evaluate(element => element.scrollTop)).toBe(start.top)
+      }
+      const actions = dialog.getByRole('combobox', { name: 'Actions for rclone://test/copy-11.txt', exact: true })
+      await actions.click()
+      const menu = dialog.locator('.combo-list')
+      await menu.evaluate(element => { element.style.maxHeight = '70px'; element.scrollTop = 0 })
+      const listTop = await copies.evaluate(element => element.scrollTop)
+      await wheelOver(menu, 80)
+      expect(await menu.evaluate(element => element.scrollTop)).toBeGreaterThan(0)
+      expect(await copies.evaluate(element => element.scrollTop)).toBe(listTop)
+      expect(await settingsPanel.evaluate(element => element.scrollTop)).toBe(start.top)
+      await actions.press('Escape')
+    } else {
+      expect(await copies.evaluate(element => element.scrollHeight - element.clientHeight)).toBe(0)
+      await wheelOver(copies, 120)
+      expect(await settingsPanel.evaluate(element => element.scrollTop)).toBe(start.top)
+    }
+    // A pointer on the cloud backdrop also belongs to the top dialog.
+    await page.mouse.move(5, 5)
+    await page.mouse.wheel(0, 120)
+    await page.waitForTimeout(150)
+    expect(await settingsPanel.evaluate(element => element.scrollTop)).toBe(start.top)
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+    await wheelOver(settingsPanel, 120)
+    expect(await settingsPanel.evaluate(element => element.scrollTop)).toBeGreaterThan(start.top)
+  })
+}
+
 test('startup Saved state stays silent across restarts while real saves still notify and expire', async ({ page }) => {
   await page.addInitScript(() => {
     ;(window as unknown as { __BROWSEY_E2E__: unknown }).__BROWSEY_E2E__ = {
