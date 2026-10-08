@@ -4,6 +4,9 @@
 
 ## v1.0.5 — 2026-10-08
 
+- Declare OpenSSL 3 runtime dependencies in RPM/DEB bundles and check their
+  presence before release packaging succeeds.
+
 - Update the frontend and documentation build's transitive `source-map-js`
   dependency to 1.2.2 to resolve GHSA-68fv-2mgg-jv7q.
 

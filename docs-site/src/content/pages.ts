@@ -42,7 +42,7 @@ export const docsPages: DocPage[] = [
       {
         id: 'status',
         title: 'Current Status',
-        body: 'Browsey 1.0.5 is Linux-first and in release preparation. Windows support is in maintenance mode; planned 1.0.5 packages target Linux x86_64. See release notes for changes, validation evidence and outstanding release checks.',
+        body: 'Browsey 1.0.5 is Linux-first, with published RPM and DEB packages for Linux x86_64. Windows support is in maintenance mode. See release notes for changes, package checksums, tested workflows and outstanding validation.',
         links: [
           { label: 'Download latest release', href: 'https://github.com/chl84/Browsey/releases/latest' },
           { label: 'Release notes', href: '#/release-notes' },
@@ -93,7 +93,7 @@ export const docsPages: DocPage[] = [
         id: 'requirements-common',
         title: 'Installed App Requirements',
         bullets: [
-          'Linux x86_64 with GTK 3 and WebKitGTK 4.1 runtime libraries; package managers resolve declared dependencies',
+          'Linux x86_64 with GTK 3, WebKitGTK 4.1 and OpenSSL 3 runtime libraries; package managers resolve declared dependencies',
           'The production frontend and PDFium are bundled. Rust and Node.js are not required to run an installed release',
           'Optional cloud support (OneDrive/Google Drive/Nextcloud via rclone): install rclone and keep it available in PATH (Linux v1 strategy)',
           'Optional ffmpeg in PATH (or FFMPEG_BIN) for video thumbnails',
@@ -106,7 +106,7 @@ export const docsPages: DocPage[] = [
       {
         id: 'requirements-linux',
         title: 'Linux Source-Build Requirements',
-        code: `sudo dnf install webkit2gtk4.1-devel javascriptcoregtk4.1-devel libsoup3-devel gtk3-devel\n# for release packaging and system integration\nsudo dnf install libappindicator-gtk3 librsvg2-devel patchelf rpm-build`,
+        code: `sudo dnf install webkit2gtk4.1-devel javascriptcoregtk4.1-devel libsoup3-devel gtk3-devel openssl-devel\n# for release packaging and system integration\nsudo dnf install libappindicator-gtk3 librsvg2-devel patchelf rpm-build`,
         note: 'Source builds need Rust stable (at least 1.95 for the current dependencies), Node.js LTS (CI uses 22), a C/C++ toolchain, pkg-config and development headers, including D-Bus. Use distribution equivalents; the release CI records its exact package list.',
         links: [
           { label: 'Tauri prerequisites', href: 'https://v2.tauri.app/start/prerequisites/' },
@@ -909,6 +909,7 @@ capabilities/default.json`,
         id: 'v1-0-5',
         title: 'v1.0.5 (2026-10-08)',
         bullets: [
+          'Declare OpenSSL 3 runtime dependencies in RPM/DEB bundles and check their presence before release packaging succeeds.',
           'Update the frontend and documentation build\'s transitive source-map-js dependency to 1.2.2 to resolve GHSA-68fv-2mgg-jv7q.',
           'Preserve Google Drive object IDs through listing, selection and file operations. Identical-name files and folders remain separate, and downloads, rename and deletion address the selected object. Refuse ambiguous bulk transfers and overwrites before writes; retain existing local and other-provider code paths.',
           "Synchronize the file list and selection after changing Hidden in Properties, including on MTP devices. Subsequent deletion uses the renamed path; completed changes still refresh the explorer if the dialog closes during the operation.",
@@ -987,7 +988,7 @@ capabilities/default.json`,
           "Audit and correct the documentation site: separate runtime/source requirements, update archive/cloud/recovery guidance, add usable reference links and concise release highlights, and improve search, keyboard navigation and responsive menus. Add route/content/link regression tests and non-deploying PR checks.",
           "Simplify the GitHub README into a product overview with linked installation, user and developer guides. Separate runtime/build requirements, use the pinned npm Tauri CLI in source instructions, clarify Windows build limitations and retain cloud/recovery safety boundaries. Keep release bumps compatible with normal Markdown header spacing and check relocated usage details in docs.",
         ],
-        note: 'See CHANGELOG.md and docs/releases/1.0.5.md for full changes. Release preparation does not confirm testing or publication; review validation evidence before publishing.',
+        note: 'Published 2026-10-08 with RPM, DEB and verified SHA256SUMS. See CHANGELOG.md and docs/releases/1.0.5.md for full changes, packaged native Google Drive evidence, CI links and remaining acceptance scope.',
       },
       {
         id: 'v1-0-4',
