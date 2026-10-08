@@ -9,8 +9,22 @@
   let rows: CloudWritebackStatus[] = []
   let dialog: { show: () => void } | undefined
   let statusError = ''
+  let savedHidden = false
+  let savedTimer: ReturnType<typeof setTimeout> | undefined
+  const updateSavedConfirmation = (saved: boolean) => {
+    if (saved) {
+      // Repeated snapshots must not prolong or revive an idle confirmation.
+      if (savedTimer !== undefined) return
+      savedTimer = setTimeout(() => { savedHidden = true }, 4000)
+    } else {
+      clearTimeout(savedTimer)
+      savedTimer = undefined
+      savedHidden = false
+    }
+  }
   $: summary = statusError || cloudSaveSummary(rows)
   $: attention = !!statusError || rows.some(row => ['conflict', 'error', 'unsupported', 'paused'].includes(row.status))
+  $: updateSavedConfirmation(rows.length > 0 && !statusError && summary === 'Saved')
   onMount(() => {
     let disposed = false
     let unlisten: UnlistenFn | undefined
@@ -23,10 +37,10 @@
       const initial = await cloudWritebackStatuses()
       if (!disposed) for (const row of initial) rows = mergeCloudSaveStatus(rows, row)
     })().catch(() => { if (!disposed) statusError = 'Status unavailable' })
-    return () => { disposed = true; unlisten?.() }
+    return () => { disposed = true; unlisten?.(); clearTimeout(savedTimer) }
   })
 </script>
-{#if rows.length || statusError}
+{#if (rows.length || statusError) && !savedHidden}
   <div class="cloud-save-status" class:attention>
     <button type="button" on:click={() => dialog?.show()} aria-label={`Cloud saves: ${summary}`}>
       Cloud saves · <span role="status" aria-live="polite">{summary}</span>
