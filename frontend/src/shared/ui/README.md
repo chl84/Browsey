@@ -17,6 +17,8 @@ controls separately:
   may set `disabled`, which blocks pointer selection and is skipped by arrow keys.
   Use `fixedDropdown` inside scrollable lists so choices escape overflow clipping.
 - `ModalShell`: use for shared modal layout, focus handling, and action slots.
+  Nested overlays render beside the parent dialog's scroll surface so native
+  scrollbar layers stay behind them; component ownership and cleanup are retained.
 - `ProgressBar`: use for progress, or set `role="meter"` for measured values
   such as disk usage. Supply a descriptive `label`/`valueText`; `fillColor` may
   reference a theme token without changing the styling of other bars.

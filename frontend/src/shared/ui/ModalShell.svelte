@@ -30,6 +30,16 @@
   let restoreFocusFallback: HTMLElement | null = null
   let destroyed = false
 
+  const placeOverlay = (node: HTMLElement) => {
+    const parentDialog = node.parentElement?.closest('[role="dialog"]')
+    const parentOverlay = parentDialog?.closest<HTMLElement>('.overlay, .modal-overlay')
+    if (!parentOverlay) return
+    // A nested dialog must be a sibling of its parent's scroll surface.
+    // Native scrollbar layers can otherwise paint over fixed descendants.
+    parentOverlay.appendChild(node)
+    return { destroy: () => { node.remove() } }
+  }
+
   const focusableSelectors = [
     'a[href]',
     'button:not([disabled])',
@@ -180,6 +190,7 @@
 
 {#if open}
   <div
+    use:placeOverlay
     class={`overlay ${overlayClass}`.trim()}
     role="presentation"
     tabindex="-1"

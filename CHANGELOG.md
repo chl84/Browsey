@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Render nested dialog overlays outside the parent scroll surface so Settings
+  scrollbar handles stay behind cloud dialogs.
+
 - Contain wheel scrolling in nested dialogs so cloud working copies and their
   backdrop cannot scroll Settings underneath.
 

@@ -36,6 +36,18 @@ for (const count of [2, 12]) {
       return { top: element.scrollTop, max: element.scrollHeight - element.clientHeight }
     })
     expect(start.max).toBeGreaterThan(start.top)
+    expect(await dialog.evaluate(element => {
+      const panel = document.querySelector('.settings-panel')!
+      const parentOverlay = document.querySelector('.settings-modal')!.parentElement!
+      const panelRect = panel.getBoundingClientRect(), dialogRect = element.getBoundingClientRect()
+      const top = Math.max(panelRect.top, dialogRect.top), bottom = Math.min(panelRect.bottom, dialogRect.bottom)
+      const hit = document.elementFromPoint(panelRect.right - 2, (top + bottom) / 2)
+      return {
+        outsideSettingsScroll: !panel.contains(element),
+        sharesParentLayer: element.parentElement?.parentElement === parentOverlay,
+        coversSettingsScrollbar: bottom > top && element.contains(hit),
+      }
+    })).toEqual({ outsideSettingsScroll: true, sharesParentLayer: true, coversSettingsScrollbar: true })
     const wheelOver = async (locator: Locator, deltaY: number) => {
       const box = await locator.boundingBox()
       if (!box) throw new Error('Wheel target is not visible')
@@ -86,6 +98,18 @@ for (const count of [2, 12]) {
     await dialog.getByRole('button', { name: 'Close', exact: true }).click()
     await wheelOver(settingsPanel, 120)
     expect(await settingsPanel.evaluate(element => element.scrollTop)).toBeGreaterThan(start.top)
+    if (count === 2) {
+      await settings.getByRole('button', { name: 'Working copies…', exact: true }).click()
+      await expect(dialog).toBeVisible()
+      // Component ownership must still clean up overlays outside its scroll DOM.
+      expect(await page.evaluate(async () => {
+        const entryPath = '/src/main.ts', sveltePath = '/node_modules/.vite/deps/svelte.js'
+        const { default: app } = await import(entryPath)
+        const { unmount } = await import(sveltePath)
+        await unmount(app)
+        return document.querySelectorAll('.overlay').length
+      })).toBe(0)
+    }
   })
 }
 

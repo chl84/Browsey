@@ -68,7 +68,9 @@ it.each(['header', 'backdrop', 'list', 'top edge', 'bottom edge'])(
     const inner = mount(ModalShell, { target: settingsPanel, props: { open: true, title: 'Cloud working copies' } })
     await tick()
     try {
-      const dialog = settingsPanel.querySelector<HTMLElement>('[role="dialog"]')!
+      const dialog = Array.from(target.querySelectorAll<HTMLElement>('[role="dialog"]')).find(element => element !== outerDialog)!
+      expect(settingsPanel.contains(dialog)).toBe(false)
+      expect(dialog.parentElement?.parentElement).toBe(outerDialog.parentElement)
       const list = document.createElement('div')
       list.style.overflowY = 'auto'
       Object.defineProperties(list, {
@@ -92,3 +94,34 @@ it.each(['header', 'backdrop', 'list', 'top edge', 'bottom edge'])(
     }
   },
 )
+
+it('removes relocated overlays when nested dialogs are unmounted and reopened', async () => {
+  const target = document.createElement('div')
+  document.body.append(target)
+  const settings = mount(ModalShell, { target, props: { open: true, title: 'Settings' } })
+  await tick()
+  const settingsDialog = target.querySelector<HTMLElement>('[role="dialog"]')!
+  const panel = document.createElement('div')
+  panel.style.overflowY = 'auto'
+  settingsDialog.append(panel)
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const cloud = mount(ModalShell, { target: panel, props: { open: true, title: 'Cloud working copies' } })
+      await tick()
+      const cloudDialog = Array.from(target.querySelectorAll<HTMLElement>('[role="dialog"]')).find(dialog => dialog !== settingsDialog)!
+      const confirmation = mount(ModalShell, { target: cloudDialog, props: { open: true, title: 'Remove copies?' } })
+      await tick()
+      expect(target.querySelectorAll('.overlay')).toHaveLength(3)
+      expect(cloudDialog.querySelector('.overlay')).toBeNull()
+      await unmount(confirmation)
+      expect(target.querySelectorAll('.overlay')).toHaveLength(2)
+      await unmount(cloud)
+      expect(target.querySelectorAll('.overlay')).toHaveLength(1)
+      expect(settingsDialog.isConnected).toBe(true)
+    }
+  } finally {
+    await unmount(settings)
+    expect(target.querySelector('.overlay')).toBeNull()
+    target.remove()
+  }
+})
