@@ -21,6 +21,8 @@ export type { SavedNetworkConnection } from './services'
 export {
   listCloudRemotes,
   listCloudWorkingCopies,
+  cloudWorkingCopyOverview,
+  removeCloudWorkingCopies,
   prepareCloudWorkingCopy,
   uploadCloudWorkingCopy,
   saveCloudWorkingCopy,
@@ -46,6 +48,9 @@ export {
 export type {
   CloudProviderKind,
   CloudWorkingCopy,
+  CloudWorkingCopyDetails,
+  CloudWorkingCopyOverview,
+  CloudWorkingCopyCleanupResult,
   CloudWritebackStatus,
   CloudSaveStatus,
   CloudEntryKind,

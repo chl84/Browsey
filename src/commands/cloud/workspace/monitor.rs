@@ -57,12 +57,45 @@ struct Running {
 struct CloudWritebackState {
     running: Mutex<Option<Running>>,
     statuses: Arc<Mutex<HashMap<String, CloudWritebackStatus>>>,
+    removed: Mutex<HashSet<String>>,
+}
+fn is_removed(app: &tauri::AppHandle, id: &str) -> bool {
+    app.try_state::<CloudWritebackState>().is_some_and(|state| {
+        state
+            .removed
+            .lock()
+            .map_or(true, |removed| removed.contains(id))
+    })
+}
+pub(super) fn forget(app: &tauri::AppHandle, id: &str) {
+    if let Some(state) = app.try_state::<CloudWritebackState>() {
+        // Same lock order as status publication, so queued progress cannot
+        // restore a deleted copy's badge or watcher registration.
+        if let Ok(mut removed) = state.removed.lock() {
+            removed.insert(id.to_owned());
+            if let Ok(mut statuses) = state.statuses.lock() {
+                statuses.remove(id);
+            }
+        }
+        if let Ok(running) = state.running.lock() {
+            if let Some(running) = running.as_ref() {
+                let _ = running.sender.try_send(Message::Wake);
+            }
+        }
+    }
+    runtime_lifecycle::emit_if_running(app, "cloud-working-copy-removed", id.to_owned());
 }
 pub(super) fn callback(app: &tauri::AppHandle) -> StatusCallback {
     let app = app.clone();
     Arc::new(move |copy, bytes, total| {
         let value = status(copy, bytes, total);
         if let Some(state) = app.try_state::<CloudWritebackState>() {
+            let Ok(removed) = state.removed.lock() else {
+                return;
+            };
+            if removed.contains(&copy.id) {
+                return;
+            }
             if let Ok(mut statuses) = state.statuses.lock() {
                 statuses.insert(copy.id.clone(), value.clone());
             }
@@ -140,6 +173,9 @@ pub(crate) fn stop_cloud_writeback(app: &tauri::AppHandle) {
     }
 }
 pub(super) fn register(app: &tauri::AppHandle, copy: &CloudWorkingCopy) -> CloudCommandResult<()> {
+    if is_removed(app, &copy.id) {
+        return Ok(());
+    }
     let Some(state) = app.try_state::<CloudWritebackState>() else {
         // Scoped native-test builds deliberately do not start background uploads.
         return Ok(());
@@ -251,6 +287,33 @@ fn run(
     let mut attempts: HashMap<String, u32> = HashMap::new();
     let on_status = callback(&app);
     while !stop.load(Ordering::Relaxed) && !runtime_lifecycle::is_shutting_down(&app) {
+        // Cleanup wakes the worker; a full queue also reaches this branch on
+        // its next iteration. No extra timer or periodic disk scan is needed.
+        let removed_ids: Vec<_> = app
+            .try_state::<CloudWritebackState>()
+            .and_then(|state| {
+                state.removed.lock().ok().map(|removed| {
+                    if removed.is_empty() {
+                        return Vec::new();
+                    }
+                    copies
+                        .keys()
+                        .filter(|id| removed.contains(*id))
+                        .cloned()
+                        .collect()
+                })
+            })
+            .unwrap_or_default();
+        for id in removed_ids {
+            if let Some(copy) = copies.remove(&id) {
+                if let Some(directory) = Path::new(&copy.local_path).parent() {
+                    let _ = watcher.unwatch(directory);
+                    watched.remove(directory);
+                }
+            }
+            pending.remove(&id);
+            attempts.remove(&id);
+        }
         let wait = pending
             .values()
             .min()
@@ -260,6 +323,9 @@ fn run(
             Ok(Message::Stop) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
             Ok(Message::Register(copy)) => {
                 let mut copy = *copy;
+                if is_removed(&app, &copy.id) {
+                    continue;
+                }
                 let directory = Path::new(&copy.local_path).parent().map(Path::to_path_buf);
                 if copy.auto_save {
                     if let Some(directory) = directory {
@@ -335,9 +401,19 @@ fn run(
             let Some(previous) = copies.get(&id).cloned() else {
                 continue;
             };
-            let copy = root()
-                .and_then(|base| load_manifest_at(&base, &id, false))
-                .unwrap_or(previous);
+            if is_removed(&app, &id) {
+                continue;
+            }
+            let loaded = root().and_then(|base| load_manifest_at(&base, &id, false));
+            // A detached/removed working copy must never fall back to a stale
+            // manifest and trigger cloud I/O or recreate save-error status.
+            if loaded
+                .as_ref()
+                .is_err_and(|error| error.code() == CloudCommandErrorCode::NotFound)
+            {
+                continue;
+            }
+            let copy = loaded.unwrap_or(previous);
             copies.insert(id.clone(), copy.clone());
             if !schedule(&copy) {
                 continue;
@@ -375,6 +451,9 @@ fn run(
                     copies.insert(id, copy);
                 }
                 Err(error) => {
+                    if is_removed(&app, &id) || error.code() == CloudCommandErrorCode::NotFound {
+                        continue;
+                    }
                     let loaded = root().and_then(|base| load_manifest_at(&base, &id, false));
                     let mut copy = loaded.unwrap_or(copy);
                     if !matches!(

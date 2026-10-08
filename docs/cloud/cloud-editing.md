@@ -33,6 +33,37 @@ journals survive restart and preview-cache clearing. Earlier working copies stay
 manual: explicitly saving to their original first verifies the original bytes.
 Archive staging and external export copies remain manual.
 
+## Local storage and manual cleanup
+
+**Settings > Cloud > Working copies** shows the total size of stored file contents
+and the size of each copy, including its metadata. Storage inspection runs only
+when you open or refresh this dialog. Staging and unreadable recovery entries are
+included in the total and retained; linked targets are not followed.
+
+Use a copy's **Actions…** menu to open it, show its folder, save, pause/resume
+automatic saving or choose **Remove local copy…**. Unavailable actions stay visible
+but disabled. The shared ComboBox keeps the action placeholder after a choice and
+supports keyboard navigation; Escape closes the list before the dialog.
+
+Use **Storage actions… > Clean up saved copies…**
+for the currently listed eligible copies marked Saved. Close the selected files in
+your editor before confirming **Files closed — move to trash**. Browsey cannot
+reliably detect whether an external editor still has a copy open.
+
+Cleanup checks the current file bytes again and skips active saves, pending
+journals, conflicts, errors, modified copies, links and additional editor or
+recovery files. Each skipped copy has an explanation. Only the explicitly selected
+local session folders move to the system trash; cleanup requires no cloud
+connection and never changes cloud originals. There is no scheduled eviction or
+permanent-delete fallback if the trash operation fails.
+
+Copies in the trash still use disk space until you empty the trash. Each trashed
+folder contains its file and manifest. Cleanup first detaches the session into a
+private cleanup folder; to recover it as a Browsey working copy, put the complete
+ID-named folder back into the working-copy storage root and restart Browsey.
+Interrupted cleanup folders and failed rollback output stay available for manual
+recovery through **Storage actions… > Show storage folder**.
+
 ## Supported routes and limits
 
 - Google Drive: ordinary binary files on OAuth rclone remotes, addressed by ID.

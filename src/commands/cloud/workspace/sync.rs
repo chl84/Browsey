@@ -13,7 +13,25 @@ pub(super) fn with_copy_lock<T>(
     id: &str,
     f: impl FnOnce() -> CloudCommandResult<T>,
 ) -> CloudCommandResult<T> {
-    let mutex = {
+    let mutex = copy_mutex(id)?;
+    let _guard = mutex.lock().map_err(|_| registry_error())?;
+    f()
+}
+pub(super) fn try_with_copy_lock<T>(
+    id: &str,
+    f: impl FnOnce() -> CloudCommandResult<T>,
+) -> CloudCommandResult<T> {
+    let mutex = copy_mutex(id)?;
+    let _guard = mutex.try_lock().map_err(|_| {
+        CloudCommandError::new(
+            CloudCommandErrorCode::Conflict,
+            "This working copy is busy saving; try cleanup after it finishes",
+        )
+    })?;
+    f()
+}
+fn copy_mutex(id: &str) -> CloudCommandResult<Arc<Mutex<()>>> {
+    Ok({
         let mut locks = COPY_LOCKS
             .get_or_init(Default::default)
             .lock()
@@ -26,9 +44,7 @@ pub(super) fn with_copy_lock<T>(
             locks.insert(id.into(), Arc::downgrade(&mutex));
             mutex
         }
-    };
-    let _guard = mutex.lock().map_err(|_| registry_error())?;
-    f()
+    })
 }
 fn registry_error() -> CloudCommandError {
     CloudCommandError::new(

@@ -31,9 +31,10 @@ type MockClipboardState = {
   paths: string[]
 }
 
+type MockCloudCopy = { id: string; sourcePath: string; localPath: string; originalSize: number | null; originalModified: string | null; originalHash: string; createdAt: number; dirty: boolean; uploadedPath: string | null; saveStatus?: string; storageBytes?: number; cleanupBlockedReason?: string | null }
 type E2eMockControl = {
   cloudFixture?: boolean
-  cloudCopies?: Array<{ id: string; sourcePath: string; localPath: string; originalSize: number | null; originalModified: string | null; originalHash: string; createdAt: number; dirty: boolean; uploadedPath: string | null }>
+  cloudCopies?: MockCloudCopy[]
   cloudStatuses?: unknown[]
   cloudSaveError?: { code: string; message: string }
   cloudUploadChanged?: boolean
@@ -581,6 +582,32 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       return undefined as T
     case 'list_cloud_working_copies':
       return (control?.cloudCopies ?? []) as T
+    case 'cloud_working_copy_overview': {
+      const copies = (control?.cloudCopies ?? []).map(copy => ({ ...copy,
+        storageBytes: copy.storageBytes ?? copy.originalSize ?? 0,
+        cleanupBlockedReason: copy.cleanupBlockedReason ?? (copy.dirty ? 'New local changes were found; save them before removing this copy' : null),
+      }))
+      return { copies, storageBytes: copies.reduce((sum, copy) => sum + copy.storageBytes, 0), incomplete: false, retainedEntries: 0 } as T
+    }
+    case 'remove_cloud_working_copies': {
+      if (args?.editorsClosed !== true) throw { code: 'conflict', message: 'Close the editor first' }
+      const removedIds: string[] = []
+      const skipped: Array<{ id: string; reason: string }> = []
+      for (const id of new Set(args?.ids as string[])) {
+        const copy = control?.cloudCopies?.find(copy => copy.id === id)
+        if (!copy || copy.dirty || copy.cleanupBlockedReason || ['pending', 'uploading', 'error', 'conflict'].includes(copy.saveStatus ?? 'manual')) {
+          skipped.push({ id, reason: 'New changes or unresolved saves were found; this copy was kept' })
+        } else {
+          removedIds.push(id)
+          if (control) {
+            control.cloudCopies = control.cloudCopies?.filter(copy => copy.id !== id)
+            control.cloudStatuses = control.cloudStatuses?.filter(row => (row as { id: string }).id !== id)
+          }
+          emitMockEvent('cloud-working-copy-removed', id)
+        }
+      }
+      return { removedIds, skipped } as T
+    }
     case 'cloud_working_copy_storage_path':
       return '/mock/browsey/cloud-workspaces' as T
     case 'prepare_cloud_working_copy':

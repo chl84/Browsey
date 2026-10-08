@@ -80,6 +80,7 @@ pub(super) fn authorize(
         command,
         "open_cloud_entry"
             | "list_cloud_working_copies"
+            | "cloud_working_copy_overview"
             | "upload_cloud_working_copy"
             | "cloud_setup_status"
     ) {

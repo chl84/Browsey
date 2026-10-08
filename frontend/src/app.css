@@ -831,6 +831,12 @@ button:focus-visible,
   cursor: default;
 }
 
+.modal .combo-list li.disabled {
+  color: var(--fg-muted);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .modal input[type='range'] {
   width: 100%;
   padding: 0;

@@ -12,6 +12,10 @@ controls separately:
   of `this` when the caller needs access to the input. Password visibility must
   only change `type`, not the field's styling or dimensions.
 - `Slider` and `ComboBox`: use for ranges and custom option selectors.
+  For an action selector, use `resetOnSelect` and a descriptive `ariaLabel`;
+  choices dispatch `change` without replacing the action placeholder. Options
+  may set `disabled`, which blocks pointer selection and is skipped by arrow keys.
+  Use `fixedDropdown` inside scrollable lists so choices escape overflow clipping.
 - `ModalShell`: use for shared modal layout, focus handling, and action slots.
 - `ProgressBar`: use for progress, or set `role="meter"` for measured values
   such as disk usage. Supply a descriptive `label`/`valueText`; `fillColor` may

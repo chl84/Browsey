@@ -12,6 +12,7 @@
   let notificationHidden = false
   let notificationKey = ''
   let notificationTimer: ReturnType<typeof setTimeout> | undefined
+  const removed = new Set<string>()
   const updateNotification = (key: string, duration: number) => {
     // Repeated snapshots must not prolong or revive the same notification.
     if (key === notificationKey) return
@@ -30,17 +31,24 @@
   $: summary = notificationHidden && attention ? cloudSaveSummary(savingRows) : statusError || cloudSaveSummary(rows)
   onMount(() => {
     let disposed = false
-    let unlisten: UnlistenFn | undefined
+    const unlisten: UnlistenFn[] = []
     void (async () => {
+      const offRemoved = await listen<string>('cloud-working-copy-removed', event => {
+        if (disposed) return
+        removed.add(event.payload)
+        rows = rows.filter(row => row.id !== event.payload)
+      })
+      if (disposed) { offRemoved(); return }
+      unlisten.push(offRemoved)
       const off = await listen<CloudWritebackStatus>('cloud-writeback', event => {
-        if (!disposed) { rows = mergeCloudSaveStatus(rows, event.payload); statusError = '' }
+        if (!disposed && !removed.has(event.payload.id)) { rows = mergeCloudSaveStatus(rows, event.payload); statusError = '' }
       })
       if (disposed) { off(); return }
-      unlisten = off
+      unlisten.push(off)
       const initial = await cloudWritebackStatuses()
-      if (!disposed) for (const row of initial) rows = mergeCloudSaveStatus(rows, row)
+      if (!disposed) for (const row of initial) { if (!removed.has(row.id)) rows = mergeCloudSaveStatus(rows, row) }
     })().catch(() => { if (!disposed) statusError = 'Status unavailable' })
-    return () => { disposed = true; unlisten?.(); clearTimeout(notificationTimer) }
+    return () => { disposed = true; for (const off of unlisten) off(); clearTimeout(notificationTimer) }
   })
 </script>
 {#if (rows.length || statusError) && (!notificationHidden || savingRows.length)}

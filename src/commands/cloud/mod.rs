@@ -28,9 +28,10 @@ pub mod types;
 mod workspace;
 mod write;
 pub use workspace::{
-    cloud_working_copy_storage_path, cloud_writeback_statuses, create_cloud_file,
-    list_cloud_working_copies, save_cloud_working_copy, set_cloud_working_copy_auto_save,
-    upload_cloud_working_copy, CloudWorkingCopy,
+    cloud_working_copy_overview, cloud_working_copy_storage_path, cloud_writeback_statuses,
+    create_cloud_file, list_cloud_working_copies, remove_cloud_working_copies,
+    save_cloud_working_copy, set_cloud_working_copy_auto_save, upload_cloud_working_copy,
+    CloudWorkingCopy,
 };
 pub(crate) use workspace::{start_cloud_writeback, stop_cloud_writeback};
 

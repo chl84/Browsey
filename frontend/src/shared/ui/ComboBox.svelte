@@ -1,5 +1,6 @@
 <script lang="ts" context="module">
-  export type ComboOption = { value: string; label: string }
+  export type ComboOption = { value: string; label: string; disabled?: boolean }
+  let nextListId = 0
 </script>
 
 <script lang="ts">
@@ -13,6 +14,9 @@
   export let searchPlaceholder = 'Search…'
   export let emptyLabel = 'No options available'
   export let noMatchesLabel = 'No matches'
+  export let ariaLabel: string | undefined = undefined
+  export let resetOnSelect = false
+  export let fixedDropdown = false
 
   const dispatch = createEventDispatcher<{ change: string }>()
 
@@ -28,6 +32,11 @@
   let listEl: HTMLUListElement | null = null
   let openDirection: 'down' | 'up' = 'down'
   let listMaxHeight = 240
+  const listId = `combo-list-${++nextListId}`
+  let popupLeft = 0
+  let popupTop = 0
+  let popupWidth = 240
+  let popupReady = false
 
   $: selectedOption = options.find((o) => o.value === value)
   $: {
@@ -42,15 +51,14 @@
   }
 
   const currentIndex = () => filteredOptions.findIndex((o) => o.value === value)
+  const firstEnabledIndex = () => filteredOptions.findIndex((o) => !o.disabled)
 
   $: {
     if (!open) {
       highlighted = currentIndex()
-    } else if (highlighted < 0 && filteredOptions.length > 0) {
+    } else if (highlighted < 0 || highlighted >= filteredOptions.length || filteredOptions[highlighted]?.disabled) {
       highlighted = currentIndex()
-      if (highlighted < 0) highlighted = 0
-    } else if (highlighted >= filteredOptions.length) {
-      highlighted = filteredOptions.length - 1
+      if (highlighted < 0 || filteredOptions[highlighted]?.disabled) highlighted = firstEnabledIndex()
     }
   }
 
@@ -78,28 +86,43 @@
     void tick().then(() => searchInputEl?.focus())
   }
 
-  const updateDropdownPlacement = () => {
+  const updateDropdownPlacement = async () => {
     if (!open || !rootEl || !listWrapEl) return
     const triggerRect = rootEl.getBoundingClientRect()
+    if (fixedDropdown) {
+      popupWidth = Math.min(Math.max(triggerRect.width, 240), window.innerWidth - 16)
+      popupLeft = Math.max(8, Math.min(triggerRect.right - popupWidth, window.innerWidth - popupWidth - 8))
+      await tick()
+      if (!open || !listWrapEl) return
+    }
     const wrapRect = listWrapEl.getBoundingClientRect()
     const viewportHeight = window.innerHeight
     const gap = 2
     const searchHeight = searchable ? 42 : 0
     const minListHeight = 80
-    const spaceAbove = Math.max(0, triggerRect.top - gap)
-    const spaceBelow = Math.max(0, viewportHeight - triggerRect.bottom - gap)
+    const modalRect = fixedDropdown ? rootEl.closest('.modal')?.getBoundingClientRect() : undefined
+    const spaceAbove = Math.max(0, triggerRect.top - Math.max(0, modalRect?.top ?? 0) - gap)
+    const spaceBelow = Math.max(0, Math.min(viewportHeight, modalRect?.bottom ?? viewportHeight) - triggerRect.bottom - gap)
     const preferredDirection =
       spaceBelow >= wrapRect.height || spaceBelow >= spaceAbove ? 'down' : 'up'
 
     openDirection = preferredDirection
     const availableSpace = preferredDirection === 'down' ? spaceBelow : spaceAbove
     listMaxHeight = Math.max(minListHeight, Math.min(240, availableSpace - searchHeight - 8))
+    if (fixedDropdown) {
+      await tick()
+      if (!open || !listWrapEl) return
+      popupTop = preferredDirection === 'down' ? triggerRect.bottom + gap
+        : triggerRect.top - listWrapEl.getBoundingClientRect().height - gap
+      popupReady = true
+    }
   }
 
   const openDropdown = () => {
     if (disabled) return
     searchQuery = ''
     open = true
+    popupReady = false
     highlighted = currentIndex()
     focusSearchInput()
     void tick().then(() => updateDropdownPlacement())
@@ -109,6 +132,7 @@
     open = false
     searchQuery = ''
   }
+  $: if (disabled && open) closeDropdown()
 
   const dismissDropdown = (event: KeyboardEvent) => {
     event.preventDefault()
@@ -118,9 +142,11 @@
   }
 
   const choose = (val: string) => {
-    value = val
-    dispatch('change', val)
+    if (disabled || filteredOptions.find(o => o.value === val)?.disabled) return
+    value = resetOnSelect ? '' : val
     closeDropdown()
+    if (resetOnSelect) triggerEl?.focus()
+    dispatch('change', val)
   }
 
   const onToggle = () => {
@@ -142,15 +168,22 @@
   const move = (delta: number) => {
     if (!filteredOptions.length) return
     const len = filteredOptions.length
-    highlighted = ((highlighted >= 0 ? highlighted : 0) + delta + len) % len
+    let index = highlighted >= 0 ? highlighted : delta > 0 ? -1 : 0
+    for (let count = 0; count < len; count++) {
+      index = (index + delta + len) % len
+      if (!filteredOptions[index].disabled) { highlighted = index; return }
+    }
+    highlighted = -1
   }
 
   const handleKeydown = (e: KeyboardEvent) => {
     if (disabled) return
-    if (e.key === 'ArrowDown') {
+    if (e.key === 'Tab') {
+      closeDropdown()
+    } else if (e.key === 'ArrowDown') {
       e.preventDefault()
-      if (!open) openDropdown()
-      move(1)
+      if (!open && currentIndex() < 0) openDropdown()
+      else { if (!open) openDropdown(); move(1) }
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       if (!open) openDropdown()
@@ -167,6 +200,21 @@
         dismissDropdown(e)
       }
     }
+  }
+
+  const handleScroll = (event: Event) => {
+    if (!open || !rootEl) return
+    if (fixedDropdown && event.target instanceof Node && !listWrapEl?.contains(event.target)) {
+      // Browser focus may scroll the trigger just after opening. Reposition
+      // while it remains visible; dismiss only when its anchor scrolls away.
+      const trigger = rootEl.getBoundingClientRect()
+      for (let parent = rootEl.parentElement; parent; parent = parent.parentElement) {
+        if (!/(auto|scroll|hidden|clip)/.test(getComputedStyle(parent).overflowY)) continue
+        const bounds = parent.getBoundingClientRect()
+        if (trigger.bottom <= bounds.top || trigger.top >= bounds.bottom) { closeDropdown(); return }
+      }
+    }
+    void updateDropdownPlacement()
   }
 
   const handleSearchKeydown = (e: KeyboardEvent) => {
@@ -190,13 +238,13 @@
   onMount(() => {
     document.addEventListener('mousedown', onOutside, true)
     window.addEventListener('resize', updateDropdownPlacement)
-    window.addEventListener('scroll', updateDropdownPlacement, true)
+    window.addEventListener('scroll', handleScroll, true)
   })
 
   onDestroy(() => {
     document.removeEventListener('mousedown', onOutside, true)
     window.removeEventListener('resize', updateDropdownPlacement)
-    window.removeEventListener('scroll', updateDropdownPlacement, true)
+    window.removeEventListener('scroll', handleScroll, true)
   })
 </script>
 
@@ -210,8 +258,12 @@
   <button
     type="button"
     class="combo-btn"
+    role={resetOnSelect ? 'combobox' : undefined}
+    aria-label={ariaLabel}
     aria-haspopup="listbox"
     aria-expanded={open}
+    aria-controls={open ? listId : undefined}
+    aria-activedescendant={resetOnSelect && open && highlighted >= 0 ? `${listId}-${highlighted}` : undefined}
     bind:this={triggerEl}
     disabled={disabled}
     on:click={onToggle}
@@ -228,7 +280,8 @@
   </button>
 
   {#if open}
-    <div class="combo-list-wrap" bind:this={listWrapEl}>
+    <div class="combo-list-wrap" bind:this={listWrapEl}
+      style={fixedDropdown ? `position: fixed; left: ${popupLeft}px; top: ${popupTop}px; width: ${popupWidth}px; right: auto; bottom: auto; visibility: ${popupReady ? 'visible' : 'hidden'};` : undefined}>
       {#if searchable}
         <div class="combo-search-wrap">
           <input
@@ -242,7 +295,7 @@
         </div>
       {/if}
 
-      <ul class="combo-list" role="listbox" tabindex="-1" bind:this={listEl} style={`max-height: ${listMaxHeight}px;`}>
+      <ul id={listId} class="combo-list" role="listbox" tabindex="-1" bind:this={listEl} style={`max-height: ${listMaxHeight}px;`}>
         {#if filteredOptions.length === 0}
           <li class="empty">
             {searchable && searchQuery.trim().length > 0 ? noMatchesLabel : emptyLabel}
@@ -251,14 +304,17 @@
           {#each filteredOptions as opt, i (opt.value)}
             <li
               role="option"
+              id={`${listId}-${i}`}
               aria-selected={opt.value === value}
+              aria-disabled={opt.disabled || undefined}
+              class:disabled={opt.disabled}
               class:selected={opt.value === value}
               class:active={i === highlighted}
               on:mousedown={(e) => {
                 e.preventDefault()
                 choose(opt.value)
               }}
-              on:mousemove={() => (highlighted = i)}
+              on:mousemove={() => { if (!opt.disabled) highlighted = i }}
             >
               {opt.label}
             </li>

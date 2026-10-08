@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add local storage sizes and confirmed manual cleanup for cloud working copies.
+  Unchanged selected copies move to the trash; edits, active saves, conflicts and
+  recovery files are retained, and cloud originals remain untouched.
+
 - Reuse the existing URL encoder for cloud API query parameters, removing
   `serde_urlencoded` and `ryu` from the dependency graph.
 

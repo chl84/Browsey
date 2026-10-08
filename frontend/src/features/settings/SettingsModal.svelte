@@ -374,7 +374,13 @@
   }
 
   onMount(() => {
-    const listener = (e: KeyboardEvent) => handleWindowKeydown(e, open)
+    const listener = (e: KeyboardEvent) => {
+      // Nested dialogs own their Escape/focus handling. The capture listener
+      // must not close Settings before their ComboBox or confirmation sees it.
+      const dialog = e.target instanceof Element ? e.target.closest('[role="dialog"]') : null
+      if (dialog && !dialog.classList.contains('settings-modal')) return
+      handleWindowKeydown(e, open)
+    }
     window.addEventListener('keydown', listener, { capture: true })
     return () => {
       rclonePathBlurRefresh.cancel()

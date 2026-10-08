@@ -121,6 +121,23 @@ export type CloudWorkingCopy = {
 }
 
 export type CloudSaveStatus = 'manual' | 'saved' | 'pending' | 'uploading' | 'conflict' | 'error' | 'paused' | 'unsupported'
+export type CloudWorkingCopyDetails = CloudWorkingCopy & {
+  storageBytes: number
+  cleanupBlockedReason: string | null
+}
+export type CloudWorkingCopyOverview = {
+  copies: CloudWorkingCopyDetails[]
+  storageBytes: number
+  incomplete: boolean
+  retainedEntries: number
+}
+export type CloudWorkingCopyCleanupResult = {
+  removedIds: string[]
+  skipped: Array<{ id: string; reason: string }>
+}
+export const cloudWorkingCopyOverview = () => invoke<CloudWorkingCopyOverview>('cloud_working_copy_overview')
+export const removeCloudWorkingCopies = (ids: string[], editorsClosed: boolean) =>
+  invoke<CloudWorkingCopyCleanupResult>('remove_cloud_working_copies', { ids, editorsClosed })
 export type CloudWritebackStatus = {
   id: string
   name: string

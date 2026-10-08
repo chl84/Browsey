@@ -55,7 +55,8 @@ export async function uploadEditedCopy(ui,source,{changed}) {
   await (await dialog.$('.copies[aria-busy="false"]')).waitForExist({timeout:180_000})
   const modified=await dialog.$$('.//section[.//small[contains(.,"Locally modified")]]');assert.equal(modified.length,1)
   assert.equal(await (await modified[0].$('.source')).getText(),source)
-  const upload=await modified[0].$('.//button[normalize-space(.)="Upload changes as new file"]');assert.ok(await upload.isEnabled());await upload.click()
+  const actions=await modified[0].$('.combo-btn');await actions.click()
+  const upload=await modified[0].$('.//li[@role="option" and normalize-space(.)="Save as new file"]');assert.notEqual(await upload.getAttribute('aria-disabled'),'true');await upload.click()
   let message
   await ui.browser.waitUntil(async()=>{
     const error=await dialog.$('.error[role="alert"]');if(await error.isExisting()) throw Error(await error.getText())

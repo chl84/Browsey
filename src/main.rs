@@ -320,6 +320,8 @@ fn main() {
             prepare_cloud_external_copy,
             prepare_cloud_working_copy,
             list_cloud_working_copies,
+            cloud_working_copy_overview,
+            remove_cloud_working_copies,
             cloud_working_copy_storage_path,
             create_cloud_file,
             upload_cloud_working_copy,

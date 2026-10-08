@@ -15,8 +15,10 @@ use std::{
 
 static WORKSPACE_LOCK: Mutex<()> = Mutex::new(());
 type StatusCallback = std::sync::Arc<dyn Fn(&CloudWorkingCopy, u64, u64) + Send + Sync>;
+mod cleanup;
 mod monitor;
 mod sync;
+pub use cleanup::{cloud_working_copy_overview, remove_cloud_working_copies};
 pub use monitor::cloud_writeback_statuses;
 pub(crate) use monitor::{start_cloud_writeback, stop_cloud_writeback};
 pub(super) use sync::enable_for_open;
