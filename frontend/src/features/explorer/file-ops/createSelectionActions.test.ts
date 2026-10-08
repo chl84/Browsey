@@ -82,6 +82,42 @@ describe('shared selection actions', () => {
     expect(activityApi.cleanup).toHaveBeenCalledWith(true)
   })
 
+  it('uses the existing undo-recording trash command for Wastebasket drops', async () => {
+    const { actions, activityApi, confirmDelete, reloadCurrent } = setup()
+    expect(await actions.trashDropped([entry.path])).toBe(true)
+    expect(services.moveToTrashMany).toHaveBeenCalledWith([entry.path], expect.any(String))
+    expect(activityApi.start).toHaveBeenCalledWith('Moving to trash…', expect.any(String), expect.any(Function), { completeOnReply: false })
+    expect(reloadCurrent).toHaveBeenCalledOnce()
+    expect(confirmDelete).not.toHaveBeenCalled()
+    expect(services.deleteEntries).not.toHaveBeenCalled()
+  })
+
+  it('rejects unavailable trash without entering permanent-delete confirmation', async () => {
+    services.moveToTrashMany.mockRejectedValueOnce({ code: 'network_confirmation_required', message: 'No trash' })
+    const { actions, confirmDelete, activityApi, showToast } = setup({ confirmDeleteEnabled: () => false })
+    expect(await actions.trashDropped([entry.path])).toBe(false)
+    expect(confirmDelete).not.toHaveBeenCalled()
+    expect(services.deleteEntries).not.toHaveBeenCalled()
+    expect(activityApi.cleanup).toHaveBeenCalledWith(true)
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Move to trash failed'))
+  })
+
+  it('does not turn incoming file drops into a purge while browsing Wastebasket', async () => {
+    const { actions } = setup({ currentView: () => 'trash' })
+    expect(await actions.trashDropped([entry.path])).toBe(true)
+    expect(services.purgeTrashItems).not.toHaveBeenCalled()
+    expect(services.moveToTrashMany).toHaveBeenCalledWith([entry.path], expect.any(String))
+  })
+
+  it('routes cloud drops to provider trash without permanent-delete confirmation', async () => {
+    const { actions, confirmDelete, showToast } = setup()
+    const paths = ['rclone://Google Disk/duplicate~id-one', 'rclone://Google Disk/duplicate~id-two']
+    expect(await actions.trashDropped(paths)).toBe(true)
+    expect(services.moveToTrashMany).toHaveBeenCalledWith(paths, expect.any(String))
+    expect(confirmDelete).not.toHaveBeenCalled()
+    expect(showToast).toHaveBeenCalledWith('Moved to cloud trash. Restore items from the provider website.')
+  })
+
   it.each(['network-trash', 'network'] as const)('requires backend-requested %s confirmation even when settings disable ordinary confirmation', async mode => {
     const service = mode === 'network-trash' ? services.moveToTrashMany : services.deleteEntries
     service.mockRejectedValueOnce({ code: 'network_confirmation_required' })

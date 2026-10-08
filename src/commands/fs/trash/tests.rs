@@ -321,6 +321,50 @@ fn move_single_to_trash_falls_back_to_delete_when_item_not_detected() {
 }
 
 #[test]
+fn trash_batch_preserves_file_and_folder_contents_through_undo_redo() {
+    let dir = uniq_path("trash-batch-undo-redo");
+    let file = dir.join("document.txt");
+    let folder = dir.join("folder");
+    write_file(&file, b"document contents");
+    write_file(&folder.join("nested.txt"), b"nested contents");
+    let backend = FakeTrashBackend::default();
+    // Simulate a platform where trash IDs cannot be discovered. The existing
+    // undo fallback must preserve both items, including the directory tree.
+    backend.queue_list_response(Ok(Vec::new()));
+    backend.queue_list_response(Ok(Vec::new()));
+    let undo = UndoState::default();
+    move_to_trash_many_with_backend(
+        vec![
+            file.to_string_lossy().into_owned(),
+            folder.to_string_lossy().into_owned(),
+        ],
+        undo.clone(),
+        None,
+        &backend,
+        |_| false,
+        |_, _, _| {},
+        || {},
+    )
+    .unwrap();
+    assert!(!file.exists() && !folder.exists());
+    undo.undo().unwrap();
+    assert_eq!(fs::read(&file).unwrap(), b"document contents");
+    assert_eq!(
+        fs::read(folder.join("nested.txt")).unwrap(),
+        b"nested contents"
+    );
+    undo.redo().unwrap();
+    assert!(!file.exists() && !folder.exists());
+    undo.undo().unwrap();
+    assert_eq!(fs::read(&file).unwrap(), b"document contents");
+    assert_eq!(
+        fs::read(folder.join("nested.txt")).unwrap(),
+        b"nested contents"
+    );
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn move_to_trash_many_rolls_back_previous_on_later_failure() {
     let dir = uniq_path("many-trash-rollback");
     let _ = fs::create_dir_all(&dir);

@@ -433,6 +433,7 @@ fn main() {
             delete_entries,
             network_delete_entries,
             network_delete_paths,
+            can_trash_paths,
             entry_times_cmd,
             entry_kind_cmd,
             entry_extra_metadata_cmd,

@@ -6,7 +6,7 @@
   import DragGhost from '@/shared/ui/DragGhost.svelte'
 
   type ConflictEntry = { src: string; target: string; is_dir: boolean }
-  type DragAction = 'copy' | 'move' | null
+  type DragAction = 'copy' | 'move' | 'trash' | null
 
   export let dragGhostVisible = false
   export let dragGhostX = 0
@@ -61,4 +61,3 @@
   onOverwrite={overwriteConflicts}
 />
 <AboutBrowseyModal open={aboutOpen} onClose={closeAbout} />
-

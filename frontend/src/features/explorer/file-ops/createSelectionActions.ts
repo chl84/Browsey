@@ -46,12 +46,14 @@ export const createSelectionActions = (deps: Deps) => {
     return true
   }
 
-  const remove = async (entries: Entry[], permanent: boolean, alwaysConfirm = false) => {
-    if (currentView() === 'network' || entries.length === 0 || deleting) return false
-    const inTrash = currentView() === 'trash'
+  const remove = async (entries: Entry[], permanent: boolean, alwaysConfirm = false, trashOnly = false) => {
+    if ((!trashOnly && currentView() === 'network') || entries.length === 0 || deleting) return false
+    // Drop sources carry real storage paths, independent of the view currently
+    // open. A drop while browsing Wastebasket must never become a purge.
+    const inTrash = !trashOnly && currentView() === 'trash'
     const windows = deps.isWindows?.() ??
       (typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('windows'))
-    if ((!permanent && mustUsePermanentDelete(entries, false, inTrash, windows)) ||
+    if ((!trashOnly && !permanent && mustUsePermanentDelete(entries, false, inTrash, windows)) ||
       (permanent && (alwaysConfirm || confirmDeleteEnabled()))) {
       confirmDelete(entries, inTrash ? 'trash' : 'default')
       return true
@@ -93,7 +95,7 @@ export const createSelectionActions = (deps: Deps) => {
       activityApi.hideSoon()
       return true
     } catch (error) {
-      if (!inTrash && needsNetworkDeleteConfirmation(error)) {
+      if (!trashOnly && !inTrash && needsNetworkDeleteConfirmation(error)) {
         networkConfirmation = permanent ? 'network' : 'network-trash'
         return true
       }
@@ -124,6 +126,9 @@ export const createSelectionActions = (deps: Deps) => {
     copy: (paths: string[]) => copyOrCut(paths, 'copy'),
     cut: (paths: string[]) => copyOrCut(paths, 'cut'),
     trash: (entries: Entry[]) => remove(entries, false),
+    // Use the same progress, cancellation, refresh and undo-recording commands.
+    // This action can never purge the Wastebasket or offer permanent deletion.
+    trashDropped: (paths: string[]) => remove(paths.map(path => ({ path, name: path, kind: 'file', iconId: 0 })), false, false, true),
     deletePermanently: (entries: Entry[], alwaysConfirm = false) => remove(entries, true, alwaysConfirm),
   }
 }

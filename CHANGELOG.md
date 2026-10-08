@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Accept drag-and-drop onto Wastebasket for storage with trash support. Check
+  capabilities only on demand, retain existing undo/redo and provider trash
+  behavior, and reject unsupported drops without offering permanent deletion.
+
 - Render nested dialog overlays outside the parent scroll surface so Settings
   scrollbar handles stay behind cloud dialogs.
 

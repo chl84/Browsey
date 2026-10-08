@@ -4,6 +4,8 @@ import { get, writable } from 'svelte/store'
 const setClipboardPathsStateMock = vi.fn()
 const setClipboardCmdMock = vi.fn()
 const resolveDropClipboardModeMock = vi.fn()
+const canTrashPathsMock = vi.fn()
+vi.mock('../services/trash.service', () => ({ canTrashPaths: (...args: unknown[]) => canTrashPathsMock(...args) }))
 let onNativeDrop: (paths: string[], point: { x: number; y: number }) => Promise<void>
 let onNativeHover: (paths: string[], point: { x: number; y: number }) => void
 let onNativeLeave: () => void
@@ -154,6 +156,7 @@ describe('drop policy and destination safety', () => {
     vi.useFakeTimers()
     vi.clearAllMocks()
     resolveDropClipboardModeMock.mockResolvedValue('cut')
+    canTrashPathsMock.mockResolvedValue(true)
   })
   afterEach(async () => {
     await Promise.all(hooks.splice(0).map(hook => hook.stopNativeDrop()))
@@ -175,6 +178,123 @@ describe('drop policy and destination safety', () => {
     hook.handleRowDragStart(source, createDragEvent())
     await hook.handleBookmarkDrop(dest, createDragEvent(keys))
     expect(deps.handlePasteOrMove).toHaveBeenCalledWith(dest, { paths: ['/tmp/source.txt'], mode })
+  })
+
+  it('checks only Wastebasket, caches hover checks, and never opens it on hover', async () => {
+    const handleTrashDrop = vi.fn(async () => true)
+    const { hook, deps } = setup({ handleTrashDrop })
+    const el = target('trash://')
+    await hook.startNativeDrop()
+    hook.handleRowDragStart(source, createDragEvent())
+    expect(canTrashPathsMock).not.toHaveBeenCalled()
+    hook.handleBookmarkDragOver('/tmp/dest', createDragEvent())
+    expect(canTrashPathsMock).not.toHaveBeenCalled()
+    resolveDropClipboardModeMock.mockClear()
+    document.dispatchEvent(new MouseEvent('dragover', { bubbles: true, cancelable: true, clientX: point.x, clientY: point.y }))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(el.dataset.dropActive).toBe('true')
+    expect(get(hook.dragAction)).toBe('trash')
+    for (let i = 0; i < 20; i++) hook.handleBookmarkDragOver('trash://', createDragEvent())
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(canTrashPathsMock).toHaveBeenCalledExactlyOnceWith(['/tmp/source.txt'])
+    expect(deps.loadDir).not.toHaveBeenCalled()
+    await hook.handleBookmarkDrop('trash://', createDragEvent({ shiftKey: true, ctrlKey: true }))
+    expect(handleTrashDrop).toHaveBeenCalledExactlyOnceWith(['/tmp/source.txt'])
+    expect(deps.handlePasteOrMove).not.toHaveBeenCalled()
+    expect(resolveDropClipboardModeMock).not.toHaveBeenCalled()
+    expect(el.hasAttribute('data-drop-active')).toBe(false)
+  })
+
+  it.each(['recent', 'starred', 'dir'] as const)('uses actual source paths for Wastebasket from %s', async view => {
+    const handleTrashDrop = vi.fn(async () => true)
+    const { hook, deps } = setup({ currentView: () => view, isSearchActive: () => view === 'dir', handleTrashDrop })
+    hook.handleRowDragStart(source, createDragEvent())
+    await hook.handleBookmarkDrop('trash://', createDragEvent())
+    expect(handleTrashDrop).toHaveBeenCalledExactlyOnceWith(['/tmp/source.txt'])
+    expect(deps.handlePasteOrMove).not.toHaveBeenCalled()
+  })
+
+  it.each([false, 'error'] as const)('rejects unsupported or failed trash checks (%s)', async result => {
+    if (result === 'error') canTrashPathsMock.mockRejectedValueOnce(new Error('Disconnected'))
+    else canTrashPathsMock.mockResolvedValueOnce(false)
+    const handleTrashDrop = vi.fn(async () => true)
+    const { hook, deps } = setup({ handleTrashDrop })
+    hook.handleRowDragStart(source, createDragEvent())
+    await hook.handleBookmarkDrop('trash://', createDragEvent())
+    expect(handleTrashDrop).not.toHaveBeenCalled()
+    expect(deps.handlePasteOrMove).not.toHaveBeenCalled()
+    expect(deps.showToast).toHaveBeenCalledWith(expect.stringContaining('Nothing was deleted'))
+  })
+
+  it('does not let a late capability reply mutate a cancelled or newer drag', async () => {
+    let finish!: (allowed: boolean) => void
+    canTrashPathsMock.mockReturnValueOnce(new Promise<boolean>(resolve => { finish = resolve }))
+    const handleTrashDrop = vi.fn(async () => true)
+    const { hook } = setup({ handleTrashDrop })
+    target('trash://')
+    await hook.startNativeDrop()
+    hook.handleRowDragStart(source, createDragEvent())
+    hook.handleBookmarkDragOver('trash://', createDragEvent())
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    hook.handleRowDragStart({ path: '/tmp/new.txt', kind: 'file' } as never, createDragEvent())
+    finish(true)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(get(hook.dragState).target).toBeNull()
+    expect(handleTrashDrop).not.toHaveBeenCalled()
+  })
+
+  it('waits for capabilities at drop and blocks a duplicate native reply', async () => {
+    let finish!: (allowed: boolean) => void
+    canTrashPathsMock.mockReturnValueOnce(new Promise<boolean>(resolve => { finish = resolve }))
+    const handleTrashDrop = vi.fn(async () => true)
+    const { hook } = setup({ handleTrashDrop })
+    target('trash://')
+    hook.handleRowDragStart(source, createDragEvent())
+    const drop = hook.handleBookmarkDrop('trash://', createDragEvent())
+    await onNativeDrop(['/tmp/source.txt'], point)
+    expect(handleTrashDrop).not.toHaveBeenCalled()
+    finish(true)
+    await drop
+    expect(handleTrashDrop).toHaveBeenCalledOnce()
+  })
+
+  it('accepts native external local files and preserves a successful GTK source completion', async () => {
+    const handleTrashDrop = vi.fn(async () => true)
+    const { hook } = setup({ handleTrashDrop })
+    const el = target('trash://')
+    await hook.startNativeDrop()
+    await onNativeDrop(['/outside/file.txt'], point)
+    expect(handleTrashDrop).toHaveBeenCalledWith(['/outside/file.txt'])
+    hook.handleRowDragStart(source, createDragEvent())
+    el.dispatchEvent(new MouseEvent('dragover', { bubbles: true, cancelable: true, clientX: point.x, clientY: point.y }))
+    await vi.advanceTimersByTimeAsync(0)
+    hook.handleRowDragEnd(createDragEvent({ dataTransfer: { dropEffect: 'move' } as DataTransfer }))
+    await onNativeDrop(['/tmp/source.txt'], point)
+    expect(handleTrashDrop).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects an explicitly copy-only source offer to Wastebasket', async () => {
+    const handleTrashDrop = vi.fn(async () => true)
+    const { hook } = setup({ handleTrashDrop })
+    hook.handleRowDragStart(source, createDragEvent({ ctrlKey: true }))
+    const over = createDragEvent()
+    hook.handleBookmarkDragOver('trash://', over)
+    expect(over.dataTransfer?.dropEffect).toBe('none')
+    await hook.handleBookmarkDrop('trash://', createDragEvent())
+    expect(handleTrashDrop).not.toHaveBeenCalled()
+  })
+
+  it.each([true, false] as const)('honors exact cloud entry trash capabilities (%s)', async canTrash => {
+    const paths = ['rclone://Google Disk/same~id-a', 'rclone://Google Disk/same~id-b']
+    const entries = paths.map(path => ({ path, name: 'same', kind: 'file', capabilities: { canTrash } })) as never[]
+    const handleTrashDrop = vi.fn(async () => true)
+    const { hook, deps } = setup({ getSelectedSet: () => new Set(paths), getEntries: () => entries, handleTrashDrop })
+    hook.handleRowDragStart(entries[0], createDragEvent())
+    await hook.handleBookmarkDrop('trash://', createDragEvent())
+    if (canTrash) expect(handleTrashDrop).toHaveBeenCalledExactlyOnceWith(paths)
+    else expect(handleTrashDrop).not.toHaveBeenCalled()
+    expect(canTrashPathsMock).not.toHaveBeenCalled()
+    expect(deps.handlePasteOrMove).not.toHaveBeenCalled()
   })
 
   it('copies cloud sources by default without invoking the local filesystem resolver', async () => {

@@ -1,6 +1,7 @@
 import type { DropPosition } from './createNativeFileDrop'
 
 export type DropTarget = { path: string; element: HTMLElement; openOnHover: boolean }
+export const wastebasketDropPath = 'trash://'
 
 export const isDropDirectoryPath = (path: string) =>
   path.startsWith('/') || /^[a-z]:[\\/]/i.test(path) || path.startsWith('\\\\') || /^rclone:\/\/[^/]+/.test(path)
@@ -13,6 +14,6 @@ export const findDropTarget = (point: DropPosition, backgroundPath: string | nul
   if (!element) return null
   const background = element.hasAttribute('data-drop-background')
   const path = background ? backgroundPath : element.dataset.dropPath
-  if (!path || !isDropDirectoryPath(path)) return null
-  return { path, element, openOnHover: !background }
+  if (!path || (!isDropDirectoryPath(path) && (background || path !== wastebasketDropPath))) return null
+  return { path, element, openOnHover: !background && path !== wastebasketDropPath }
 }

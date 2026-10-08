@@ -86,6 +86,8 @@ export const createExplorerDragDropDeps = (deps: ExplorerDragDropDeps): Explorer
   currentView: deps.currentView,
   currentPath: deps.currentPath,
   getSelectedSet: deps.getSelectedSet,
+  getEntries: deps.getEntries,
+  handleTrashDrop: deps.handleTrashDrop,
   loadDir: deps.loadDir,
   isBlocked: deps.isBlocked,
   isSearchActive: deps.isSearchActive,

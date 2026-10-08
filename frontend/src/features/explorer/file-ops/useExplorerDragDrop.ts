@@ -4,7 +4,8 @@ import { getErrorMessage } from '@/shared/lib/error'
 import { useDragDrop } from './useDragDrop'
 import { createNativeFileDrop, type DropPosition } from './createNativeFileDrop'
 import { createDragNavigation } from './createDragNavigation'
-import { findDropTarget, isDropDirectoryPath } from './dropTargets'
+import { findDropTarget, isDropDirectoryPath, wastebasketDropPath } from './dropTargets'
+import { canTrashPaths } from '../services/trash.service'
 import { normalizePath } from '../utils'
 import { resolveDropClipboardMode, type PasteSources } from '../services/clipboard.service'
 import { fileDragStartMode } from './fileDragPayload'
@@ -15,6 +16,8 @@ type Deps = {
   currentView: () => CurrentView
   currentPath: () => string
   getSelectedSet: () => Set<string>
+  getEntries?: () => Entry[]
+  handleTrashDrop?: (paths: string[]) => Promise<boolean>
   loadDir: (path: string) => Promise<void>
   isBlocked: () => boolean
   isSearchActive: () => boolean
@@ -23,7 +26,7 @@ type Deps = {
 }
 
 type Mode = 'copy' | 'cut'
-type DragAction = 'copy' | 'move' | null
+type DragAction = 'copy' | 'move' | 'trash' | null
 type Modifiers = Pick<DragEvent, 'ctrlKey' | 'metaKey' | 'shiftKey'>
 const isCloudPath = (path: string) => path.startsWith('rclone://')
 const mixedSelection = (paths: string[]) => paths.some(isCloudPath) && !paths.every(isCloudPath)
@@ -56,6 +59,9 @@ export const useExplorerDragDrop = (deps: Deps) => {
   let completedDrop: { paths: string[]; dest: string; point: DropPosition; mode: Mode | null; expires: number } | null = null
   const modeCache = new Map<string, Promise<Mode>>()
   const resolvedModes = new Map<string, Mode>()
+  let sourceEntries = new Map<string, Entry>()
+  const trashChecks = new Map<string, Promise<boolean>>()
+  const trashResults = new Map<string, boolean>()
   const blocked = () => deps.isBlocked() || navigating || transferring
 
   const clearTarget = () => {
@@ -101,6 +107,9 @@ export const useExplorerDragDrop = (deps: Deps) => {
     dragDrop.end()
     modeCache.clear()
     resolvedModes.clear()
+    sourceEntries.clear()
+    trashChecks.clear()
+    trashResults.clear()
   }
 
   const hidePreview = () => {
@@ -117,8 +126,37 @@ export const useExplorerDragDrop = (deps: Deps) => {
     dragGhostVisible.set(dragPaths.length > 0)
   }
 
-  const canDrop = (paths: string[], dest: string) => !blocked() && isDropDirectoryPath(dest)
-    && !mixedSelection(paths) && dragDrop.canDropOn(paths, dest)
+  const checkTrash = (paths: string[]): Promise<boolean> => {
+    if (!deps.handleTrashDrop || !paths.length || mixedSelection(paths)) return Promise.resolve(false)
+    const key = JSON.stringify(paths)
+    const cached = trashChecks.get(key)
+    if (cached) return cached
+    const token = session
+    const result = paths.some(isCloudPath)
+      ? Promise.resolve(paths.every(path => sourceEntries.get(path)?.capabilities?.canTrash === true))
+      : paths.every(isDropDirectoryPath) ? canTrashPaths(paths) : Promise.resolve(false)
+    const check = result.catch(() => false).then(allowed => {
+      if (token === session) {
+        trashResults.set(key, allowed)
+        // Capabilities are fetched once, only over Wastebasket. Never repaint
+        // a later drag or a different destination when a remote reply arrives.
+        if (!transferring && lastPoint && targetAt(lastPoint)?.path === wastebasketDropPath) updateAt(lastPoint)
+      }
+      return allowed
+    })
+    trashChecks.set(key, check)
+    return check
+  }
+
+  const canDrop = (paths: string[], dest: string) => {
+    if (blocked() || !paths.length || mixedSelection(paths)) return false
+    if (dest === wastebasketDropPath) {
+      if (sourceMode === 'copy') return false
+      void checkTrash(paths)
+      return trashResults.get(JSON.stringify(paths)) === true
+    }
+    return isDropDirectoryPath(dest) && dragDrop.canDropOn(paths, dest)
+  }
 
   // External native events carry no modifier keys: always copy incoming files.
   // An explicit local start action matches the native offer. Otherwise use the
@@ -144,6 +182,11 @@ export const useExplorerDragDrop = (deps: Deps) => {
   const preview = (dest: string, event?: DragEvent) => {
     const token = ++previewToken
     dragDrop.setTarget(dest)
+    if (dest === wastebasketDropPath) {
+      dragAction.set('trash')
+      if (event?.dataTransfer) event.dataTransfer.dropEffect = 'move'
+      return
+    }
     const known = external ? 'copy' : sourceMode ?? (modifiers.ctrlKey || modifiers.metaKey ? 'copy'
       : modifiers.shiftKey ? 'cut'
       : dragPaths.some(isCloudPath) || isCloudPath(dest) ? 'copy'
@@ -164,6 +207,15 @@ export const useExplorerDragDrop = (deps: Deps) => {
   const targetAt = (point: DropPosition) => findDropTarget(point,
     deps.currentView() === 'dir' && !deps.isSearchActive() ? deps.currentPath() : null)
 
+  const showTrashCheck = (path: string) => {
+    if (path !== wastebasketDropPath || sourceMode === 'copy' || blocked()) return
+    const key = JSON.stringify(dragPaths)
+    if (trashChecks.has(key) && !trashResults.has(key)) {
+      dragDrop.setTarget(path)
+      dragAction.set(null)
+    }
+  }
+
   const updateAt = (point: DropPosition, event?: DragEvent) => {
     if (transferring) return
     showPreview()
@@ -183,6 +235,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
       preview(allowed.path, event)
     } else {
       clearTarget()
+      if (target) showTrashCheck(target.path)
       if (event?.dataTransfer) event.dataTransfer.dropEffect = 'none'
     }
     if (blocked()) navigation.stop()
@@ -191,7 +244,10 @@ export const useExplorerDragDrop = (deps: Deps) => {
 
   const performDrop = async (dest: string | null, paths: string[], keys: Modifiers, native: boolean, completedMode?: Mode | null) => {
     if (transferring) return
-    const accepted = dest !== null && canDrop(paths, dest)
+    const trash = dest === wastebasketDropPath
+    const accepted = dest !== null && (trash
+      ? !blocked() && sourceMode !== 'copy' && paths.length > 0 && !mixedSelection(paths) && !!deps.handleTrashDrop
+      : canDrop(paths, dest))
     const token = session
     hidePreview()
     if (!accepted || !dest) {
@@ -200,6 +256,15 @@ export const useExplorerDragDrop = (deps: Deps) => {
     }
     transferring = true
     try {
+      if (trash) {
+        if (!await checkTrash(paths)) {
+          if (token === session) deps.showToast('These items cannot be moved to the trash. Nothing was deleted.')
+          return
+        }
+        if (token !== session || deps.isBlocked()) return
+        await deps.handleTrashDrop?.([...paths])
+        return
+      }
       const mode = completedMode ?? await resolveMode(paths, dest, keys, native)
       if (token !== session || deps.isBlocked()) return
       // Snapshot destination, sources and action before entering conflict/paste orchestration.
@@ -276,6 +341,11 @@ export const useExplorerDragDrop = (deps: Deps) => {
     }
     handleRowDragEnd()
     dragPaths = paths
+    if (paths.some(isCloudPath)) {
+      const sourcePaths = new Set(paths)
+      sourceEntries = new Map((deps.getEntries?.() ?? []).filter(item => sourcePaths.has(item.path)).map(item => [item.path, item]))
+      sourceEntries.set(entry.path, entry)
+    }
     sourceMode = paths.some(isCloudPath) ? null : fileDragStartMode(event)
     modifiers = event
     dragDrop.start(paths, event)
@@ -392,6 +462,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
     if (canDrop(dragPaths, path)) preview(path, event)
     else {
       clearTarget()
+      showTrashCheck(path)
       if (event.dataTransfer) event.dataTransfer.dropEffect = 'none'
     }
     dragDrop.setPosition(event.clientX, event.clientY)

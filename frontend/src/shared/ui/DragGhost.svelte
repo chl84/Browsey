@@ -4,7 +4,7 @@
   export let y = 0
   export let count = 0
   export let allowed = true
-  export let action: 'copy' | 'move' | null = null
+  export let action: 'copy' | 'move' | 'trash' | null = null
 </script>
 
 {#if visible}
@@ -22,6 +22,8 @@
             Copy
           {:else if action === 'move'}
             Move
+          {:else if action === 'trash'}
+            Move to trash:
           {:else}
             Checking destination…
           {/if}

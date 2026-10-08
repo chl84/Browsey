@@ -5,6 +5,10 @@ import { normalizeError } from '@/shared/lib/error'
 const isCloudPath = (path: string) => path.startsWith('rclone://')
 const isNotFoundError = (error: unknown) => normalizeError(error).code === 'not_found'
 
+// Read-only, lazy capability check for Wastebasket drops. Mutation still
+// revalidates through the existing trash backends, with no permanent fallback.
+export const canTrashPaths = (paths: string[]) => invoke<boolean>('can_trash_paths', { paths })
+
 export const needsNetworkDeleteConfirmation = (error: unknown) =>
   normalizeError(error).code === 'network_confirmation_required'
 

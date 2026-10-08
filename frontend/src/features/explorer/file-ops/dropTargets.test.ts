@@ -9,6 +9,12 @@ const hit = (markup: string) => {
 const point = { x: 100, y: 200 }
 
 describe('drop target hit testing', () => {
+  it('accepts Wastebasket as an action without opening it on hover', () => {
+    hit('<button data-drop-path="trash://"><span id="hit">Wastebasket</span></button>')
+    expect(findDropTarget(point, null)).toMatchObject({ path: 'trash://', openOnHover: false })
+    hit('<div data-drop-background><span id="hit">Wastebasket content</span></div>')
+    expect(findDropTarget(point, 'trash://')).toBeNull()
+  })
   it('prefers the explicit nested folder to the background', () => {
     hit('<div data-drop-background><button data-drop-path="/target"><span id="hit">Folder</span></button></div>')
     expect(findDropTarget(point, '/background')?.path).toBe('/target')

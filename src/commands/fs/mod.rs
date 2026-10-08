@@ -36,7 +36,7 @@ use error::{
     is_expected_set_hidden_error, map_api_result, SetHiddenError, SetHiddenErrorCode,
     SetHiddenResult,
 };
-pub use network_delete::{network_delete_entries, network_delete_paths};
+pub use network_delete::{can_trash_paths, network_delete_entries, network_delete_paths};
 pub use open_ops::open_entry;
 pub(crate) use open_ops::open_path_without_recent;
 pub use startup_ops::get_startup_path;

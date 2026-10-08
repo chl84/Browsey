@@ -67,6 +67,7 @@ type E2eMockControl = {
   networkMountedPaths?: Record<string, string>
   networkConnectError?: string
   networkTrashSupported?: boolean
+  trashSupported?: boolean
   networkDeleteHold?: boolean
   selectionActionsFixture?: boolean
   calls?: Array<{ cmd: string; args?: Record<string, unknown> }>
@@ -535,6 +536,9 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       return (control?.networkConnections ?? []) as T
     case 'network_delete_paths':
       return (Array.isArray(args?.paths) ? args.paths.filter(path => typeof path === 'string' && path.includes('/gvfs/')) : []) as T
+    case 'can_trash_paths':
+      return (control?.trashSupported !== false && (control?.networkTrashSupported !== false ||
+        !(Array.isArray(args?.paths) && args.paths.some(path => String(path).includes('/gvfs/'))))) as T
     case 'network_delete_entries':
       if (args?.trash === true && control?.networkTrashSupported === false && args?.confirmed !== true) throw { code: 'network_confirmation_required', message: 'Network trash is unsupported.' }
       if (args?.trash !== true && args?.confirmed !== true) throw { code: 'network_confirmation_required', message: 'Network deletion requires confirmation.' }

@@ -77,6 +77,13 @@ normal buttons. Browsey does not change compositor settings.
   modifiers and filesystem-aware defaults: move on the same filesystem,
   copy across filesystems. Cloud transfers default to copy.
 - Incoming drops from another app copy to the folder under the pointer.
+- Drop onto **Wastebasket** to move items to their storage's trash. Local and
+  removable volumes use system trash; Google Drive and OneDrive use provider
+  trash (restore there). Network and device mounts require reported trash
+  support. Unsupported drops never fall back to permanent deletion. Existing
+  undo/redo behavior is retained; cloud and remote trash do not gain local undo.
+  Copy-only drags started with Ctrl/Meta are rejected by Wastebasket; start a
+  normal drag to trash instead. Wastebasket never opens automatically on hover.
 - Hover over a destination for 850 ms to open it; drag near list/grid/sidebar
   edges to scroll. Escape cancels internal dragging.
 - Drag local files to another app without Alt. Without a start modifier,

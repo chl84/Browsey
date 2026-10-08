@@ -183,6 +183,7 @@ fn authorize(roots: &[String], command: &str, body: &Value) -> Result<Vec<String
             | "delete_entries"
             | "network_delete_entries"
             | "network_delete_paths"
+            | "can_trash_paths"
             | "set_clipboard_cmd"
             | "resolve_drop_clipboard_mode"
             | "paste_clipboard_cmd"
@@ -803,6 +804,23 @@ mod tests {
             json!({"path":"/personal/home"}),
         ] {
             assert!(authorize(&roots, "watch_dir", &body).is_err());
+        }
+    }
+
+    #[test]
+    fn trash_capability_check_is_scoped_to_explicit_owned_paths() {
+        let roots = roots();
+        let path = format!("{}/document.txt", roots[0]);
+        assert_eq!(
+            authorize(&roots, "can_trash_paths", &json!({"paths":[path.clone()]})).unwrap(),
+            vec![path]
+        );
+        for body in [
+            json!({}),
+            json!({"paths":[]}),
+            json!({"paths":["/personal/file"]}),
+        ] {
+            assert!(authorize(&roots, "can_trash_paths", &body).is_err());
         }
     }
 

@@ -1322,6 +1322,8 @@
     currentView: () => currentView,
     currentPath: () => get(current),
     getSelectedSet: () => get(selected),
+    getEntries: () => get(filteredEntries),
+    handleTrashDrop: selectionActions.trashDropped,
     loadDir: (path: string) => loadDir(path),
     isBlocked: () => get(anyModalOpenStore) || get(loading),
     isSearchActive: () => isSearchSessionEnabled,

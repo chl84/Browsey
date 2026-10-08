@@ -73,6 +73,59 @@ pub async fn network_delete_paths(paths: Vec<String>) -> ApiResult<Vec<String>> 
 }
 
 #[tauri::command]
+pub async fn can_trash_paths(paths: Vec<String>) -> ApiResult<bool> {
+    #[cfg(target_os = "linux")]
+    {
+        use gio::prelude::CancellableExt;
+        let cancel = gio::Cancellable::new();
+        let check_cancel = cancel.clone();
+        let task = tauri::async_runtime::spawn_blocking(move || {
+            linux::trash_supported(&paths, &check_cancel)
+        });
+        // A disconnected server must not hold a drag/drop gesture indefinitely.
+        let result = tokio::time::timeout(std::time::Duration::from_secs(3), task).await;
+        map_api_result(match result {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) => Err(FsError::new(
+                FsErrorCode::TaskFailed,
+                "Trash capability check failed.",
+            )),
+            Err(_) => {
+                cancel.cancel();
+                Ok(false)
+            }
+        })
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        map_api_result(
+            tauri::async_runtime::spawn_blocking(move || {
+                if paths.is_empty() {
+                    return Ok(false);
+                }
+                for raw in paths {
+                    let path = Path::new(&raw);
+                    validate_path(path)?;
+                    // Native Windows network trash is unsupported. Local volumes
+                    // still use the existing platform trash operation and undo.
+                    if path.parent().is_none()
+                        || raw.starts_with("//")
+                        || crate::entry::is_network_location(path)
+                        || std::fs::symlink_metadata(path).is_err()
+                    {
+                        return Ok(false);
+                    }
+                }
+                Ok(true)
+            })
+            .await
+            .map_err(|_| FsError::new(FsErrorCode::TaskFailed, "Trash capability check failed."))
+            .and_then(|result| result),
+        )
+    }
+}
+
+#[tauri::command]
 pub async fn network_delete_entries(
     app: tauri::AppHandle,
     paths: Vec<String>,
@@ -198,6 +251,28 @@ mod linux {
             )
             .map_err(gio_error)?;
         Ok(info.has_attribute("access::can-trash") && info.boolean("access::can-trash"))
+    }
+
+    pub(super) fn trash_supported(paths: &[String], cancel: &gio::Cancellable) -> FsResult<bool> {
+        if paths.is_empty() {
+            return Ok(false);
+        }
+        for raw in paths {
+            let path = Path::new(raw);
+            validate_path(path)?;
+            if path.parent().is_none() {
+                return Ok(false);
+            }
+            let file = if mount_root(path)?.is_some() {
+                resolve_remote(path)?
+            } else {
+                gio::File::for_path(path)
+            };
+            if !can_trash(&file, cancel)? {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 
     fn delete_tree(file: &gio::File, cancel: &gio::Cancellable) -> FsResult<()> {
@@ -474,6 +549,26 @@ mod linux {
     mod tests {
         use super::*;
         use std::cell::RefCell;
+        #[test]
+        fn trash_capability_checks_are_read_only_and_reject_invalid_paths() {
+            let cancel = gio::Cancellable::new();
+            assert!(!trash_supported(&[], &cancel).unwrap());
+            assert!(!trash_supported(&["/".into()], &cancel).unwrap());
+            assert!(trash_supported(&["relative/file".into()], &cancel).is_err());
+            assert!(trash_supported(&["/tmp/../file".into()], &cancel).is_err());
+            let root = fixture();
+            let file = root.join("document.txt");
+            std::fs::write(&file, b"unchanged contents").unwrap();
+            let _supported =
+                trash_supported(&[file.to_string_lossy().into_owned()], &cancel).unwrap();
+            assert_eq!(std::fs::read(&file).unwrap(), b"unchanged contents");
+            assert!(trash_supported(
+                &[root.join("missing").to_string_lossy().into_owned()],
+                &cancel
+            )
+            .is_err());
+            std::fs::remove_dir_all(root).unwrap();
+        }
         fn fixture() -> std::path::PathBuf {
             let stamp = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
