@@ -32,6 +32,23 @@
   "bundle": {
     "active": true,
     "targets": ["rpm", "deb"],
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0",
+          "libssl3 | libssl3t64"
+        ]
+      },
+      "rpm": {
+        "depends": [
+          "libwebkit2gtk-4.1.so.0()(64bit)",
+          "libgtk-3.so.0()(64bit)",
+          "libssl.so.3()(64bit)",
+          "libcrypto.so.3()(64bit)"
+        ]
+      }
+    },
     "icon": ["resources/icons/icon.png", "resources/icons/icon.ico"],
     "externalBin": [
       "resources/pdfium-linux-x64/lib/libpdfium.so"

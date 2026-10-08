@@ -11,8 +11,9 @@ repository-pinned npm Tauri CLI instead of assuming a separately installed
 
 - Rust stable through rustup, at least 1.95 for the current dependency stack.
 - Node.js LTS and npm (CI uses Node 22).
-- A C/C++ toolchain, pkg-config, GTK 3, WebKitGTK 4.1 and D-Bus development
-  libraries. RPM/DEB bundling also needs the platform's packaging tools.
+- A C/C++ toolchain, pkg-config, GTK 3, WebKitGTK 4.1, D-Bus and OpenSSL 3
+  development libraries (`libssl-dev` on Ubuntu/Debian or `openssl-devel` on
+  Fedora). RPM/DEB bundling also needs the platform's packaging tools.
 
 Use the [official Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
 for your distribution. Browsey's CI additionally installs D-Bus headers and
@@ -109,6 +110,11 @@ measurements and native-candidate checks.
 
 ## Version bumps and publication
 
+A completed Linux release includes a tested tag, production RPM and DEB
+packages, verified `SHA256SUMS` and a published GitHub release containing all
+three assets. Updating version metadata alone is release preparation. RPM/DEB
+building and package verification are required parts of the release flow.
+
 Replace `X.Y.Z` with a higher stable version. Preview first, then choose one
 apply command (not both):
 
@@ -138,6 +144,25 @@ does not build packages. Inspect package metadata/startup and verify
 `SHA256SUMS`, then publish a reviewed GitHub release with RPM/DEB/checksums.
 Record platform/provider limitations and do not overwrite old notes, tags,
 or assets. Do not restart an installed app during active file operations.
+
+Dispatch the existing packaging workflow after the tested tag is pushed:
+
+```bash
+gh workflow run release-linux.yml --ref main -f tag=vX.Y.Z
+gh run list --workflow release-linux.yml
+# Use the completed successful run ID from the list:
+gh run download RUN_ID -n browsey-linux-vX.Y.Z -D release-assets
+cd release-assets
+sha256sum --check SHA256SUMS
+```
+
+The workflow checks both package versions/dependencies and smoke-tests an
+extracted DEB executable before producing the artifact. Inspect the downloaded
+packages and record their exact checksums in the release notes. Complete clean
+installation/upgrade checks separately for any distribution claims. Create a
+draft release, upload both packages and `SHA256SUMS`, verify the uploaded assets,
+and publish the reviewed draft. The packaging workflow does not publish a
+release automatically.
 
 Regression tests: `node --test scripts/release/bump.test.mjs`.
 
