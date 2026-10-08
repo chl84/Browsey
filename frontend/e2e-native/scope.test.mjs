@@ -81,3 +81,13 @@ test('candidate profile does not inherit personal credential/config variables', 
   assert.equal(env.HOME, `${profile}/home`)
   for (const key of ['SSH_AUTH_SOCK', 'AWS_SECRET_ACCESS_KEY', 'RCLONE_CONFIG_PASS', 'NODE_OPTIONS']) assert.equal(env[key], undefined)
 })
+
+
+test('Drive fixture addresses preserve names while rejecting traversal and ambiguous framing', () => {
+  const raw='rclone://Test//gdrive/root-id~ai_agent_testfolder/file-id~first+%C3%A6+%23%3F%25%2B+spaced.txt'
+  assert.equal(ownedPath([cloud],raw),raw)
+  for(const name of ['%2E%2E','%2Fpersonal','%00bad','bad%5Cpath'])assert.throws(()=>ownedPath([cloud],`rclone://Test//gdrive/~ai_agent_testfolder/file-id~${name}`))
+  assert.throws(()=>ownedPath([cloud],raw+'//gdrive/~ignored'))
+  assert.throws(()=>config({local,cloudPeer:cloud}))
+  assert.throws(()=>validateConfig({schema:1,targets:{local,cloud},cloudPeer:cloud,rcloneConfig:local+'/rclone.conf'}))
+})

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Copy cloud files and folders between Browsey instances on Linux, including
+  OneDrive ↔ Google Drive. Preserve Drive object IDs, verify the source account
+  before transfer, and reuse conflicts, progress and cancellation. Incoming
+  cloud references cannot move or trash originals; ordinary local drags incur
+  no new account checks, downloads or background polling.
+
 - Accept drag-and-drop onto Wastebasket for storage with trash support. Check
   capabilities only on demand, retain existing undo/redo and provider trash
   behavior, and reject unsupported drops without offering permanent deletion.

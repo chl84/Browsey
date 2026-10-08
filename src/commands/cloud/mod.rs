@@ -4,6 +4,8 @@
 pub(crate) mod acceptance_tests;
 mod cache;
 mod conflicts;
+mod drag;
+pub use drag::{prepare_cloud_drag, release_cloud_drag, resolve_cloud_drag};
 mod error;
 mod events;
 mod limits;

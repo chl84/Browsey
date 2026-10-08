@@ -48,6 +48,17 @@ fn file_uris(envelope: &str) -> Option<Vec<String>> {
 
 fn rewrite_file_data(data: &gtk::SelectionData, transfer: &RefCell<Option<portal::Transfer>>) {
     let uris = data.uris();
+    // Cloud offers contain only an opaque Browsey reference, never filesystem
+    // URIs or downloadable credentials. File portals cannot export them.
+    if uris
+        .iter()
+        .any(|uri| uri.starts_with("browsey-drag://cloud/"))
+    {
+        if portal::is_target(data.target().name().as_str()) {
+            data.set(&data.target(), 8, &[]);
+        }
+        return;
+    }
     if uris.len() != 1 || !uris[0].starts_with(PREFIX) {
         return;
     }

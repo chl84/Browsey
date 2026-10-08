@@ -38,7 +38,12 @@ export function validateConfig(value) {
     assert.ok(inside(local.path, value.rcloneConfig) && value.rcloneConfig !== local.path,
       'An explicitly approved test-only rclone config must be inside the local ai_agent_testfolder')
   }
-  return { targets, matrix, rcloneConfig: value.rcloneConfig ?? null }
+  if (value.cloudPeer) {
+    const parts = validatePath(value.cloudPeer, true)
+    assert.equal(parts.at(-1), folderName)
+    assert.ok(targets.some(t => t.kind === 'cloud') && !targets.some(t => t.path === value.cloudPeer))
+  }
+  return { targets, matrix, rcloneConfig: value.rcloneConfig ?? null, cloudPeer: value.cloudPeer ?? null }
 }
 
 export function inside(root, candidate) {
@@ -46,9 +51,24 @@ export function inside(root, candidate) {
 }
 
 export function ownedPath(roots, candidate) {
-  validatePath(candidate)
-  assert.ok(roots.some(root => inside(root, candidate)), 'Refusing access outside this owned native run')
+  const canonical = cloudCanonicalPath(candidate)
+  validatePath(canonical)
+  assert.ok(roots.some(root => inside(root, canonical)), 'Refusing access outside this owned native run')
   return candidate
+}
+
+export function cloudCanonicalPath(raw) {
+  if (!raw.startsWith('rclone://') || !raw.includes('//gdrive/')) return raw
+  const segments=raw.slice(9).split('//gdrive/');assert.equal(segments.length,2)
+  const [remote, encoded] = segments
+  assert.ok(remote && encoded)
+  const names = encoded.split('/').map(segment => {
+    const split = segment.indexOf('~');assert.ok(split >= 0)
+    const name = decodeURIComponent(segment.slice(split + 1).replace(/\+/g,' '))
+    assert.ok(name && !/[/\\\0]/.test(name) && name !== '.' && name !== '..')
+    return name
+  })
+  return `rclone://${remote}/${names.join('/')}`
 }
 
 export function child(root, leaf) {

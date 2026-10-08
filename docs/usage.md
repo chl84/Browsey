@@ -77,6 +77,11 @@ normal buttons. Browsey does not change compositor settings.
   modifiers and filesystem-aware defaults: move on the same filesystem,
   copy across filesystems. Cloud transfers default to copy.
 - Incoming drops from another app copy to the folder under the pointer.
+- On Linux, drag cloud files or folders directly to another Browsey window.
+  Both windows must use matching rclone configuration for the source remote,
+  including the same account and root. OneDrive → Google Drive and Google Drive → OneDrive are supported.
+  Incoming cloud drops always copy, including with Shift, and cannot target
+  Wastebasket. Conflicts, progress and cancellation use the normal transfer UI.
 - Drop onto **Wastebasket** to move items to their storage's trash. Local and
   removable volumes use system trash; Google Drive and OneDrive use provider
   trash (restore there). Network and device mounts require reported trash

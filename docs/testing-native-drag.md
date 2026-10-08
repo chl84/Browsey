@@ -5,8 +5,9 @@ advertises copy and move; the receiver chooses the action and performs the opera
 Ctrl/Meta held at start limits the offer to copy; Shift limits it to move. That
 explicit action also remains fixed for internal drops, keeping the cursor/offer
 and operation consistent. Otherwise internal drops still use live modifiers.
-Browsey does not delete sources on drag completion. Cloud selections remain
-internal-only until downloaded to a local folder.
+Browsey does not delete sources on drag completion. On Linux, cloud selections
+can also be copied directly to another Browsey instance with matching source
+rclone configuration. Other applications still require a prepared local copy.
 
 ## Window teardown crash
 
@@ -53,6 +54,44 @@ Returning native self-drops retain the internal source snapshot/modifiers and
 use the existing transfer/conflict workflow exactly once. Incoming external drops
 remain copy-only. Other platform webviews receive standard URI lists but are not
 covered by the Linux native test.
+
+## Cloud copies between instances
+
+Cloud drags use a single opaque `browsey-drag://cloud/<token>` offer, preserving
+original Drive object IDs in private metadata. Registration and account checks
+run on blocking workers. Hover resolves the selection once; drop verifies the
+source configuration afresh before the existing copy/conflict workflow. Shift
+cannot turn an incoming cloud copy into a move, and Wastebasket rejects it.
+Normal local drags do not register cloud metadata or execute rclone.
+
+The source and receiver must share a private runtime/cache namespace and matching
+source rclone configuration, including remote name, account credentials and root.
+Access-token refresh is ignored; separately authenticated configurations can be
+rejected even when they access the same account. References expire after two
+minutes; ordinary drag completion releases them after a short delivery grace.
+The GTK bridge passes these offers through without exporting portal files or
+adding Tauri handles/channels to GTK callbacks.
+
+The explicit isolated native suite uses a test-only rclone configuration and two
+approved cloud roots named `Onedrive` and `Google Disk`. Add `cloudPeer` to the
+usual local/cloud config, pointing to the second
+`rclone://Remote/ai_agent_testfolder`, then run:
+
+```sh
+node frontend/e2e-native/isolated.mjs --suite cloud-drag --targets local,cloud --config frontend/e2e-native/config.cloud-drag.local.json
+```
+
+Only this suite admits the second cloud target and reference commands. Its private
+Drive ID catalog binds independently listed IDs to generated paths under the
+exact owned run; spelling an owned-looking name cannot authorize another ID.
+The source and receiver run as separate Browsey processes on an isolated desktop.
+
+The 2026-10-08 native run passed OneDrive → Google Drive and Google Drive →
+OneDrive (including Shift), files, nested folders, empty folders, Unicode/reserved
+names, cancelled drag and cancelled name conflict. Independent readback verified
+source preservation and destination bytes. The separate local native regression
+also passed two-window copies, a real Nautilus copy and active-drag teardown.
+This does not establish direct cloud dragging into Nautilus.
 
 ## Automated checks
 

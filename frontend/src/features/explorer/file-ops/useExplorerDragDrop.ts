@@ -8,7 +8,8 @@ import { findDropTarget, isDropDirectoryPath, wastebasketDropPath } from './drop
 import { canTrashPaths } from '../services/trash.service'
 import { normalizePath } from '../utils'
 import { resolveDropClipboardMode, type PasteSources } from '../services/clipboard.service'
-import { fileDragStartMode } from './fileDragPayload'
+import { fileDragStartMode, hasNativeFileDragBridge } from './fileDragPayload'
+import { cloudDragToken, isCloudDragOffer, prepareCloudDrag, resolveCloudDrag } from './cloudDrag'
 import type { Entry } from '../model/types'
 import type { CurrentView } from '../context/createContextActions'
 
@@ -43,6 +44,17 @@ export const useExplorerDragDrop = (deps: Deps) => {
   const dragGhostVisible = writable(false)
   let dragPaths: string[] = []
   let external = false
+  let cloudSource: ReturnType<typeof prepareCloudDrag> | null = null
+  let incomingCloudToken: string | null = null
+  let incomingCloud: Promise<string[]> | null = null
+  const receivedCloud = new Map<string, number>()
+  const consumeCloud = (token: string) => {
+    for (const [offer, expiry] of receivedCloud) if (expiry < Date.now()) receivedCloud.delete(offer)
+    if (receivedCloud.has(token)) return false
+    if (receivedCloud.size >= 128) receivedCloud.delete(receivedCloud.keys().next().value!)
+    receivedCloud.set(token, Date.now() + 120_000)
+    return true
+  }
   let sourceOutside = false
   let navigating = false
   let transferring = false
@@ -56,7 +68,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
   let listening = false
   // WebKitGTK can finish the DOM source before Tauri delivers its native drop.
   // Keep only a successful same-window completion, never an abandoned offer.
-  let completedDrop: { paths: string[]; dest: string; point: DropPosition; mode: Mode | null; expires: number } | null = null
+  let completedDrop: { paths: string[]; dest: string; point: DropPosition; mode: Mode | null; expires: number; cloudToken?: string } | null = null
   const modeCache = new Map<string, Promise<Mode>>()
   const resolvedModes = new Map<string, Mode>()
   let sourceEntries = new Map<string, Entry>()
@@ -92,6 +104,10 @@ export const useExplorerDragDrop = (deps: Deps) => {
   })
 
   const handleRowDragEnd = () => {
+    cloudSource?.release()
+    cloudSource = null
+    incomingCloudToken = null
+    incomingCloud = null
     completedDrop = null
     session += 1
     dragPaths = []
@@ -151,7 +167,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
   const canDrop = (paths: string[], dest: string) => {
     if (blocked() || !paths.length || mixedSelection(paths)) return false
     if (dest === wastebasketDropPath) {
-      if (sourceMode === 'copy') return false
+      if (sourceMode === 'copy' || incomingCloudToken) return false
       void checkTrash(paths)
       return trashResults.get(JSON.stringify(paths)) === true
     }
@@ -246,7 +262,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
     if (transferring) return
     const trash = dest === wastebasketDropPath
     const accepted = dest !== null && (trash
-      ? !blocked() && sourceMode !== 'copy' && paths.length > 0 && !mixedSelection(paths) && !!deps.handleTrashDrop
+      ? !blocked() && sourceMode !== 'copy' && !incomingCloudToken && paths.length > 0 && !mixedSelection(paths) && !!deps.handleTrashDrop
       : canDrop(paths, dest))
     const token = session
     hidePreview()
@@ -254,6 +270,9 @@ export const useExplorerDragDrop = (deps: Deps) => {
       handleRowDragEnd()
       return
     }
+    // A DOM self-drop may finish before its duplicate native event arrives.
+    // Remember the opaque offer too, not just the original cloud paths.
+    if (cloudSource) consumeCloud(cloudSource.token)
     transferring = true
     try {
       if (trash) {
@@ -277,9 +296,41 @@ export const useExplorerDragDrop = (deps: Deps) => {
     }
   }
 
+  const receiveCloudHover = (token: string, point: DropPosition) => {
+    if (incomingCloudToken !== token) {
+      handleRowDragEnd()
+      external = true
+      incomingCloudToken = token
+      const generation = session
+      incomingCloud = resolveCloudDrag(token, false)
+      void incomingCloud.then(paths => {
+        if (generation !== session || incomingCloudToken !== token || transferring) return
+        dragPaths = [...paths]
+        dragState.set({ dragging: true, paths: [...paths], target: null, position: lastPoint ?? point })
+        if (lastPoint) updateAt(lastPoint)
+      }).catch(() => {
+        if (generation === session && !transferring) clearTarget()
+      })
+    }
+    lastPoint = point
+    if (dragPaths.length) updateAt(point)
+  }
+
   const nativeDrop = createNativeFileDrop({
     onHover: (paths, point) => {
       if (transferring) return
+      const cloudToken = cloudDragToken(paths)
+      if (cloudToken) {
+        if (receivedCloud.has(cloudToken)) { hidePreview(); return }
+        if (cloudSource?.token === cloudToken) updateAt(point)
+        else receiveCloudHover(cloudToken, point)
+        return
+      }
+      if (isCloudDragOffer(paths)) { clearTarget(); return }
+      if (paths.some(isCloudPath)) {
+        clearTarget()
+        return
+      }
       if (dragPaths.length && !external) {
         if (paths.length === dragPaths.length && paths.every((path, i) => path === dragPaths[i])) {
           updateAt(point)
@@ -304,6 +355,44 @@ export const useExplorerDragDrop = (deps: Deps) => {
     onDrop: async (paths, point) => {
       if (transferring) return
       const dest = blocked() ? null : targetAt(point)?.path ?? null
+      const cloudToken = cloudDragToken(paths)
+      if (cloudToken) {
+        const completed = completedDrop
+        completedDrop = null
+        if (completed?.cloudToken === cloudToken && completed.expires >= Date.now()
+          && dest === completed.dest && point.x === completed.point.x && point.y === completed.point.y) {
+          if (!consumeCloud(cloudToken)) return
+          await performDrop(dest, completed.paths, noModifiers, false, completed.mode)
+          return
+        }
+        if (cloudSource?.token === cloudToken) {
+          await performDrop(dest, [...dragPaths], modifiers, false)
+          return
+        }
+        if (!dest || dest === wastebasketDropPath) { handleRowDragEnd(); return }
+        if (!consumeCloud(cloudToken)) { handleRowDragEnd(); return }
+        // Verification is fresh at drop, before conflict checks or any writes.
+        // Native incoming references have no authority to move or trash originals.
+        const generation = session
+        transferring = true
+        hidePreview()
+        try {
+          const sources = await resolveCloudDrag(cloudToken, true)
+          if (generation !== session || deps.isBlocked()) return
+          transferring = false
+          incomingCloudToken = cloudToken
+          await performDrop(dest, sources, noModifiers, true, 'copy')
+        } finally {
+          transferring = false
+          handleRowDragEnd()
+        }
+        return
+      }
+      if (isCloudDragOffer(paths)) { handleRowDragEnd(); return }
+      if (paths.some(isCloudPath)) {
+        handleRowDragEnd()
+        return
+      }
       const completed = completedDrop
       completedDrop = null
       if (completed && completed.expires >= Date.now() && dest === completed.dest
@@ -348,7 +437,14 @@ export const useExplorerDragDrop = (deps: Deps) => {
     }
     sourceMode = paths.some(isCloudPath) ? null : fileDragStartMode(event)
     modifiers = event
-    dragDrop.start(paths, event)
+    if (paths.every(isCloudPath) && hasNativeFileDragBridge()) {
+      const offer = prepareCloudDrag(paths)
+      cloudSource = offer
+      void offer.ready.catch(error => {
+        if (cloudSource === offer) deps.showToast(`Cloud drag unavailable: ${getErrorMessage(error)}`)
+      })
+    }
+    dragDrop.start(paths, event, cloudSource?.payload)
     dragGhostVisible.set(get(dragState).dragging)
   }
 
@@ -410,7 +506,8 @@ export const useExplorerDragDrop = (deps: Deps) => {
       && event?.dataTransfer?.dropEffect !== undefined
     const completed = successful ? { paths: [...dragPaths], dest, point: { ...lastPoint! },
       mode: sourceMode ?? (modifiers.ctrlKey || modifiers.metaKey ? 'copy' : modifiers.shiftKey ? 'cut'
-        : resolvedModes.get(JSON.stringify([dragPaths, dest])) ?? null), expires: Date.now() + 2000 } : null
+        : resolvedModes.get(JSON.stringify([dragPaths, dest])) ?? null), expires: Date.now() + 2000,
+      cloudToken: cloudSource?.token } : null
     handleRowDragEnd()
     completedDrop = completed
   }

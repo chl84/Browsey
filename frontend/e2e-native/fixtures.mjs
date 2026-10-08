@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { randomUUID } from 'node:crypto'
 import { child, noLinks, ownedPath, inside } from './scope.mjs'
-import { assertPrivateFile, makeOwner } from './privacy.mjs'
+import { assertPrivateFile, makeOwner, writePrivate } from './privacy.mjs'
 
 const exec = promisify(execFile)
 export const payload = 'Browsey native fixture: generated, non-personal data.\n'.repeat(64)
@@ -81,6 +81,48 @@ export class Fixtures {
     // Only the approved test directory is listed; no parent/account discovery.
     assert.ok(!existing.some(entry => entry.Name === target.run.split('/').at(-1)), 'Run collision')
     await this.#rclone(['mkdir', rclonePath(target.files)])
+  }
+
+  async registerCloudDragIds() {
+    // Independently bind IDs to generated names; never authorize a Drive ID by
+    // its display name alone. This catalog is visible only in the private run.
+    const catalog = {}, pending = this.targets.filter(t=>t.kind==='cloud').map(t=>t.files)
+    for(const target of this.targets.filter(t=>t.path.startsWith('rclone://Google Disk/'))) {
+      // lsjson --stat deliberately omits directory IDs. Query only the exact
+      // generated ancestor names; never enumerate the account's other files.
+      let parent='root'
+      for(const raw of [target.path,target.run,target.files]) {
+        const name=raw.split('/').at(-1);assert.match(name,/^[a-zA-Z0-9_.-]+$/)
+        const query=`'${parent}' in parents and name = '${name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`
+        const entries=JSON.parse(await this.#rclone(['backend','query',rclonePath(target.path),query]))
+        assert.equal(entries.length,1,'Exact generated Drive ancestor required');assert.match(entries[0].id,/^[a-zA-Z0-9_-]+$/)
+        parent=entries[0].id;catalog[raw]=parent
+      }
+    }
+    let count = 0
+    while (pending.length) {
+      const raw = pending.shift();ownedPath(this.roots,raw)
+      for (const entry of JSON.parse(await this.#rclone(['lsjson',rclonePath(raw)]))) {
+        assert.ok(++count <= 64 && entry.Name && !/[/\\\0]/.test(entry.Name))
+        const name = child(raw,entry.Name)
+        if (entry.ID) catalog[name] = entry.ID
+        if (entry.IsDir) pending.push(name)
+      }
+    }
+    const file = `${this.env.XDG_DATA_HOME}/cloud-drag-ids.json`
+    await writePrivate(file,JSON.stringify(catalog))
+  }
+
+  async uploadCloudDragTree(raw, entries) {
+    ownedPath(this.roots,raw);assert.ok(raw.startsWith('rclone://') && entries.size <= 16)
+    const staging=child(this.local.files,`cloud-drag-fixtures-${randomUUID()}`)
+    await this.mkdir(staging)
+    for(const [relative,bytes] of entries) {
+      const parts=relative.split('/');assert.ok(parts.every(name=>name && !/[\\\0]/.test(name) && name!=='.' && name!=='..'))
+      let dest=staging;for(const name of parts)dest=child(dest,name)
+      if(bytes===null)await this.mkdir(dest);else {assert.ok(Buffer.isBuffer(bytes));await this.write(dest,bytes)}
+    }
+    await this.#rclone(['copy',staging,rclonePath(raw),'--immutable','--create-empty-src-dirs'])
   }
 
   async mkdir(raw) {
@@ -174,8 +216,8 @@ export async function createLocalSession(plan, config, { step = async (_metadata
       const credential = await regularFile(config.rcloneConfig)
       assert.equal(credential.stat.mode & 0o777, 0o600, 'Test credential config must have mode 600')
       const sections = [...credential.text.matchAll(/^\[([^\]\r\n]+)\]\s*$/gm)].map(match => match[1])
-      const cloud = plan.targets.find(target => target.kind === 'cloud')
-      assert.deepEqual(sections, [cloud.path.slice(9).split('/')[0]], 'Only the explicitly approved remote may be present')
+      const remotes = plan.targets.filter(target => target.kind === 'cloud').map(cloud=>cloud.path.slice(9).split('/')[0])
+      assert.deepEqual(sections.toSorted(), remotes.toSorted(), 'Only the explicitly approved remote may be present')
       cloudConfig = credential.text
     })
   }

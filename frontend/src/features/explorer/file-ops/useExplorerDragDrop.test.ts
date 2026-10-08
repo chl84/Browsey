@@ -5,6 +5,13 @@ const setClipboardPathsStateMock = vi.fn()
 const setClipboardCmdMock = vi.fn()
 const resolveDropClipboardModeMock = vi.fn()
 const canTrashPathsMock = vi.fn()
+const resolveCloudDragMock = vi.fn()
+const prepareCloudDragMock = vi.fn()
+vi.mock('./cloudDrag', async () => {
+  const actual = await vi.importActual<typeof import('./cloudDrag')>('./cloudDrag')
+  return { ...actual, resolveCloudDrag: (...args: unknown[]) => resolveCloudDragMock(...args),
+    prepareCloudDrag: (...args: unknown[]) => prepareCloudDragMock(...args) }
+})
 vi.mock('../services/trash.service', () => ({ canTrashPaths: (...args: unknown[]) => canTrashPathsMock(...args) }))
 let onNativeDrop: (paths: string[], point: { x: number; y: number }) => Promise<void>
 let onNativeHover: (paths: string[], point: { x: number; y: number }) => void
@@ -710,5 +717,82 @@ describe('drop policy and destination safety', () => {
     finish(true)
     await drop
     expect(get(hook.dragState).dragging).toBe(false)
+  })
+})
+
+describe('cross-instance cloud copies', () => {
+  const token = 'ab'.repeat(32)
+  const offer = [`browsey-drag://cloud/${token}`]
+  const source = 'rclone://Google Disk//gdrive/~folder/selected-id~same%20name.txt'
+  beforeEach(() => { vi.clearAllMocks(); resolveCloudDragMock.mockResolvedValue([source]) })
+  afterEach(() => { document.body.innerHTML = '' })
+  const setup = (dest = 'rclone://Onedrive/destination') => {
+    const background = document.createElement('div'); background.dataset.dropPath = dest; document.body.appendChild(background)
+    document.elementFromPoint = vi.fn(() => background)
+    const paste = vi.fn(async () => true), trash = vi.fn(async () => true), toast = vi.fn()
+    const drag = useExplorerDragDrop({ currentView: () => 'dir', currentPath: () => dest,
+      getSelectedSet: () => new Set(), loadDir: vi.fn(async () => {}), isBlocked: () => false,
+      isSearchActive: () => false, handlePasteOrMove: paste, handleTrashDrop: trash, showToast: toast })
+    return { drag, paste, trash, toast }
+  }
+  it('verifies at drop, preserves the Google Drive identity and copies once', async () => {
+    const { drag, paste } = setup()
+    onNativeHover(offer, { x: 12, y: 24 })
+    await Promise.resolve(); await Promise.resolve()
+    expect(get(drag.dragState).paths).toEqual([source])
+    await onNativeDrop(offer, { x: 12, y: 24 })
+    expect(resolveCloudDragMock).toHaveBeenLastCalledWith(token, true)
+    expect(paste).toHaveBeenCalledExactlyOnceWith('rclone://Onedrive/destination', { paths: [source], mode: 'copy' })
+    await onNativeDrop(offer, { x: 12, y: 24 })
+    expect(paste).toHaveBeenCalledTimes(1)
+  })
+  it('keeps an internal cloud move and ignores its late native duplicate', async () => {
+    vi.useFakeTimers()
+    Object.defineProperty(window, '__BROWSEY_FILE_DRAG_BRIDGE__', { value: true, configurable: true })
+    try {
+      const { drag, paste } = setup()
+      const release = vi.fn()
+      prepareCloudDragMock.mockReturnValue({ token, payload: offer[0], ready: Promise.resolve(), release })
+      drag.handleRowDragStart({ path: source, kind: 'file', name: 'same name.txt' } as never, createDragEvent({ shiftKey: true }))
+      await drag.handleBookmarkDrop('rclone://Onedrive/destination', createDragEvent({ shiftKey: true }))
+      expect(paste).toHaveBeenCalledExactlyOnceWith('rclone://Onedrive/destination', { paths: [source], mode: 'cut' })
+      await onNativeDrop(offer, { x: 12, y: 24 })
+      expect(paste).toHaveBeenCalledTimes(1)
+      expect(resolveCloudDragMock).not.toHaveBeenCalled()
+      expect(release).toHaveBeenCalledTimes(1)
+      vi.runAllTimers()
+    } finally {
+      Reflect.deleteProperty(window, '__BROWSEY_FILE_DRAG_BRIDGE__')
+      vi.clearAllTimers(); vi.useRealTimers()
+    }
+  })
+  it('refuses Wastebasket without resolving or deleting a cross-instance offer', async () => {
+    const { paste, trash } = setup('trash://')
+    await onNativeDrop(offer, { x: 12, y: 24 })
+    expect(resolveCloudDragMock).not.toHaveBeenCalled()
+    expect(paste).not.toHaveBeenCalled(); expect(trash).not.toHaveBeenCalled()
+  })
+  it('account verification failures cannot start a transfer', async () => {
+    const { paste, drag } = setup()
+    resolveCloudDragMock.mockRejectedValue(new Error('account mismatch'))
+    await expect(onNativeDrop(offer, { x: 12, y: 24 })).rejects.toThrow('account mismatch')
+    expect(paste).not.toHaveBeenCalled(); expect(get(drag.dragState).dragging).toBe(false)
+  })
+  it('ignores late metadata after leave and rejects unverified raw cloud paths', async () => {
+    const { drag, paste } = setup()
+    let finish!: (paths: string[]) => void
+    resolveCloudDragMock.mockReturnValue(new Promise<string[]>(resolve => { finish = resolve }))
+    onNativeHover(offer, { x: 12, y: 24 }); onNativeLeave(); finish([source]); await Promise.resolve()
+    expect(get(drag.dragState).dragging).toBe(false)
+    await onNativeDrop([source], { x: 12, y: 24 })
+    await onNativeDrop(['browsey-drag://cloud/bad'], { x: 12, y: 24 })
+    expect(paste).not.toHaveBeenCalled()
+  })
+  it('does not mistake an unverified cloud URI for an active source returning', async () => {
+    const { drag, paste } = setup()
+    drag.handleRowDragStart({ path: source, kind: 'file', name: 'same name.txt' } as never, createDragEvent())
+    onNativeLeave()
+    await onNativeDrop([source], { x: 12, y: 24 })
+    expect(paste).not.toHaveBeenCalled()
   })
 })

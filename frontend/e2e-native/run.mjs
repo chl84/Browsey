@@ -117,6 +117,11 @@ async function main() {
     'Owned process interruption requires --targets local without provider subprocesses')
   if (options.suite === 'links') assert.deepEqual(config.targets.map(t => t.kind), ['local'],
     'Owned leaf-link acceptance requires --targets local; other providers are deferred')
+  if (options.suite === 'cloud-drag') {
+    assert.deepEqual(config.targets.map(t=>t.kind), ['local','cloud'])
+    assert.ok(config.cloudPeer, 'Explicit second cloud root required')
+    config.targets.push({kind:'cloud',path:config.cloudPeer})
+  }
   const plan = makePlan(config, options.runId??randomUUID())
   if (mode === '--plan') {
     const cases = suites[options.suite].manifest(plan).map(item => ({id: item.id, acceptanceRows: acceptanceRows(item.sourceCaseId ?? item.id)}))
@@ -206,7 +211,7 @@ async function main() {
     // structured report; failures afterward retain it in the owned local run.
     await setup(shared('harness-identity'), async () => {
       const harnessHash = createHash('sha256')
-      for (const file of ['cloud-trash.mjs','cloud-export.mjs','cloud-scale.mjs','cloud-race.mjs','storage-performance.mjs','../../tests/support/native_fixture_cache.py','acceptance-map.mjs','catalog.mjs','metrics.mjs','measurements.mjs','repeatability.mjs','tiers.mjs','../../tests/support/native_fixture_archives.py','archives.mjs','open-with.mjs','../../tests/support/native_fixture_x11.py','watchers.mjs','appearance.mjs','keyboard.mjs','desktop-services.mjs','feedback.mjs','desktop-apps.mjs','desktop-bootstrap.mjs','isolated.mjs','desktop.mjs','drag.mjs','cloud-provider.mjs', 'cloud-workspaces.mjs', 'mobile-thumbnails.mjs', 'provider-images.mjs', 'provider-fixtures.mjs', 'providers.mjs', 'links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+      for (const file of ['cloud-drag.mjs','cloud-trash.mjs','cloud-export.mjs','cloud-scale.mjs','cloud-race.mjs','storage-performance.mjs','../../tests/support/native_fixture_cache.py','acceptance-map.mjs','catalog.mjs','metrics.mjs','measurements.mjs','repeatability.mjs','tiers.mjs','../../tests/support/native_fixture_archives.py','archives.mjs','open-with.mjs','../../tests/support/native_fixture_x11.py','watchers.mjs','appearance.mjs','keyboard.mjs','desktop-services.mjs','feedback.mjs','desktop-apps.mjs','desktop-bootstrap.mjs','isolated.mjs','desktop.mjs','drag.mjs','cloud-provider.mjs', 'cloud-workspaces.mjs', 'mobile-thumbnails.mjs', 'provider-images.mjs', 'provider-fixtures.mjs', 'providers.mjs', 'links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
         harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
       }
       harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))
@@ -224,7 +229,7 @@ async function main() {
       activeCreated = true
     } })
     session = { runId: plan.runId, dataRoots: plan.targets.map(target => target.files), profile,
-      ...(['desktop-services','watchers','archives','open-with','cloud-export','cloud-trash'].includes(options.suite)?{desktop:options.suite}:{}),
+      ...(['desktop-services','watchers','archives','open-with','cloud-export','cloud-trash','cloud-drag'].includes(options.suite)?{desktop:options.suite}:{}),
       ...(['cloud-provider','cloud-working'].includes(options.suite) ? { workspaceSource: cloudLocations(plan).source } : {}),
       ...(options.suite === 'links' ? { links: linkPlan(plan) } : {}),
       ...(['cloud-provider','cloud-working'].includes(options.suite) ? { probes: cloudProbes(plan) } : options.suite === 'network' ? { probes: networkProbes(plan) } : options.suite === 'watchers' ? {probes:watchersProbes(plan)} : options.suite === 'measurements' ? {probes:measurementProbes(plan)} : options.suite === 'appearance' ? {probes:appearanceProbes(plan)} : options.suite === 'keyboard' ? {probes:keyboardProbes(plan)} : options.suite === 'progress' ? { probes: progressProbes(plan) } : options.suite === 'cancellation' ? { probes: cancellationProbes(plan) } : options.suite === 'overwrite' ? { probes: overwriteProbes(plan) } : options.suite === 'moves' ? { probes: moveProbes(plan) } : options.suite === 'iofaults' ? { probes: ioFaultProbes(plan) } : options.suite === 'cloud-race' ? { probes: cloudRaceProbes(plan) } : options.suite === 'races' ? { probes: raceProbes(plan) } : options.suite === 'interruption' ? { probes: interruptionProbes(plan) } : {}),
@@ -255,8 +260,8 @@ async function main() {
       report.tools = { tauriDriverSha256: await fileSha256(await fs.realpath(tools.driver)),
         webkitDriverSha256: await fileSha256(await fs.realpath(tools.webkit)) }
     })
-    for (const target of plan.targets.filter(target => target.kind === 'cloud')) {
-      await setup({ id: 'owned-run-cloud', providers: ['cloud'] }, () => fixture.ensureCloudRoot(target))
+    for (const [index,target] of plan.targets.filter(target => target.kind === 'cloud').entries()) {
+      await setup({ id: plan.targets.filter(t=>t.kind==='cloud').length>1?`owned-run-cloud-${index}`:'owned-run-cloud', providers: ['cloud'] }, () => fixture.ensureCloudRoot(target))
     }
     const startDriver = async () => {
       driver = spawn(tools.driver, ['--port', String(driverPorts[0]), '--native-host', '127.0.0.1', '--native-port', String(driverPorts[1]), '--native-driver', tools.webkit],

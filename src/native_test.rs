@@ -2,6 +2,7 @@
 //! Production builds contain neither the test overrides nor the environment hook.
 use serde_json::Value;
 mod archives;
+mod cloud_drag;
 mod cloud_trash;
 mod desktop;
 mod export;
@@ -61,6 +62,16 @@ fn validate_root(root: &str, run_id: &str) -> Result<(), &'static str> {
 }
 
 fn check_path(roots: &[String], raw: &str) -> Result<(), &'static str> {
+    if raw.starts_with("rclone://") && raw.contains("//gdrive/") {
+        let path = crate::commands::cloud::path::CloudPath::parse(raw)
+            .map_err(|_| "Invalid Drive fixture path")?;
+        let canonical = format!("rclone://{}/{}", path.remote(), path.rel_path());
+        check_path(roots, &canonical)?;
+        #[cfg(feature = "native-test")]
+        return cloud_drag::verify_ids(&path, &cloud_drag::catalog()?);
+        #[cfg(not(feature = "native-test"))]
+        return Err("Drive identity fixtures require the opt-in candidate");
+    }
     segments(raw)?;
     if roots.iter().any(|root| owns(root, raw)) {
         Ok(())
@@ -485,6 +496,13 @@ mod enabled {
         desktop: Option<String>,
     }
     static SESSION: OnceCell<Session> = OnceCell::new();
+    pub(super) fn cloud_drag_catalog_file() -> Result<std::path::PathBuf, &'static str> {
+        let session = SESSION.get().ok_or("Missing native-test session")?;
+        if session.desktop.as_deref() != Some("cloud-drag") {
+            return Err("Drive ID fixtures require cloud-drag mode");
+        }
+        Ok(Path::new(&session.profile).join("data/cloud-drag-ids.json"))
+    }
     static FAULTS: OnceCell<Vec<OwnedFault>> = OnceCell::new();
 
     pub(crate) fn initialize() -> Result<(), &'static str> {
@@ -636,6 +654,14 @@ mod enabled {
                 command,
                 body,
             )
+            .or_else(|| {
+                cloud_drag::authorize(
+                    &session.data_roots,
+                    session.desktop.as_deref(),
+                    command,
+                    body,
+                )
+            })
             .or_else(|| {
                 cloud_trash::authorize(
                     &session.data_roots,

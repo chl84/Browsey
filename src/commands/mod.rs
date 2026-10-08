@@ -37,10 +37,11 @@ pub use cloud::{
     copy_cloud_entry, create_cloud_file, create_cloud_folder, delete_cloud_dir_empty,
     delete_cloud_dir_recursive, delete_cloud_file, extract_cloud_archive, list_cloud_entries,
     list_cloud_remotes, list_cloud_working_copies, move_cloud_entry, normalize_cloud_path,
-    open_cloud_entry, prepare_cloud_external_copy, prepare_cloud_working_copy,
-    preview_cloud_conflicts, probe_cloud_remote, remove_cloud_working_copies, rename_cloud_entries,
-    rename_cloud_entry, save_cloud_working_copy, set_cloud_working_copy_auto_save,
-    stat_cloud_entry, trash_cloud_entries, upload_cloud_working_copy, validate_cloud_root,
+    open_cloud_entry, prepare_cloud_drag, prepare_cloud_external_copy, prepare_cloud_working_copy,
+    preview_cloud_conflicts, probe_cloud_remote, release_cloud_drag, remove_cloud_working_copies,
+    rename_cloud_entries, rename_cloud_entry, resolve_cloud_drag, save_cloud_working_copy,
+    set_cloud_working_copy_auto_save, stat_cloud_entry, trash_cloud_entries,
+    upload_cloud_working_copy, validate_cloud_root,
 };
 pub use compress::compress_entries;
 pub use console::open_console;

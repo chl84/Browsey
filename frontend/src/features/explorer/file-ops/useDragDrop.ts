@@ -33,13 +33,15 @@ type DragDropOptions = {
 export const useDragDrop = (options: DragDropOptions = {}) => {
   const state = writable<DragState>({ dragging: false, paths: [], target: null, position: { x: 0, y: 0 } })
 
-  const start = (paths: string[], event: DragEvent) => {
+  const start = (paths: string[], event: DragEvent, cloudPayload?: string) => {
     if (!event.dataTransfer) return
     state.set({ dragging: true, paths, target: null, position: { x: event.clientX, y: event.clientY } })
     event.dataTransfer.clearData()
     event.dataTransfer.setData('application/x-browsey-paths', JSON.stringify(paths))
-    const payload = fileDragPayload(paths, hasNativeFileDragBridge())
-    const mode = payload ? fileDragStartMode(event) : null
+    const payload = cloudPayload ?? fileDragPayload(paths, hasNativeFileDragBridge())
+    const mode = cloudPayload ? null : payload ? fileDragStartMode(event) : null
+    // Keep same-window cloud modifier behavior. A receiving Browsey instance
+    // forces copy independently; the source never deletes on native completion.
     event.dataTransfer.effectAllowed = mode === 'copy' ? 'copy' : mode === 'cut' ? 'move' : 'copyMove'
     if (payload) event.dataTransfer.setData('text/uri-list', payload)
     const labelText =

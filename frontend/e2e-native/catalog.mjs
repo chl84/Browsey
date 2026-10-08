@@ -1,3 +1,4 @@
+import {cloudDrag,cloudDragManifest} from './cloud-drag.mjs'
 // Shared executable suite registry; no runner/profile initialization on import.
 import {foundation, foundationManifest} from './cases.mjs'
 import {smoke, smokeManifest} from './tiers.mjs'
@@ -94,3 +95,5 @@ suites.keyboard={run:keyboard,manifest:keyboardManifest}
 suites['desktop-services'] = {run:services,manifest:servicesManifest}
 suites.usb = { run: usb, manifest: usbManifest }
 suites['usb-access'] = { run: (plan,fixture,ui,record)=>access(plan,fixture,ui,record,'usb'), manifest: plan=>{usbManifest(plan);return accessManifest(plan,'usb')} }
+
+suites['cloud-drag'] = {run:cloudDrag,manifest:cloudDragManifest}
