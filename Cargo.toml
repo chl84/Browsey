@@ -43,6 +43,9 @@ shell-words = "1.1.1"
 walkdir = "2.5.0"
 zip = { version = "8.6.0", default-features = false, features = ["deflate", "aes-crypto"] }
 zeroize = "1"
+# Decode rclone's existing WebDAV password format only for cloud edit writeback.
+aes = { version = "0.9.3", features = ["zeroize"] }
+base64 = "0.22.1"
 tar = "0.4.46"
 flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
 bzip2 = "0.6.1"

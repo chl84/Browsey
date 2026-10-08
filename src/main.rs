@@ -261,6 +261,9 @@ fn main() {
         .manage(UndoState::default())
         .manage(RuntimeLifecycle::default())
         .setup(|app| {
+            if !cfg!(feature = "native-test") {
+                commands::cloud::start_cloud_writeback(app.handle());
+            }
             #[cfg(target_os = "linux")]
             if !cfg!(feature = "native-test") {
                 mtp::start(app.handle().clone());
@@ -320,6 +323,9 @@ fn main() {
             cloud_working_copy_storage_path,
             create_cloud_file,
             upload_cloud_working_copy,
+            save_cloud_working_copy,
+            set_cloud_working_copy_auto_save,
+            cloud_writeback_statuses,
             preview_mixed_transfer_conflicts,
             copy_mixed_entries,
             move_mixed_entries,
@@ -467,6 +473,7 @@ fn main() {
     app.run(|app_handle, event| {
         if let tauri::RunEvent::Exit = event {
             runtime_lifecycle::begin_shutdown_from_app(app_handle);
+            commands::cloud::stop_cloud_writeback(app_handle);
             #[cfg(target_os = "linux")]
             mtp::stop();
             #[cfg(target_os = "linux")]

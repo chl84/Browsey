@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Automatically save newly opened cloud editor copies back to their original
+  object with conditional version checks, debounced file watching, durable
+  upload recovery and visible saved/pending/conflict/error states. Preserve
+  local edits on conflicts or failures and keep save-as-new/manual recovery.
+  Google Drive and OneDrive writes address exact object IDs; ordinary local
+  file operations and idle cloud listings do not gain hashing or polling.
+
 ## v1.0.5 — 2026-10-08
 
 - Declare OpenSSL 3 runtime dependencies in RPM/DEB bundles and check their

@@ -125,9 +125,13 @@ refresh; explicit/manual refresh is needed in some workflows.
   completion; it is not transactional.
 - Opening a cloud file creates a private persistent working copy, preserving
   its filename. Manage retained data in Settings > Cloud > Working copies.
-  Copies survive restart and preview-cache clearing. Close other writers before
-  **Upload changes as new file**: it checks the original and uses a unique new
-  name, never automatically overwriting or uploading the original.
+  Supported newly opened files automatically save back to the same cloud object
+  after a local editor save. Keep Browsey running and wait for **Cloud saves · Saved**.
+  Conflicts stop saving and preserve local edits; connection failures keep a
+  durable snapshot for retry. **Save as new file** remains available. Older copies
+  stay manual. Native Google documents/exports and unsupported configurations
+  require manual upload. See [cloud editing](cloud/cloud-editing.md) for limits
+  and recovery. Copies survive restart and preview-cache clearing.
 - **Compress** and **Extract** use protected local staging and the existing
   archive engine/password flow. ZIP creation uploads a new archive; extraction
   uploads a uniquely named folder. Originals/staging remain on failure or

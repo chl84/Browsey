@@ -23,6 +23,9 @@ export {
   listCloudWorkingCopies,
   prepareCloudWorkingCopy,
   uploadCloudWorkingCopy,
+  saveCloudWorkingCopy,
+  setCloudWorkingCopyAutoSave,
+  cloudWritebackStatuses,
   loadCloudSetupStatus,
   probeCloudRemote,
   validateCloudRoot,
@@ -43,6 +46,8 @@ export {
 export type {
   CloudProviderKind,
   CloudWorkingCopy,
+  CloudWritebackStatus,
+  CloudSaveStatus,
   CloudEntryKind,
   CloudCapabilities,
   CloudRemote,
@@ -56,3 +61,5 @@ export type {
   CloudProbePathStatus,
   CloudRemoteProbeStatus,
 } from './cloud.service'
+
+export { cloudSaveLabel, cloudSaveSummary, mergeCloudSaveStatus } from './cloudSaveStatus'

@@ -34,6 +34,8 @@ type MockClipboardState = {
 type E2eMockControl = {
   cloudFixture?: boolean
   cloudCopies?: Array<{ id: string; sourcePath: string; localPath: string; originalSize: number | null; originalModified: string | null; originalHash: string; createdAt: number; dirty: boolean; uploadedPath: string | null }>
+  cloudStatuses?: unknown[]
+  cloudSaveError?: { code: string; message: string }
   cloudUploadChanged?: boolean
   windowControlPolicy?: { minimize: boolean; maximize: boolean }
   bookmarks?: Array<{ label: string; path: string }>
@@ -567,6 +569,16 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
         { id: 'alpha', name: 'Alpha editor', exec: 'alpha', matches: true, terminal: false, defaultContentType: 'text/plain' },
         { id: 'beta', name: 'Beta editor', exec: 'beta', matches: false, terminal: false, defaultContentType: 'text/plain' },
       ] as T
+    case 'cloud_writeback_statuses':
+      return (control?.cloudStatuses ?? []) as T
+    case 'save_cloud_working_copy': {
+      if (control?.cloudSaveError) throw control.cloudSaveError
+      const copy = control?.cloudCopies?.find(copy => copy.id === args?.id)
+      if (copy) copy.dirty = false
+      return { ...copy, saveStatus: 'saved' } as T
+    }
+    case 'set_cloud_working_copy_auto_save':
+      return undefined as T
     case 'list_cloud_working_copies':
       return (control?.cloudCopies ?? []) as T
     case 'cloud_working_copy_storage_path':

@@ -113,7 +113,7 @@ export const createOpenWithModal = (deps: Deps) => {
         ? `Opening ${current.entry.name}… ${app.name} is now the default for ${app.defaultContentType}`
         : `Opening ${current.entry.name}…`
       showToast(current.entry.path.startsWith('rclone://')
-        ? `${message} You are editing a local working copy. Upload edits from Settings → Cloud → Working copies.`
+        ? `${message} Cloud saves shows upload status and any conflicts.`
         : message)
       state.update((s) => ({ ...s, submitting: false }))
       close()

@@ -17,6 +17,7 @@ dependencies = [
  "cipher",
  "cpubits",
  "cpufeatures 0.3.1",
+ "zeroize",
 ]
 
 [[package]]
@@ -234,6 +235,8 @@ dependencies = [
 name = "browsey"
 version = "1.0.5"
 dependencies = [
+ "aes",
+ "base64 0.22.1",
  "blake3",
  "bzip2",
  "chrono",

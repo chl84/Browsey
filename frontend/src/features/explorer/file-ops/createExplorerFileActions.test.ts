@@ -117,7 +117,7 @@ describe('Explorer file-action orchestration', () => {
     expect(activityApi.requestCancel).toHaveBeenCalledWith(event)
     expect(activityApi.hideSoon).toHaveBeenCalledOnce()
     expect(activityApi.cleanup).toHaveBeenCalledWith(true)
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Upload edits from Settings'))
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Cloud saves shows upload status'))
   })
 
   it.each(['start', 'open'])('reports cloud %s failure and cleans up without retry or success feedback', async phase => {

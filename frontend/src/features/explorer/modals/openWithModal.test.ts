@@ -37,7 +37,7 @@ describe('open-with defaults', () => {
     expect(invoke).toHaveBeenNthCalledWith(2, 'open_with', {
       path: '/private/work/report.txt', choice: { appId: 'editor' },
     })
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Upload edits from Settings'))
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Cloud saves shows upload status'))
   })
 
   it('does not launch anything when the cloud working copy could not be prepared', async () => {

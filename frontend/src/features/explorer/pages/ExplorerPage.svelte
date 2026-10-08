@@ -1,4 +1,5 @@
 <script lang="ts">
+  import CloudSaveStatus from '../components/CloudSaveStatus.svelte'
   // --- Imports -------------------------------------------------------------
   import { onMount, onDestroy, tick } from 'svelte'
   import ArchivePasswordModal from '../components/ArchivePasswordModal.svelte'
@@ -1800,6 +1801,7 @@
 </script>
 
 <CloudExportModal bind:paths={cloudExportPaths} {activityApi} />
+<CloudSaveStatus {activityApi} />
 
 <ArchivePasswordModal
   open={$archivePasswordState.open}

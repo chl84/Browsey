@@ -19,3 +19,12 @@ it('retains friendly connection feedback and does not replay a failed move', asy
   expect(error.message).toBe('Cloud connection failed. Check the network and try again')
   expect(invokeMock).toHaveBeenCalledTimes(1)
 })
+it('preserves cloud save conflicts and never retries an unconditional write', async () => {
+  const { saveCloudWorkingCopy } = await import('./cloud.service')
+  invokeMock.mockRejectedValue({ code: 'conflict', message: 'Original changed; local edits kept' })
+  const error = await saveCloudWorkingCopy('working-copy').catch(error => error)
+  expect(error.code).toBe('conflict')
+  expect(error.message).toBe('Original changed; local edits kept')
+  expect(invokeMock).toHaveBeenCalledTimes(1)
+  expect(invokeMock).toHaveBeenCalledWith('save_cloud_working_copy', { id: 'working-copy', progressEvent: undefined })
+})

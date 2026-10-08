@@ -136,6 +136,7 @@ pub(super) fn map_cloud_command_error_code(code: CloudCommandErrorCode) -> Thumb
         | CloudCommandErrorCode::AuthRequired
         | CloudCommandErrorCode::BinaryMissing
         | CloudCommandErrorCode::InvalidConfig
+        | CloudCommandErrorCode::Conflict
         | CloudCommandErrorCode::UnknownError => ThumbnailErrorCode::UnknownError,
     }
 }

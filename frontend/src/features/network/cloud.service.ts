@@ -115,7 +115,27 @@ export type CloudWorkingCopy = {
   createdAt: number
   dirty: boolean
   uploadedPath: string | null
+  autoSave?: boolean
+  saveStatus?: CloudSaveStatus
+  saveMessage?: string | null
 }
+
+export type CloudSaveStatus = 'manual' | 'saved' | 'pending' | 'uploading' | 'conflict' | 'error' | 'paused' | 'unsupported'
+export type CloudWritebackStatus = {
+  id: string
+  name: string
+  sourcePath: string
+  status: CloudSaveStatus
+  message: string | null
+  bytes: number
+  total: number
+  sequence: number
+}
+export const cloudWritebackStatuses = () => invoke<CloudWritebackStatus[]>('cloud_writeback_statuses')
+export const saveCloudWorkingCopy = (id: string, progressEvent?: string) =>
+  invokeCloud<CloudWorkingCopy>('save_cloud_working_copy', { id, progressEvent })
+export const setCloudWorkingCopyAutoSave = (id: string, enabled: boolean) =>
+  invokeCloud<CloudWorkingCopy>('set_cloud_working_copy_auto_save', { id, enabled })
 
 export const listCloudWorkingCopies = () =>
   invoke<CloudWorkingCopy[]>('list_cloud_working_copies')
@@ -148,6 +168,8 @@ const userCloudErrorMessage = (code: string | undefined, message: string) => {
       return 'Cloud TLS certificate validation failed. Check the server certificate or trust settings and try again'
     case 'destination_exists':
       return 'A file or folder with the same name already exists'
+    case 'conflict':
+      return message
     case 'permission_denied':
       return 'Cloud operation was denied (permissions or provider access)'
     case 'not_found':

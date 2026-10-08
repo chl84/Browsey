@@ -144,22 +144,76 @@ pub(super) fn prepare_working_copy(
 ) -> CloudCommandResult<super::CloudWorkingCopy> {
     let provider = configured_rclone_provider().map_err(CloudCommandError::from)?;
     let snapshot = resolve_cloud_materialize_snapshot(&provider, path)?;
-    let _guard = super::workspace::lock()?;
-    let cached = materialize_cloud_file_for_local_use_with_provider_and_snapshot(
-        &provider,
-        path,
-        &snapshot,
-        app,
-        progress_event,
-        cancel,
-    )?;
-    super::workspace::create_at(
-        &super::workspace::root()?,
-        path,
-        &cached,
-        snapshot.size,
-        snapshot.modified,
-    )
+    let (version, message) = match provider.cloud_write_version(path, None, cancel) {
+        Ok(version) => (Some(version), None),
+        Err(error) if error.code() == CloudCommandErrorCode::Cancelled => return Err(error),
+        Err(error) => (None, Some(error.message().to_owned())),
+    };
+    let source = version
+        .as_ref()
+        .map(|v| super::path::CloudPath::parse(&v.source_path).map_err(super::map_cloud_path_error))
+        .transpose()?
+        .unwrap_or_else(|| path.clone());
+    // An editable copy must be bracketed by provider versions. Preview caches
+    // use size/time and cannot establish a write validator for same-size edits.
+    let (cached, fresh_dir) = if let Some(editable) = version.as_ref() {
+        let dir = super::workspace::operation_dir("cloud-edit-open")?;
+        let cached = dir.join("download");
+        let on_progress =
+            |bytes, total| emit_cloud_open_progress(app, progress_event, bytes, total, false);
+        if editable.provider == super::types::CloudProviderKind::Onedrive {
+            provider.download_cloud_write_version_with_progress(
+                editable,
+                &cached,
+                cancel,
+                on_progress,
+            )?;
+        } else {
+            let group = format!(
+                "cloud-edit-open-{}",
+                dir.file_name().unwrap_or_default().to_string_lossy()
+            );
+            provider.download_file_with_progress(&source, &cached, &group, cancel, on_progress)?;
+        }
+        super::workspace::private_permissions(&cached, false)?;
+        (cached, Some(dir))
+    } else {
+        (
+            materialize_cloud_file_for_local_use_with_provider_and_snapshot(
+                &provider,
+                path,
+                &snapshot,
+                app,
+                progress_event,
+                cancel,
+            )?,
+            None,
+        )
+    };
+    let (version, message) = if let Some(version) = version {
+        match provider.cloud_write_version(&source, Some(&version), cancel) {
+            Ok(after) if after == version => (Some(version), message),
+            Ok(_) => (None, Some("The cloud file changed while opening. Your local copy is kept; review it before uploading.".into())),
+            Err(error) if error.code() == CloudCommandErrorCode::Cancelled => return Err(error),
+            Err(error) => (None, Some(error.message().to_owned())),
+        }
+    } else {
+        (None, message)
+    };
+    let base = super::workspace::root()?;
+    let mut copy =
+        super::workspace::create_at(&base, &source, &cached, snapshot.size, snapshot.modified)?;
+    if let Some(dir) = fresh_dir {
+        let _ = fs::remove_file(cached);
+        let _ = fs::remove_dir(dir);
+    }
+    super::workspace::enable_for_open(&base, &mut copy, version, message)?;
+    super::workspace::register_open_copy(app, &mut copy)?;
+    let size = fs::metadata(&copy.local_path)
+        .map_err(super::workspace::io_error)?
+        .len();
+    emit_cloud_open_progress(app, progress_event, size, size, true);
+    Ok(copy)
 }
 
 pub(crate) fn materialize_cloud_file_for_local_use_with_snapshot(

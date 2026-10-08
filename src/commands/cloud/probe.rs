@@ -177,7 +177,8 @@ fn probe_state_from_error_code(code: CloudCommandErrorCode) -> CloudProbeState {
         CloudCommandErrorCode::TaskFailed | CloudCommandErrorCode::CloudDisabled => {
             CloudProbeState::TaskFailed
         }
-        CloudCommandErrorCode::DestinationExists
+        CloudCommandErrorCode::Conflict
+        | CloudCommandErrorCode::DestinationExists
         | CloudCommandErrorCode::Unsupported
         | CloudCommandErrorCode::NotFound
         | CloudCommandErrorCode::UnknownError => CloudProbeState::UnknownError,

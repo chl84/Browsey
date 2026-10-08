@@ -238,3 +238,67 @@ fn real_onedrive_working_copy_and_archive_acceptance() -> Result<(), Box<dyn std
     scope.finish()?;
     Ok(())
 }
+
+#[test]
+fn earlier_manifests_stay_manual_and_do_not_automatically_publish_retained_edits() {
+    let root = fixture();
+    let cached = root.join("cached");
+    fs::write(&cached, b"original").unwrap();
+    let base = root.join("workspaces");
+    let copy = create_at(
+        &base,
+        &CloudPath::parse("rclone://remote/file.txt").unwrap(),
+        &cached,
+        None,
+        None,
+    )
+    .unwrap();
+    let path = base.join(&copy.id).join("manifest.json");
+    let mut json: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    for key in [
+        "autoSave",
+        "saveStatus",
+        "saveMessage",
+        "writeVersion",
+        "pendingSave",
+    ] {
+        json.as_object_mut().unwrap().remove(key);
+    }
+    fs::write(&path, serde_json::to_vec(&json).unwrap()).unwrap();
+    fs::write(&copy.local_path, b"retained edits").unwrap();
+    let loaded = load_at(&base, &copy.id).unwrap();
+    assert!(!loaded.auto_save);
+    assert_eq!(loaded.save_status, CloudSaveStatus::Manual);
+    assert!(loaded.dirty);
+    assert!(loaded.write_version.is_none());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_fresh_listing_reports_manual_edits_after_an_earlier_confirmed_save() {
+    let root = fixture();
+    let cached = root.join("cached");
+    fs::write(&cached, b"original").unwrap();
+    let base = root.join("workspaces");
+    let mut copy = create_at(
+        &base,
+        &CloudPath::parse("rclone://remote/file.txt").unwrap(),
+        &cached,
+        None,
+        None,
+    )
+    .unwrap();
+    copy.save_status = CloudSaveStatus::Saved;
+    save_at(&base, &copy).unwrap();
+    fs::write(&copy.local_path, b"new edit").unwrap();
+    let loaded = load_at(&base, &copy.id).unwrap();
+    assert!(loaded.dirty);
+    assert_eq!(loaded.save_status, CloudSaveStatus::Manual);
+    copy.auto_save = true;
+    save_at(&base, &copy).unwrap();
+    assert_eq!(
+        load_at(&base, &copy.id).unwrap().save_status,
+        CloudSaveStatus::Pending
+    );
+    fs::remove_dir_all(root).unwrap();
+}

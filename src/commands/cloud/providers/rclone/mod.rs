@@ -13,6 +13,8 @@ mod runtime;
 mod tests;
 mod write;
 mod write_shared;
+mod writeback;
+pub(crate) use writeback::CloudWriteVersion;
 
 use super::super::{
     error::{CloudCommandError, CloudCommandErrorCode, CloudCommandResult},
@@ -205,3 +207,6 @@ impl CloudProvider for RcloneCloudProvider {
         self.download_file_impl(src, local_dest, cancel)
     }
 }
+
+#[cfg(all(test, unix))]
+pub(crate) use writeback::tests::Fixture as CloudWriteFixture;

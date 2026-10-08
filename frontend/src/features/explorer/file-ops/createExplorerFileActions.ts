@@ -42,7 +42,7 @@ export const createExplorerFileActions = (deps: Deps) => {
       await openEntry(entry, { progressEvent: event })
       completed = true
       deps.activityApi.hideSoon()
-      deps.showToast('Opened a local working copy. Upload edits from Settings → Cloud → Working copies.')
+      deps.showToast('Opened cloud file. Cloud saves shows upload status and any conflicts.')
     } catch (error) {
       deps.activityApi.clearNow()
       deps.showToast(getErrorMessage(error))

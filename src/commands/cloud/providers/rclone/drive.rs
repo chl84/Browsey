@@ -193,6 +193,15 @@ impl RcloneCloudProvider {
         Ok(auth)
     }
 
+    pub(super) fn drive_write_token(
+        &self,
+        path: &CloudPath,
+        cancel: Option<&AtomicBool>,
+    ) -> CloudCommandResult<Zeroizing<String>> {
+        self.drive_auth(path, cancel)
+            .map(|auth| Zeroizing::new(auth.token.to_string()))
+    }
+
     fn drive_request(
         &self,
         path: &CloudPath,

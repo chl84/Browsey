@@ -1,5 +1,5 @@
 //! Durable working copies are user data, not an evictable preview cache.
-//! No automatic cleanup or upload: external editors may keep files open indefinitely.
+//! Edited cloud copies use version-checked writeback; retained user data is never evicted.
 use super::{
     error::{map_api_result, CloudCommandError, CloudCommandErrorCode, CloudCommandResult},
     path::CloudPath,
@@ -14,6 +14,48 @@ use std::{
 };
 
 static WORKSPACE_LOCK: Mutex<()> = Mutex::new(());
+type StatusCallback = std::sync::Arc<dyn Fn(&CloudWorkingCopy, u64, u64) + Send + Sync>;
+mod monitor;
+mod sync;
+pub use monitor::cloud_writeback_statuses;
+pub(crate) use monitor::{start_cloud_writeback, stop_cloud_writeback};
+pub(super) use sync::enable_for_open;
+pub use sync::{save_cloud_working_copy, set_cloud_working_copy_auto_save};
+pub(super) fn register_open_copy(
+    app: &tauri::AppHandle,
+    copy: &mut CloudWorkingCopy,
+) -> CloudCommandResult<()> {
+    if let Err(error) = monitor::register(app, copy) {
+        copy.auto_save = false;
+        copy.save_status = CloudSaveStatus::Error;
+        copy.save_message = Some(error.message().into());
+        sync::persist(&root()?, copy)?;
+        monitor::callback(app)(copy, 0, 0);
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CloudSaveStatus {
+    #[default]
+    Manual,
+    Saved,
+    Pending,
+    Uploading,
+    Conflict,
+    Error,
+    Paused,
+    Unsupported,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingSave {
+    relative_path: String,
+    hash: String,
+    version: super::providers::rclone::CloudWriteVersion,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,6 +71,18 @@ pub struct CloudWorkingCopy {
     pub dirty: bool,
     #[serde(default)]
     pub uploaded_path: Option<String>,
+    // Old manifests stay manual: opening an earlier copy must not silently
+    // publish edits that were made under the previous save-as-new contract.
+    #[serde(default)]
+    pub auto_save: bool,
+    #[serde(default)]
+    pub save_status: CloudSaveStatus,
+    #[serde(default)]
+    pub save_message: Option<String>,
+    #[serde(default)]
+    pub(crate) write_version: Option<super::providers::rclone::CloudWriteVersion>,
+    #[serde(default)]
+    pub pending_save: Option<PendingSave>,
 }
 
 pub(super) fn lock() -> CloudCommandResult<MutexGuard<'static, ()>> {
@@ -168,6 +222,11 @@ pub(super) fn create_at(
         created_at: stamp.checked_div(1_000_000_000).unwrap_or_default() as u64,
         dirty: false,
         uploaded_path: None,
+        auto_save: false,
+        save_status: CloudSaveStatus::Manual,
+        save_message: None,
+        write_version: None,
+        pending_save: None,
     };
     save_at(base, &copy)?;
     Ok(copy)
@@ -193,7 +252,12 @@ pub(super) fn save_at(base: &Path, copy: &CloudWorkingCopy) -> CloudCommandResul
         )
     })?;
     file.sync_all().map_err(io_error)?;
-    fs::rename(temporary, dir.join("manifest.json")).map_err(io_error)
+    fs::rename(temporary, dir.join("manifest.json")).map_err(io_error)?;
+    #[cfg(unix)]
+    fs::File::open(&dir)
+        .and_then(|dir| dir.sync_all())
+        .map_err(io_error)?;
+    Ok(())
 }
 
 fn session_dir(base: &Path, id: &str) -> CloudCommandResult<PathBuf> {
@@ -219,6 +283,14 @@ fn session_dir(base: &Path, id: &str) -> CloudCommandResult<PathBuf> {
 }
 
 pub(super) fn load_at(base: &Path, id: &str) -> CloudCommandResult<CloudWorkingCopy> {
+    load_manifest_at(base, id, true)
+}
+
+fn load_manifest_at(
+    base: &Path,
+    id: &str,
+    check_contents: bool,
+) -> CloudCommandResult<CloudWorkingCopy> {
     let dir = session_dir(base, id)?;
     let file = crate::fs_utils::open_regular_file_nofollow(&dir.join("manifest.json"))
         .map_err(io_error)?;
@@ -248,16 +320,43 @@ pub(super) fn load_at(base: &Path, id: &str) -> CloudCommandResult<CloudWorkingC
             "Working-copy manifest path mismatch",
         ));
     }
-    copy.dirty = hash_file(&expected)? != copy.original_hash;
+    let file = crate::fs_utils::open_regular_file_nofollow(&expected).map_err(io_error)?;
+    if check_contents {
+        drop(file);
+        copy.dirty = hash_file(&expected)? != copy.original_hash;
+        if copy.dirty && copy.save_status == CloudSaveStatus::Saved {
+            copy.save_status = if copy.auto_save {
+                CloudSaveStatus::Pending
+            } else {
+                CloudSaveStatus::Manual
+            };
+        }
+    }
+    if copy
+        .write_version
+        .as_ref()
+        .is_some_and(|v| v.source_path != copy.source_path)
+        || copy
+            .pending_save
+            .as_ref()
+            .is_some_and(|p| p.version.source_path != copy.source_path)
+    {
+        return Err(CloudCommandError::new(
+            CloudCommandErrorCode::InvalidPath,
+            "Working-copy source identity mismatch",
+        ));
+    }
     Ok(copy)
 }
 
 #[tauri::command]
 pub async fn list_cloud_working_copies() -> ApiResult<Vec<CloudWorkingCopy>> {
     let result = tauri::async_runtime::spawn_blocking(|| {
-        let _guard = lock()?;
         let base = root()?;
-        private_dir(&base)?;
+        {
+            let _guard = lock()?;
+            private_dir(&base)?;
+        }
         let mut copies = Vec::new();
         for entry in fs::read_dir(&base).map_err(io_error)? {
             let entry = entry.map_err(io_error)?;
@@ -304,17 +403,11 @@ async fn upload_working_copy_impl(
     let token = guard.as_ref().map(|guard| guard.token());
     let result = tauri::async_runtime::spawn_blocking(move || {
         let base = root()?;
-        let copy = {
-            let _guard = lock()?;
-            load_at(&base, &id)?
-        };
+        let copy = load_manifest_at(&base, &id, false)?;
         let source = CloudPath::parse(&copy.source_path).map_err(super::map_cloud_path_error)?;
         super::limits::with_cloud_remote_permits(vec![source.remote().to_owned()], || {
-            // Always acquire remote permits before the workspace lock (same
-            // order as opening files), so saturation cannot deadlock uploads.
-            let _guard = lock()?;
             let provider = super::configured_rclone_provider().map_err(CloudCommandError::from)?;
-            upload_at(&base, &id, &provider, token.as_deref())
+            sync::with_copy_lock(&id, || upload_at(&base, &id, &provider, token.as_deref()))
         })
     })
     .await;
@@ -357,7 +450,10 @@ pub(super) fn upload_at(
     super::invalidate_cloud_write_paths(std::slice::from_ref(&destination));
     result?;
     copy.uploaded_path = Some(destination.to_string());
-    save_at(base, &copy)?;
+    {
+        let _guard = lock()?;
+        save_at(base, &copy)?;
+    }
     Ok(CloudUploadResult {
         path: destination.to_string(),
         source_changed,

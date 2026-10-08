@@ -30,3 +30,5 @@ export const emitMockEvent = <T>(eventName: string, payload: T) => {
 }
 
 window.addEventListener('browsey-e2e-volumes-changed', () => emitMockEvent('volumes-changed', null))
+
+window.addEventListener('browsey-e2e-cloud-writeback', event => emitMockEvent('cloud-writeback', (event as CustomEvent).detail))

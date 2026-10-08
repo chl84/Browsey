@@ -610,6 +610,7 @@ mod enabled {
             | "list_cloud_remotes"
             | "list_network_entries"
             | "list_saved_network_connections" => Some(serde_json::json!([])),
+            "cloud_writeback_statuses" => Some(serde_json::json!([])),
             "load_cloud_enabled" => Some(serde_json::json!(session
                 .data_roots
                 .iter()
