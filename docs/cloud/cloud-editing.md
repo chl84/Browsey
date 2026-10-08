@@ -5,8 +5,9 @@ an independent private working copy. Save in your editor as usual. Browsey watch
 that copy's directory and waits 1.5 seconds after changes before uploading a stable
 snapshot to the original. Keep Browsey running. **Cloud saves · Saved** means the
 provider confirmed the save; completed byte progress alone does not.
-The Saved badge disappears after four seconds. Pending saves and statuses that
-need attention remain visible; working-copy details stay available in Settings.
+The Saved badge disappears after four seconds. Close a need-attention notice with
+its × button; new or changed problems show a new notice. Pending saves remain
+visible, and working-copy status and recovery details stay in Settings.
 
 The original object ID is retained for Google Drive and OneDrive. Identical Google
 Drive names remain separate. Each working copy has its own version baseline, so

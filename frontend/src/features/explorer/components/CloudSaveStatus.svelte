@@ -9,22 +9,25 @@
   let rows: CloudWritebackStatus[] = []
   let dialog: { show: () => void } | undefined
   let statusError = ''
-  let savedHidden = false
-  let savedTimer: ReturnType<typeof setTimeout> | undefined
-  const updateSavedConfirmation = (saved: boolean) => {
-    if (saved) {
-      // Repeated snapshots must not prolong or revive an idle confirmation.
-      if (savedTimer !== undefined) return
-      savedTimer = setTimeout(() => { savedHidden = true }, 4000)
-    } else {
-      clearTimeout(savedTimer)
-      savedTimer = undefined
-      savedHidden = false
-    }
+  let notificationHidden = false
+  let notificationKey = ''
+  let notificationTimer: ReturnType<typeof setTimeout> | undefined
+  const updateNotification = (key: string, duration: number) => {
+    // Repeated snapshots must not prolong or revive the same notification.
+    if (key === notificationKey) return
+    notificationKey = key
+    clearTimeout(notificationTimer)
+    notificationHidden = false
+    notificationTimer = duration ? setTimeout(() => { notificationHidden = true }, duration) : undefined
   }
-  $: summary = statusError || cloudSaveSummary(rows)
-  $: attention = !!statusError || rows.some(row => ['conflict', 'error', 'unsupported', 'paused'].includes(row.status))
-  $: updateSavedConfirmation(rows.length > 0 && !statusError && summary === 'Saved')
+  $: attentionRows = rows.filter(row => ['conflict', 'error', 'unsupported', 'paused'].includes(row.status))
+  $: savingRows = rows.filter(row => row.status === 'pending' || row.status === 'uploading')
+  $: attention = !!statusError || attentionRows.length > 0
+  $: key = attention
+    ? JSON.stringify([statusError, attentionRows.map(row => [row.id, row.status, row.message] as const).sort((a, b) => a[0].localeCompare(b[0]))])
+    : rows.length && !savingRows.length ? 'saved' : ''
+  $: updateNotification(key, attention ? 0 : key ? 4000 : 0)
+  $: summary = notificationHidden && attention ? cloudSaveSummary(savingRows) : statusError || cloudSaveSummary(rows)
   onMount(() => {
     let disposed = false
     let unlisten: UnlistenFn | undefined
@@ -37,19 +40,25 @@
       const initial = await cloudWritebackStatuses()
       if (!disposed) for (const row of initial) rows = mergeCloudSaveStatus(rows, row)
     })().catch(() => { if (!disposed) statusError = 'Status unavailable' })
-    return () => { disposed = true; unlisten?.(); clearTimeout(savedTimer) }
+    return () => { disposed = true; unlisten?.(); clearTimeout(notificationTimer) }
   })
 </script>
-{#if (rows.length || statusError) && !savedHidden}
-  <div class="cloud-save-status" class:attention>
+{#if (rows.length || statusError) && (!notificationHidden || savingRows.length)}
+  <div class="cloud-save-status" class:attention={attention && !notificationHidden}>
     <button type="button" on:click={() => dialog?.show()} aria-label={`Cloud saves: ${summary}`}>
       Cloud saves · <span role="status" aria-live="polite">{summary}</span>
     </button>
+    {#if attention && !notificationHidden}
+      <button class="dismiss" type="button" aria-label="Dismiss cloud save notification" title="Dismiss notification" on:click={() => { notificationHidden = true }}>
+        <span aria-hidden="true">×</span>
+      </button>
+    {/if}
   </div>
 {/if}
 <CloudWorkingCopies bind:this={dialog} showTrigger={false} {activityApi} />
 <style>
-  .cloud-save-status { position: fixed; right: 16px; bottom: 42px; z-index: 5; }
+  .cloud-save-status { position: fixed; right: 16px; bottom: 42px; z-index: 5; display: flex; align-items: center; gap: 4px; }
   button { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel, var(--bg)); color: var(--text); font-size: 12px; box-shadow: 0 2px 8px #0002; }
   .attention button { border-color: var(--accent); }
+  .dismiss { padding: 6px 8px; }
 </style>
