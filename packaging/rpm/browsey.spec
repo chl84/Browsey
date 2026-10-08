@@ -22,10 +22,13 @@ BuildRequires:  pkgconfig(gtk+-3.0)
 BuildRequires:  pkgconfig(javascriptcoregtk-4.1)
 BuildRequires:  pkgconfig(libsoup-3.0)
 BuildRequires:  pkgconfig(webkit2gtk-4.1)
+BuildRequires:  pkgconfig(openssl)
 BuildRequires:  desktop-file-utils
 
 Requires:       gtk3
 Requires:       webkit2gtk4.1
+Requires:       libssl.so.3()(64bit)
+Requires:       libcrypto.so.3()(64bit)
 
 %description
 Browsey is a minimalist and fast cross-platform file explorer built with a

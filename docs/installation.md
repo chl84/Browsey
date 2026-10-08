@@ -4,7 +4,7 @@
 
 ## Platform and runtime requirements
 
-Published packages target Linux x86_64 and require GTK 3 and WebKitGTK 4.1.
+Published packages target Linux x86_64 and require GTK 3, WebKitGTK 4.1 and OpenSSL 3.
 RPM packages are provided for Fedora-family systems, and DEB packages for
 Ubuntu/Debian-family systems. Package managers resolve declared dependencies.
 PDFium and the frontend are bundled; installing a release does not require
