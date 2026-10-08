@@ -11,8 +11,9 @@ repository-pinned npm Tauri CLI instead of assuming a separately installed
 
 - Rust stable through rustup, at least 1.95 for the current dependency stack.
 - Node.js LTS and npm (CI uses Node 22).
-- A C/C++ toolchain, pkg-config, GTK 3, WebKitGTK 4.1 and D-Bus development
-  libraries. RPM/DEB bundling also needs the platform's packaging tools.
+- A C/C++ toolchain, pkg-config, GTK 3, WebKitGTK 4.1, D-Bus and OpenSSL 3
+  development libraries (`libssl-dev` on Ubuntu/Debian or `openssl-devel` on
+  Fedora). RPM/DEB bundling also needs the platform's packaging tools.
 
 Use the [official Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
 for your distribution. Browsey's CI additionally installs D-Bus headers and
