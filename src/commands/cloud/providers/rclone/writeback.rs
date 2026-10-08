@@ -397,20 +397,21 @@ impl RcloneCloudProvider {
                 (path.to_string(), url)
             }
         };
-        let mut request = credentials.apply(http()?.request(
+        let mut request_url = url::Url::parse(&url).map_err(|_| unsupported())?;
+        if kind == CloudProviderKind::Gdrive {
+            request_url.query_pairs_mut().extend_pairs([
+                ("supportsAllDrives", "true"),
+                ("fields", "id,etag,mimeType,labels,capabilities"),
+            ]);
+        }
+        let request = credentials.apply(http()?.request(
             if kind == CloudProviderKind::Nextcloud {
                 Method::HEAD
             } else {
                 Method::GET
             },
-            &url,
+            request_url,
         ));
-        if kind == CloudProviderKind::Gdrive {
-            request = request.query(&[
-                ("supportsAllDrives", "true"),
-                ("fields", "id,etag,mimeType,labels,capabilities"),
-            ]);
-        }
         let result = response(request, cancel)?;
         let (tag, mime, identity) = if kind == CloudProviderKind::Nextcloud {
             let tag = result
@@ -609,6 +610,14 @@ impl RcloneCloudProvider {
             CloudProviderKind::Onedrive => format!("{url}/content"),
             CloudProviderKind::Nextcloud => url,
         };
+        let mut url = url::Url::parse(&url).map_err(|_| unsupported())?;
+        if current.provider == CloudProviderKind::Gdrive {
+            url.query_pairs_mut().extend_pairs([
+                ("uploadType", "media"),
+                ("supportsAllDrives", "true"),
+                ("fields", "id,etag,mimeType"),
+            ]);
+        }
         let body = Body::sized(
             UploadReader {
                 file,
@@ -619,19 +628,12 @@ impl RcloneCloudProvider {
             },
             size,
         );
-        let mut request = credentials
+        let request = credentials
             .apply(http()?.put(url))
             .timeout(Duration::from_secs(300))
             .header(reqwest::header::IF_MATCH, &expected.etag)
             .header(reqwest::header::CONTENT_TYPE, &expected.mime_type)
             .body(body);
-        if current.provider == CloudProviderKind::Gdrive {
-            request = request.query(&[
-                ("uploadType", "media"),
-                ("supportsAllDrives", "true"),
-                ("fields", "id,etag,mimeType"),
-            ]);
-        }
         let result = response(request, Some(&stop))?;
         let next = if current.provider == CloudProviderKind::Nextcloud {
             let next = result

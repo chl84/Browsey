@@ -99,6 +99,14 @@ sys.exit(3)
                 let mut first = headers.lines().next().unwrap().split_whitespace();
                 let method = first.next().unwrap();
                 let path = first.next().unwrap();
+                if kind == CloudProviderKind::Gdrive {
+                    let expected = if method == "PUT" {
+                        "uploadType=media&supportsAllDrives=true&fields=id%2Cetag%2CmimeType"
+                    } else {
+                        "supportsAllDrives=true&fields=id%2Cetag%2CmimeType%2Clabels%2Ccapabilities"
+                    };
+                    assert_eq!(path.split_once('?').map(|(_, query)| query), Some(expected));
+                }
                 let length = headers
                     .lines()
                     .filter_map(|line| line.split_once(':'))

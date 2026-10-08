@@ -66,7 +66,7 @@ pdfium-render = { version = "=0.9.4", default-features = false, features = ["pdf
 which = "8.0.0"
 url = "2.5.8"
 # Used lazily by Google Drive ID mutations; no client on ordinary filesystem routes.
-reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "json", "query", "native-tls"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "json", "native-tls"] }
 unrar_sys = "=0.5.8"
 wait-timeout = "0.2.1"
 

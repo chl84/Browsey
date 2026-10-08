@@ -16,6 +16,7 @@ struct Fixture {
     provider: RcloneCloudProvider,
     rows: Arc<Mutex<HashMap<String, Value>>>,
     requests: Arc<Mutex<Vec<(String, String)>>>,
+    request_urls: Arc<Mutex<Vec<String>>>,
     stop: Arc<AtomicBool>,
     thread: Option<thread::JoinHandle<()>>,
 }
@@ -88,6 +89,7 @@ sys.stderr.write('Unsupported fixture command');sys.exit(3)
             ),
         ])));
         let requests = Arc::new(Mutex::new(Vec::new()));
+        let request_urls = Arc::new(Mutex::new(Vec::new()));
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
         let address = listener.local_addr().unwrap();
@@ -99,6 +101,7 @@ sys.stderr.write('Unsupported fixture command');sys.exit(3)
         let stop = Arc::new(AtomicBool::new(false));
         let (server_rows, server_requests, server_stop) =
             (rows.clone(), requests.clone(), stop.clone());
+        let server_urls = request_urls.clone();
         let thread = thread::spawn(move || {
             while !server_stop.load(Ordering::Relaxed) {
                 let (mut stream, _) = match listener.accept() {
@@ -126,6 +129,7 @@ sys.stderr.write('Unsupported fixture command');sys.exit(3)
                 let mut start = headers.lines().next().unwrap().split_whitespace();
                 let method = start.next().unwrap().to_owned();
                 let url = start.next().unwrap().to_owned();
+                server_urls.lock().unwrap().push(url.clone());
                 let length: usize = headers
                     .lines()
                     .find_map(|s| {
@@ -185,6 +189,7 @@ sys.stderr.write('Unsupported fixture command');sys.exit(3)
             provider,
             rows,
             requests,
+            request_urls,
             stop,
             thread: Some(thread),
         }
@@ -215,6 +220,34 @@ impl Drop for Fixture {
         ));
         fs::remove_dir_all(&self.base).unwrap();
     }
+}
+
+#[test]
+fn query_parameters_preserve_unicode_symbols_empty_values_and_repeated_keys() {
+    let f = Fixture::new();
+    f.provider
+        .drive_request(
+            &f.file("fileA"),
+            "fileA",
+            Method::GET,
+            None,
+            &[
+                ("q", "navn blå +&=%/?#".into()),
+                ("empty", String::new()),
+                ("q", "andre".into()),
+            ],
+            None,
+        )
+        .unwrap();
+    // Assert the wire request rather than decoding it with the same URL library.
+    assert_eq!(
+        f.request_urls.lock().unwrap().as_slice(),
+        [concat!(
+            "/drive/v3/files/fileA?supportsAllDrives=true&fields=",
+            "id%2Cname%2CmimeType%2Csize%2CmodifiedTime%2Cparents%2Ctrashed%2CshortcutDetails",
+            "&q=navn+bl%C3%A5+%2B%26%3D%25%2F%3F%23&empty=&q=andre",
+        )]
+    );
 }
 
 #[test]

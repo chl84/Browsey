@@ -225,19 +225,24 @@ impl RcloneCloudProvider {
             })
             .as_ref()
             .map_err(|s| error(CloudCommandErrorCode::TaskFailed, s))?;
+        #[cfg(test)]
+        let base = API_BASE
+            .with(|v| v.borrow().clone())
+            .unwrap_or_else(|| "https://www.googleapis.com/drive/v3/files".into());
+        #[cfg(not(test))]
+        let base = "https://www.googleapis.com/drive/v3/files";
+        let mut url = url::Url::parse(&format!("{base}/{id}")).map_err(|_| {
+            error(
+                CloudCommandErrorCode::TaskFailed,
+                "Cannot construct Google Drive API URL",
+            )
+        })?;
+        url.query_pairs_mut()
+            .extend_pairs([("supportsAllDrives", "true"), ("fields", FIELDS)])
+            .extend_pairs(query.iter().map(|(key, value)| (*key, value.as_str())));
         let mut request = http
-            .request(method.clone(), {
-                #[cfg(test)]
-                let base = API_BASE
-                    .with(|v| v.borrow().clone())
-                    .unwrap_or_else(|| "https://www.googleapis.com/drive/v3/files".into());
-                #[cfg(not(test))]
-                let base = "https://www.googleapis.com/drive/v3/files";
-                format!("{base}/{id}")
-            })
-            .bearer_auth(auth.token.as_str())
-            .query(&[("supportsAllDrives", "true"), ("fields", FIELDS)])
-            .query(query);
+            .request(method.clone(), url)
+            .bearer_auth(auth.token.as_str());
         if let Some(body) = body {
             request = request.json(&body);
         }

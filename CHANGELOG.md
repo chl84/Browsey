@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Reuse the existing URL encoder for cloud API query parameters, removing
+  `serde_urlencoded` and `ryu` from the dependency graph.
+
 - Automatically save newly opened cloud editor copies back to their original
   object with conditional version checks, debounced file watching, durable
   upload recovery and visible saved/pending/conflict/error states. Preserve
