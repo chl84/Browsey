@@ -549,7 +549,7 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       return undefined as T
     case 'list_network_entries':
       return (control?.networkConnections ?? []).map(connection => ({
-        name: connection.label, path: connection.uri, kind: 'dir', iconId: 10, network: true,
+        name: connection.label, path: connection.uri, kind: 'dir', iconId: 23, network: true,
       })) as T
     case 'resolve_mounted_path_for_uri':
       return (control?.networkMountedPaths?.[String(args?.uri)] ?? null) as T

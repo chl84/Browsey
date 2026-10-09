@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Use a blue network-folder icon for network connections and the matching
+  cloud-folder icon for cloud providers in Network.
+
 - Remember reported undo recovery markers across restarts and log one combined
   warning only for new/changed or uncertain findings. Keep protected backups,
   provide details through Settings, and isolate unit-test undo storage.

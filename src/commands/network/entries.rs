@@ -14,7 +14,7 @@ use super::{
     mounts, saved, uri,
 };
 
-const NETWORK_ICON_ID: u16 = 10;
+const NETWORK_ICON_ID: u16 = icon_ids::NETWORK_FOLDER;
 const CLOUD_ICON_ID: u16 = icon_ids::CLOUD;
 
 const NETWORK_FS: &[&str] = &[
@@ -120,7 +120,7 @@ fn to_network_entry(mount: &MountInfo) -> FsEntry {
         modified: None,
         original_path: None,
         trash_id: None,
-        icon_id: CLOUD_ICON_ID,
+        icon_id: NETWORK_ICON_ID,
         starred: false,
         hidden: false,
         network: true,
@@ -141,7 +141,7 @@ fn to_cloud_network_entry(remote: &CloudRemote) -> FsEntry {
         modified: None,
         original_path: None,
         trash_id: None,
-        icon_id: NETWORK_ICON_ID,
+        icon_id: CLOUD_ICON_ID,
         starred: false,
         hidden: false,
         network: true,
@@ -608,7 +608,7 @@ mod tests {
     #[test]
     fn network_and_cloud_root_icons_remain_dedicated() {
         let net_entry = to_network_entry(&mount("NAS", "smb://nas.local/share", "smb"));
-        assert_eq!(net_entry.icon_id, CLOUD_ICON_ID);
+        assert_eq!(net_entry.icon_id, NETWORK_ICON_ID);
 
         let remote = CloudRemote {
             id: "work".to_string(),
@@ -618,7 +618,7 @@ mod tests {
             capabilities: cloud::types::CloudCapabilities::v1_core_rw(),
         };
         let remote_entry = to_cloud_network_entry(&remote);
-        assert_eq!(remote_entry.icon_id, NETWORK_ICON_ID);
+        assert_eq!(remote_entry.icon_id, CLOUD_ICON_ID);
         let caps = remote_entry.capabilities.unwrap();
         assert!(caps.can_list && caps.can_mkdir && caps.can_create_file);
         assert!(

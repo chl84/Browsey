@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { iconPath } from './icons'
 
-describe('3D model file icon', () => {
+describe('Explorer icon IDs', () => {
   it('appends the matching backend ID without shifting existing icons', () => {
     expect(iconPath(22)).toBe('icons/scalable/browsey/model_3d_file.svg')
+    expect(iconPath(23)).toBe('icons/scalable/browsey/network_folder.svg')
+    expect(iconPath(10)).toBe('icons/scalable/browsey/folder.svg')
     expect(iconPath(12)).toBe('icons/scalable/browsey/file.svg')
     expect(iconPath(21)).toBe('icons/scalable/browsey/cloud.svg')
   })

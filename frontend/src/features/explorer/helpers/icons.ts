@@ -22,6 +22,7 @@ const ICON_PATHS = [
   'icons/scalable/browsey/executable_file.svg',
   'icons/scalable/browsey/cloud.svg',
   'icons/scalable/browsey/model_3d_file.svg',
+  'icons/scalable/browsey/network_folder.svg',
 ] as const
 
 export const iconPath = (id: number | undefined) => ICON_PATHS[id ?? 0] ?? ICON_PATHS[0]

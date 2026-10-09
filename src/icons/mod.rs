@@ -34,6 +34,7 @@ pub mod icon_ids {
     pub const EXECUTABLE_FILE: IconId = 20;
     pub const CLOUD: IconId = 21;
     pub const MODEL_3D_FILE: IconId = 22;
+    pub const NETWORK_FOLDER: IconId = 23;
 }
 
 use icon_ids::SHORTCUT;
