@@ -649,6 +649,15 @@ button:focus-visible,
   outline: none;
 }
 
+/* Inner modal scroll surfaces keep controls and focus rings clear of the track.
+   Stable gutters prevent layout shifts with classic scrollbars; end padding
+   also leaves room when the platform paints an overlay scrollbar. */
+.modal-scroll {
+  overflow: auto;
+  scrollbar-gutter: stable;
+  padding-inline-end: calc(var(--modal-scroll-gap, var(--modal-field-gap)) + var(--scrollbar-size));
+}
+
 .modal header {
   font-weight: 700;
   font-size: var(--modal-header-size);

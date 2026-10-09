@@ -1,9 +1,28 @@
 # Backup recovery modal
 
-Settings > Stored data now presents a short backup status, Refresh, Show backups
-when storage exists, and collapsed Advanced details. Recovery lists backup root
+Settings > Stored data presents a short backup status, Show all, Delete all,
+and collapsed Advanced details. Refresh is available inside the backup modal.
+Delete all uses the shared destructive confirmation, explicitly clears undo and
+redo history, and deletes stored data only under verified session locks. Other
+instances' locked sessions and unsafe/unreadable sessions are retained and
+reported. Complete local backup-producing operations, rollback, and recovery
+exclude maintenance, including gaps between allocation and history recording.
+Owned session directories and their lifetime locks remain for new allocations;
+abandoned sessions and their locks are removed. Legacy folders stay excluded.
+The storage summary refreshes automatically after deletion or closing Show all.
+Recovery lists backup root
 entries by filename, regular-file content size and modification time. A small
 folder browser reuses local listing; paths can also be pasted and opened with Go.
+Both the backup list and fallback folder picker use the shared ModalShell,
+modal spacing/density tokens, button styles, and error presentation. The folder
+path uses TextField; recovery progress uses ProgressBar.
+Verified success shows “Recovered <name>” beside Open folder; the full output
+path is available in the message tooltip. A typed occupied-original reason opens
+the folder picker with neutral guidance. Other errors retain their diagnostics
+and error styling, including failed copies with uncertain output paths.
+Escape uses the shared flow: leave a focused text field first, keeping focus in
+the recovery dialog, then close recovery while Settings stays open. During
+recovery, Escape does not dismiss the dialog; cancellation uses Cancel.
 
 After verified recovery, a private fixed-size sibling status record marks that
 backup as recovered. The backend persists and verifies it under the same session

@@ -48,8 +48,8 @@ use tauri::Manager;
 use tracing::{debug, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, reload, util::SubscriberInitExt, EnvFilter};
 use undo::{
-    inspect_undo_storage, list_recovery_backups, redo_action, restore_recovery_backup, undo_action,
-    UndoState,
+    delete_all_recovery_backups, inspect_undo_storage, list_recovery_backups, redo_action,
+    restore_recovery_backup, undo_action, UndoState,
 };
 use watcher::WatchState;
 
@@ -472,6 +472,7 @@ fn main() {
             undo_action,
             redo_action,
             inspect_undo_storage,
+            delete_all_recovery_backups,
             list_recovery_backups,
             restore_recovery_backup,
             get_thumbnail,

@@ -18,6 +18,25 @@ describe('blurTextEntryTargetOnEscape', () => {
     document.body.removeChild(input)
   })
 
+  it('keeps focus in the nearest dialog after leaving a nested text field', () => {
+    const outer = document.createElement('div')
+    const inner = document.createElement('div')
+    outer.setAttribute('role', 'dialog')
+    inner.setAttribute('role', 'dialog')
+    outer.tabIndex = inner.tabIndex = 0
+    const input = document.createElement('input')
+    inner.append(input); outer.append(inner); document.body.append(outer)
+    input.focus()
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'target', { value: input })
+    try {
+      expect(blurTextEntryTargetOnEscape(event)).toBe(true)
+      expect(document.activeElement).toBe(inner)
+    } finally {
+      outer.remove()
+    }
+  })
+
   it('does not intercept combo search inputs', () => {
     const wrap = document.createElement('div')
     wrap.className = 'combo-search-wrap'

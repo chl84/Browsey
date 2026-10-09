@@ -28,6 +28,7 @@ describe('backup recovery', () => {
     expect(await model.restore(backup)).toBe('restored')
     expect(invoke).toHaveBeenCalledWith('restore_recovery_backup', expect.objectContaining({ destinationDir: null }))
     expect(get(model.restoredPath)).toBe('/original/file.txt')
+    expect(get(model.restoredName)).toBe('file.txt')
     expect(get(model.overview)?.entries).toEqual([])
     expect(handlers.size).toBe(0)
     model.dispose()
@@ -61,6 +62,23 @@ describe('backup recovery', () => {
       expect(handlers.size).toBe(0)
       model.dispose()
     }
+  })
+
+  it('presents only a typed original-location conflict as a neutral notice', async () => {
+    invoke.mockRejectedValueOnce({ code: 'recovery_destination_unavailable', message: 'Original location is occupied.', details: { reason: 'occupied' } })
+    const model = createRecoveryBackupsModel()
+    expect(await model.restore(backup)).toBe('choose-destination')
+    expect(get(model.notice)).toBe('Original location is occupied. Choose another folder.')
+    expect(get(model.error)).toBe('')
+    invoke.mockRejectedValueOnce({ code: 'recovery_destination_unavailable', message: 'Inspect incomplete output at /original/file.txt before retrying.' })
+    expect(await model.restore(backup)).toBe('choose-destination')
+    expect(get(model.notice)).toBe('')
+    expect(get(model.error)).toContain('Inspect incomplete output')
+    invoke.mockRejectedValueOnce({ code: 'target_exists', message: 'Chosen destination is occupied.', details: { reason: 'occupied' } })
+    expect(await model.restore(backup, '/chosen')).toBeUndefined()
+    expect(get(model.notice)).toBe('')
+    expect(get(model.error)).toBe('Chosen destination is occupied.')
+    model.dispose()
   })
 
   it('keeps a cancelled original-destination check from opening the folder picker', async () => {

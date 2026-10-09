@@ -231,6 +231,9 @@ fn extract_archives_blocking(
     paths: Vec<String>,
     progress_event: Option<String>,
 ) -> DecompressResult<Vec<ExtractBatchItem>> {
+    let _backup_operation = crate::undo::backup_operation().map_err(|error| {
+        DecompressError::new(DecompressErrorCode::TaskFailed, error.to_string())
+    })?;
     if paths.is_empty() {
         return Ok(Vec::new());
     }
@@ -372,6 +375,9 @@ fn do_extract_with_password(
             "Password must not contain NUL characters",
         ));
     }
+    let _backup_operation = crate::undo::backup_operation().map_err(|error| {
+        DecompressError::new(DecompressErrorCode::TaskFailed, error.to_string())
+    })?;
     let mut _cancel_guard: Option<CancelGuard> = None;
     let cancel_token_arc: Option<Arc<AtomicBool>> = if let Some(shared) = shared_cancel {
         Some(shared)

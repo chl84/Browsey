@@ -9,7 +9,7 @@
 
   export let onClose: () => void = () => {}
   const model = createRecoveryBackupsModel()
-  const { overview, loading, restoring, error, restoredPath, activity } = model
+  const { overview, loading, restoring, error, notice, restoredPath, restoredName, activity } = model
   let selected: RecoveryBackup | null = null
   let destination = ''
   $: recoveredDirectory = $restoredPath ? parentPath($restoredPath) : ''
@@ -29,10 +29,11 @@
 <ModalShell open title={selected ? 'Recover to…' : 'Recovery backups'} modalWidth="640px"
   onClose={() => { if (!$restoring) onClose() }} closeOnEscape={!$restoring} closeOnOverlay={!$restoring}>
   <div class="recovery-content">
-    {#if $error}<p class="error" role="alert">{$error}</p>{/if}
+    {#if $error}<div class="pill error" role="alert">{$error}</div>{/if}
+    {#if $notice}<p class="muted" role="status">{$notice}</p>{/if}
     {#if $restoredPath}
       <div role="status" class="success">
-        <p>Recovered to {$restoredPath}</p>
+        <p title={$restoredPath}>Recovered {$restoredName}</p>
         <button type="button" class="secondary" on:click={() => void model.openFolder(recoveredDirectory)}>Open folder</button>
       </div>
     {/if}
@@ -45,7 +46,7 @@
       {#if $loading}<p role="status">Loading backups…</p>{/if}
       {#if $overview?.incomplete}<p class="muted" role="status">Some backups could not be inspected. The list may be incomplete.</p>{/if}
       {#if $overview}
-        <ul class="backups" aria-label="Backups">
+        <ul class="backups modal-scroll" aria-label="Backups">
           {#each $overview.entries as backup (backup.id)}
             <li>
               <div class="backup-info">
@@ -73,7 +74,7 @@
     {#if $restoring}
       <button type="button" class="secondary" disabled={$activity?.cancelling} on:click={() => void model.cancel()}>Cancel</button>
     {:else if selected}
-      <button type="button" class="secondary" on:click={() => { selected = null; destination = ''; $error = '' }}>Back</button>
+      <button type="button" class="secondary" on:click={() => { selected = null; destination = ''; $error = ''; $notice = '' }}>Back</button>
       <button type="button" class="primary" disabled={!destination} on:click={() => void recover()}>Recover here</button>
     {:else}
       <button type="button" class="secondary" disabled={$loading} on:click={() => void model.refresh()}>Refresh</button>
@@ -83,14 +84,14 @@
 </ModalShell>
 
 <style>
-  .recovery-content { display: flex; flex-direction: column; gap: var(--settings-control-gap); min-width: 0; overflow-wrap: anywhere; }
-  p { margin: 0; }
+  .recovery-content { display: flex; flex-direction: column; gap: var(--modal-gap); min-width: 0; overflow-wrap: anywhere; }
   .backup-name { font-weight: 600; }
-  .backups { list-style: none; padding: 0; margin: 0; max-height: 360px; overflow: auto; }
-  li { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
-  .backup-info { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+  .backups { list-style: none; padding-block: 0; padding-inline-start: 0; margin: 0; max-height: 360px; }
+  li { display: flex; align-items: center; gap: var(--modal-actions-gap); padding: var(--modal-actions-gap) 0; border-bottom: 1px solid var(--border); }
+  .backup-info { display: flex; flex-direction: column; gap: calc(var(--modal-field-gap) / 2); flex: 1; min-width: 0; }
   .backups button { flex-shrink: 0; }
-  .recovery-progress, .success { display: flex; flex-direction: column; gap: 8px; }
-  .success button { align-self: start; }
+  .recovery-progress { display: flex; flex-direction: column; gap: var(--modal-field-gap); }
+  .success { display: flex; align-items: center; flex-wrap: wrap; gap: var(--modal-actions-gap); }
+  .success button { flex-shrink: 0; }
   @media (max-width: 480px) { li { align-items: start; flex-direction: column; } }
 </style>

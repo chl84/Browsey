@@ -4,9 +4,11 @@ mod backup_origin;
 mod copy_recovery;
 mod engine;
 mod error;
+mod maintenance;
 mod nofollow;
 mod path_checks;
 mod path_ops;
+mod purge;
 mod recovery;
 mod recovery_notice;
 mod recovery_state;
@@ -19,9 +21,11 @@ use crate::errors::api_error::ApiResult;
 pub use backup::{cleanup_stale_backups, temp_backup_path, BackupProtection};
 pub(crate) use backup_access::write_backups;
 pub use error::{UndoError, UndoErrorCode, UndoResult};
+pub(crate) use maintenance::backup_operation;
 #[cfg(test)]
 pub(crate) use path_ops::move_by_copy_delete_noreplace;
 pub use path_ops::move_with_fallback;
+pub use purge::delete_all_recovery_backups;
 pub use recovery::{list_recovery_backups, restore_recovery_backup};
 #[cfg(all(unix, target_os = "linux"))]
 pub(crate) use security::set_unix_mode_nofollow;

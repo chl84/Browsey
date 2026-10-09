@@ -19,7 +19,9 @@ export const createRecoveryBackupsModel = () => {
   const loading = writable(false)
   const restoring = writable(false)
   const error = writable('')
+  const notice = writable('')
   const restoredPath = writable('')
+  const restoredName = writable('')
   const activityApi = createActivity({ onError: message => { if (!disposed) error.set(message) } })
   let disposed = false
   let cancelled = false
@@ -30,6 +32,7 @@ export const createRecoveryBackupsModel = () => {
     if (disposed || get(loading) || get(restoring)) return
     loading.set(true)
     error.set('')
+    notice.set('')
     try {
       const result = await invoke<RecoveryBackups>('list_recovery_backups')
       if (!disposed) overview.set(result)
@@ -44,7 +47,7 @@ export const createRecoveryBackupsModel = () => {
 
   const restore = async (backup: RecoveryBackup, destinationDir?: string) => {
     if (disposed || get(restoring) || get(loading) || backup.blockedReason || destinationDir === '') return
-    restoring.set(true); error.set(''); restoredPath.set('')
+    restoring.set(true); error.set(''); notice.set(''); restoredPath.set(''); restoredName.set('')
     cancelled = false
     eventName = `recovery-${Date.now()}-${Math.random().toString(16).slice(2)}`
     let outcome: 'restored' | 'choose-destination' | undefined
@@ -59,14 +62,21 @@ export const createRecoveryBackupsModel = () => {
         overview.update(current => current ? { ...current,
           entries: current.entries.filter(entry => entry.id !== backup.id || entry.version !== backup.version),
         } : current)
-        restoredPath.set(path); outcome = 'restored'
+        restoredPath.set(path); restoredName.set(backup.name); outcome = 'restored'
       }
     } catch (err) {
       if (!disposed) {
-        const code = normalizeError(err).code
-        error.set(code === 'cancelled' || cancelled
-          ? 'Recovery cancelled. The backup was kept. Any incomplete copy remains in the destination folder.'
-          : getErrorMessage(err))
+        const { code, details } = normalizeError(err)
+        const occupied = !cancelled && destinationDir === undefined && code === 'recovery_destination_unavailable'
+          && details !== null && typeof details === 'object' && 'reason' in details && details.reason === 'occupied'
+        if (occupied) {
+          error.set('')
+          notice.set('Original location is occupied. Choose another folder.')
+        } else {
+          error.set(code === 'cancelled' || cancelled
+            ? 'Recovery cancelled. The backup was kept. Any incomplete copy remains in the destination folder.'
+            : getErrorMessage(err))
+        }
         if (!cancelled && destinationDir === undefined && code === 'recovery_destination_unavailable') outcome = 'choose-destination'
       }
     } finally {
@@ -89,6 +99,6 @@ export const createRecoveryBackupsModel = () => {
     void cancel()
     if (!get(restoring)) { activityApi.clearNow(); void activityApi.cleanup() }
   }
-  return { overview, loading, restoring, error, restoredPath, activity: activityApi.activity,
+  return { overview, loading, restoring, error, notice, restoredPath, restoredName, activity: activityApi.activity,
     refresh, restore, cancel, openFolder, dispose }
 }

@@ -43,17 +43,12 @@
 }
 
 .settings-modal .settings-panel {
+  --modal-scroll-gap: var(--settings-panel-padding-right);
   flex: 1;
   min-height: 0;
-  overflow: auto;
   display: flex;
   flex-direction: column;
   gap: var(--settings-panel-gap);
-  padding-right: var(--settings-panel-padding-right);
-}
-
-.settings-modal .settings-panel.single {
-  padding-right: var(--settings-panel-padding-right);
 }
 
 .settings-modal .group-heading {

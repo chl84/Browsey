@@ -509,6 +509,8 @@ fn do_compress_with_cancel(
             "Password must not be empty or contain NUL characters",
         ));
     }
+    let _backup_operation = crate::undo::backup_operation()
+        .map_err(|error| CompressError::new(CompressErrorCode::TaskFailed, error.to_string()))?;
     // Register before any path resolution or recursive scanning.
     let cancel_guard: Option<CancelGuard> = progress_event
         .as_ref()

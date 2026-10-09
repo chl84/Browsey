@@ -211,6 +211,18 @@ fn occupied_originals_and_missing_original_folders_require_a_chosen_destination(
         let error =
             recover_at(&fixture.base, &row.id, &row.version, None, None, None, None).unwrap_err();
         assert_eq!(error.code, "recovery_destination_unavailable");
+        if mode != "missing-parent" {
+            assert_eq!(
+                error.message,
+                "Original location is occupied. Choose another folder."
+            );
+            assert_eq!(
+                error.details,
+                Some(serde_json::json!({ "reason": "occupied" }))
+            );
+        } else {
+            assert!(error.details.is_none());
+        }
         assert_eq!(fs::read(&fixture.source).unwrap(), [3; 33]);
         assert_eq!(fixture.list().entries.len(), 1);
         // Automatic recovery neither renames around a collision nor creates

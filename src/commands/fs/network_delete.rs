@@ -351,6 +351,8 @@ mod linux {
             match &self.targets[index] {
                 Target::Remote(file) => file.trash(Some(self.cancel)).map_err(gio_error),
                 Target::Local(path) => {
+                    let _backup_operation =
+                        crate::undo::backup_operation().map_err(FsError::from)?;
                     let action = super::super::trash::move_single_to_trash_with_system_backend(
                         path.to_str().ok_or_else(|| {
                             FsError::new(FsErrorCode::InvalidPath, "Invalid local path encoding.")
@@ -365,6 +367,8 @@ mod linux {
             match &self.targets[index] {
                 Target::Remote(file) => delete_tree(file, self.cancel),
                 Target::Local(path) => {
+                    let _backup_operation =
+                        crate::undo::backup_operation().map_err(FsError::from)?;
                     let action = super::super::delete_ops::delete_with_backup(path)?;
                     let _ = self.undo.record_applied(action);
                     Ok(())

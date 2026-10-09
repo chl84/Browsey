@@ -59,7 +59,7 @@ type E2eMockControl = {
   recoveryBackups?: { entries: Array<{ id: string; version: string; name: string; kind: string; bytes: number | null; modifiedAt: number | null; blockedReason: string | null }>; incomplete: boolean }
   recoveryHold?: boolean
   recoveryOriginalPaths?: Record<string, string>
-  recoveryOriginalError?: { code: string; message: string }
+  recoveryOriginalError?: { code: string; message: string; details?: { reason: string } }
   recoveryProgress?: { bytes: number; total: number }
   archivePassword?: string
   formatHold?: boolean
@@ -358,6 +358,11 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
     }
     case 'list_recovery_backups':
       return (control?.recoveryBackups ?? { entries: [], incomplete: false }) as T
+    case 'delete_all_recovery_backups': {
+      if (control?.undoStorage) Object.assign(control.undoStorage, { sessions: 0, markedSessions: 0, files: 0, logicalBytes: 0 })
+      if (control?.recoveryBackups) control.recoveryBackups.entries = []
+      return { deletedSessions: 1, retainedSessions: 0, errors: [] } as T
+    }
     case 'restore_recovery_backup': {
       const original = control?.recoveryOriginalPaths?.[String(args?.id)]
       if (args?.destinationDir == null && (control?.recoveryOriginalError || !original)) {

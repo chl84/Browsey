@@ -27,6 +27,9 @@ export const blurTextEntryTargetOnEscape = (event: KeyboardEvent) => {
   if (!blurTarget) return false
   event.preventDefault()
   event.stopPropagation()
+  const dialog = blurTarget.closest<HTMLElement>('[role="dialog"]')
   blurTarget.blur()
+  // Keep subsequent keyboard events in the same dialog after leaving its field.
+  if (dialog && document.activeElement === document.body) dialog.focus()
   return true
 }

@@ -370,6 +370,9 @@
     const listener = (e: KeyboardEvent) => {
       // Nested dialogs own their Escape/focus handling. The capture listener
       // must not close Settings before their ComboBox or confirmation sees it.
+      // A busy child may remove the focused button, leaving the event on body.
+      const settingsOverlay = document.querySelector('.settings-modal')?.parentElement
+      if (settingsOverlay?.querySelector('.overlay')) return
       const dialog = e.target instanceof Element ? e.target.closest('[role="dialog"]') : null
       if (dialog && !dialog.classList.contains('settings-modal')) return
       handleWindowKeydown(e, open)
@@ -405,7 +408,7 @@
       </div>
     </svelte:fragment>
 
-    <div class="settings-panel single">
+    <div class="settings-panel single modal-scroll">
       <div class="form-rows settings-table">
         <GeneralSection
           show={filterModel.showGeneral}

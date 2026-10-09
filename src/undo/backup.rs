@@ -376,6 +376,7 @@ pub fn temp_backup_path(original: &Path) -> UndoResult<PathBuf> {
 }
 
 pub(super) fn temp_backup_path_at(base: &Path, original: &Path) -> UndoResult<PathBuf> {
+    let _backup_operation = super::backup_operation()?;
     let mut sessions = SESSIONS
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()

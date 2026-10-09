@@ -384,6 +384,7 @@ fn paste_entries_core(
     if app.is_some_and(runtime_lifecycle::is_shutting_down) {
         return Err(ClipboardError::cancelled());
     }
+    let _backup_operation = crate::undo::backup_operation().map_err(ClipboardError::from)?;
     // Register before path resolution/metadata I/O, not only once copying starts.
     let cancel_guard = progress_event
         .as_ref()

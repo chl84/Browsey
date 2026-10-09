@@ -55,16 +55,16 @@ impl ScanBudget {
 
 // Keep the sibling lock open and locked through the whole copy. Startup cleanup
 // in any Browsey process must acquire this same lock before removing a session.
-struct SessionLock {
+pub(super) struct SessionLock {
     _file: Option<File>,
-    current: Option<super::backup::OwnedSession>,
-    directory: PathBuf,
+    pub(super) current: Option<super::backup::OwnedSession>,
+    pub(super) directory: PathBuf,
     identity: FileIdentity,
-    lock_path: PathBuf,
-    lock_identity: FileIdentity,
+    pub(super) lock_path: PathBuf,
+    pub(super) lock_identity: FileIdentity,
 }
 impl SessionLock {
-    fn verify(&self) -> UndoResult<()> {
+    pub(super) fn verify(&self) -> UndoResult<()> {
         if self.identity.matches(&self.directory) && self.lock_identity.matches(&self.lock_path) {
             Ok(())
         } else {
@@ -91,7 +91,7 @@ impl SessionLock {
     }
 }
 
-fn lock_session(base: &Path, name: &str) -> UndoResult<Option<SessionLock>> {
+pub(super) fn lock_session(base: &Path, name: &str) -> UndoResult<Option<SessionLock>> {
     let directory = base.join(name);
     super::path_checks::ensure_existing_dir_nonsymlink(&directory)?;
     let identity = FileIdentity::capture(&directory)
@@ -229,6 +229,7 @@ fn measure(source: &Path, budget: &mut ScanBudget) -> UndoResult<Option<Measurem
 }
 
 fn list_at(base: &Path, mut budget: ScanBudget) -> UndoResult<RecoveryBackups> {
+    let _operation = super::backup_operation()?;
     crate::path_guard::ensure_no_symlink_components_existing_prefix(base)
         .map_err(|error| UndoError::invalid_input(format!("Unsafe backup storage: {error}")))?;
     let mut result = RecoveryBackups::default();
@@ -514,6 +515,18 @@ fn destination_unavailable(error: impl std::fmt::Display) -> ApiError {
     )
 }
 
+fn original_destination_unavailable(error: UndoError) -> ApiError {
+    if error.code() == super::UndoErrorCode::TargetExists {
+        ApiError::new(
+            "recovery_destination_unavailable",
+            "Original location is occupied. Choose another folder.",
+        )
+        .with_details(serde_json::json!({ "reason": "occupied" }))
+    } else {
+        destination_unavailable(error)
+    }
+}
+
 fn recover_at(
     base: &Path,
     id: &str,
@@ -523,6 +536,7 @@ fn recover_at(
     event: Option<&str>,
     cancel: Option<&AtomicBool>,
 ) -> ApiResult<String> {
+    let _operation = map_api_result(super::backup_operation())?;
     let prepare = || -> UndoResult<_> {
         let source = source_from_id(base, id)?;
         let session = Path::new(id)
@@ -555,7 +569,7 @@ fn recover_at(
         if cancel.is_some_and(|token| token.load(Ordering::Relaxed)) {
             return Err(ApiError::new("cancelled", "Recovery cancelled"));
         }
-        target.map_err(destination_unavailable)?
+        target.map_err(original_destination_unavailable)?
     };
     let snapshot = crate::clipboard::copy_recovery_backup(&source, &target, app, event, cancel)
         .map_err(|error| {

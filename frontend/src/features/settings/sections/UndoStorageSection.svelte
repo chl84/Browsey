@@ -1,13 +1,15 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import TextField from '@/shared/ui/TextField.svelte'
+  import ConfirmActionModal from '@/shared/ui/ConfirmActionModal.svelte'
   import RecoveryBackups from '../RecoveryBackups.svelte'
   import { createUndoStorageModel, describeUndoStorage, describeUndoStorageOverview } from '../undoStorage'
 
-  const { summary, busy, error, refresh, dispose } = createUndoStorageModel()
+  const { summary, busy, error, deleting, message, refresh, deleteAll, dispose } = createUndoStorageModel()
   onMount(() => { void refresh() })
   onDestroy(dispose)
   let showBackups = false
+  let confirmDelete = false
 </script>
 
 <div class="form-label backup-label">Undo backups</div>
@@ -15,9 +17,10 @@
   <small>Undo up to 50 actions in the current session. Backups are kept across restarts.</small>
   <div role="status" aria-live="polite">
     {#if $error}
-      <div class="error">Could not inspect backups: {$error}</div>
+      <div class="error">{$error}</div>
       {#if $summary}<small>Previous measurement is not current.</small>{/if}
     {/if}
+    {#if $message}<div>{$message}</div>{/if}
     {#if $summary}
       <div>{describeUndoStorageOverview($summary)}</div>
       {#if $summary.incomplete}
@@ -26,12 +29,9 @@
     {/if}
   </div>
   <div class="backup-actions">
-    {#if $summary && ($summary.sessions > 0 || $summary.incomplete)}
-      <button type="button" class="secondary" on:click={() => { showBackups = true }}>Show backups</button>
-    {/if}
-    <button type="button" class="secondary" disabled={$busy} on:click={() => void refresh()}>
-      {$busy ? 'Inspecting backups…' : 'Refresh'}
-    </button>
+    <button type="button" class="secondary" disabled={$deleting} on:click={() => { showBackups = true }}>Show all</button>
+    <button type="button" class="danger" disabled={$busy} on:click={() => { $error = ''; confirmDelete = true }}>Delete all</button>
+    {#if $busy}<small role="status">{$deleting ? 'Deleting backups…' : 'Inspecting backups…'}</small>{/if}
   </div>
   <details>
     <summary>Advanced details</summary>
@@ -51,6 +51,12 @@
 {#if showBackups}
   <RecoveryBackups onClose={() => { showBackups = false; void refresh() }} />
 {/if}
+
+<ConfirmActionModal open={confirmDelete} title="Delete all backups?"
+  message={`This permanently deletes stored backups and clears undo and redo history. Backups in use by another Browsey instance are kept.${$error ? `\n\nLast error: ${$error}` : ''}`}
+  confirmLabel="Delete all" danger busy={$deleting}
+  onConfirm={() => { void deleteAll().then(done => { if (done) confirmDelete = false }) }}
+  onCancel={() => { confirmDelete = false }} />
 
 <style>
   .undo-storage {

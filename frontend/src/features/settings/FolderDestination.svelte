@@ -45,12 +45,12 @@
       on:input={() => { value = '' }} on:keydown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void browse(path) } }} />
     <button type="button" class="secondary" disabled={disabled || busy || !path} on:click={() => void browse(path)}>Go</button>
   </div>
-  {#if error}<p class="error" role="alert">{error}</p>{/if}
-  <div class="folders" role="group" aria-label="Destination folders">
+  {#if error}<div class="pill error" role="alert">{error}</div>{/if}
+  <div class="folders modal-scroll" role="group" aria-label="Destination folders">
     {#if busy}<p class="muted" role="status">Loading folders…</p>
     {:else}
       {#each folders as folder (folder.path)}
-        <button type="button" class="folder" disabled={disabled} on:click={() => void browse(folder.path)}>{folder.name}<span aria-hidden="true">›</span></button>
+        <button type="button" class="folder secondary" disabled={disabled} on:click={() => void browse(folder.path)}>{folder.name}<span aria-hidden="true">›</span></button>
       {/each}
       {#if !folders.length && current && !error}<p class="muted">No subfolders.</p>{/if}
     {/if}
@@ -58,11 +58,15 @@
 </div>
 
 <style>
-  .folder-destination { min-width: 0; }
-  .path-row { display: flex; gap: var(--settings-control-gap); align-items: center; }
+  .folder-destination { display: flex; flex-direction: column; gap: var(--modal-field-gap); min-width: 0; }
+  .path-row {
+    --modal-button-padding-y: var(--modal-input-padding-y);
+    --modal-button-min-height: var(--modal-input-min-height);
+    display: flex;
+    gap: var(--modal-field-gap);
+    align-items: center;
+  }
   .path-row :global(input) { flex: 1; }
-  .folders { margin-top: var(--settings-control-gap); max-height: 200px; overflow: auto; border: 1px solid var(--border); }
-  .folder { width: 100%; display: flex; justify-content: space-between; gap: 12px; text-align: left; padding: 8px 12px; overflow-wrap: anywhere; background: transparent; border: 0; color: var(--fg); cursor: pointer; }
-  .folder:hover, .folder:focus-visible { background: var(--bg-raised); }
-  p { margin: 8px 12px; }
+  .folders { display: flex; flex-direction: column; gap: var(--modal-field-gap); padding-block: var(--modal-field-gap); padding-inline-start: var(--modal-field-gap); max-height: 200px; border: 1px solid var(--border); }
+  .folder { width: 100%; display: flex; justify-content: space-between; gap: var(--modal-field-gap); text-align: left; overflow-wrap: anywhere; }
 </style>

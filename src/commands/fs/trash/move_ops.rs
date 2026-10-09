@@ -41,6 +41,7 @@ async fn move_to_trash_impl(
     let app_handle = app.clone();
     let undo_state = undo.inner().clone();
     let task = tauri::async_runtime::spawn_blocking(move || -> FsResult<()> {
+        let _backup_operation = crate::undo::backup_operation().map_err(FsError::from)?;
         let action = move_single_to_trash(&path, &app_handle, true)?;
         let _ = undo_state.record_applied(action);
         Ok(())
@@ -141,6 +142,7 @@ where
     FEmitProgress: FnMut(u64, u64, bool),
     FEmitChanged: FnMut(),
 {
+    let _backup_operation = crate::undo::backup_operation().map_err(FsError::from)?;
     let total = paths.len() as u64;
     if total == 0 {
         emit_progress(0, 0, true);

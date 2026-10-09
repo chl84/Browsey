@@ -27,6 +27,12 @@ Use the existing theme and density variables from `app.css`. Checkbox and radio
 indicators intentionally share size, foreground, border, disabled, and focus
 tokens; radios remain circular to distinguish single-choice groups.
 
+Use `modal-scroll` on inner modal scroll surfaces. It reserves a stable scrollbar
+gutter and leaves end padding for overlay scrollbars and keyboard focus rings,
+using the current scrollbar width and density. Set `--modal-scroll-gap` only when
+the surface needs a different gap. Keep local padding on the other sides so it
+does not override the shared end padding.
+
 Modal buttons use shared global styles: `secondary` for cancellation and
 secondary actions, `primary` for highlighted non-destructive actions, and
 `danger` for destructive actions such as overwrite, delete, and format. Keep a

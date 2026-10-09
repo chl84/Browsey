@@ -369,6 +369,7 @@ fn create_file_impl(
     name: String,
     state: tauri::State<UndoState>,
 ) -> error::FsResult<String> {
+    let _backup_operation = crate::undo::backup_operation().map_err(FsError::from)?;
     let base = sanitize_path_follow(&path, true).map_err(FsError::from)?;
     ensure_existing_dir_nonsymlink(&base).map_err(FsError::from)?;
 

@@ -26,6 +26,7 @@ pub fn delete_entry(path: String, state: tauri::State<UndoState>) -> ApiResult<(
 }
 
 fn delete_entry_impl(path: String, state: tauri::State<UndoState>) -> FsResult<()> {
+    let _backup_operation = crate::undo::backup_operation().map_err(FsError::from)?;
     let pb = sanitize_path_nofollow(&path, true).map_err(FsError::from)?;
     let action = delete_with_backup(&pb)?;
     let _ = state.record_applied(action);
@@ -94,6 +95,7 @@ where
     FShouldAbort: FnMut(Option<&AtomicBool>) -> bool,
     FEmitProgress: FnMut(u64, u64, bool),
 {
+    let _backup_operation = crate::undo::backup_operation().map_err(FsError::from)?;
     if paths.is_empty() {
         emit_progress(0, 0, true);
         return Ok(());
