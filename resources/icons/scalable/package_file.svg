@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" role="img" aria-label="Installasjonspakke">
+  <g>
+    <path d="M28 14H76L100 38V114H28V14Z" fill="#F3E8D2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
+    <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
+
+    <path d="M36 68L44 56H84L92 68Z" fill="#E8DBC2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
+    <rect x="36" y="68" width="56" height="38" fill="#D6B58B" stroke="#2B2419" stroke-width="2" />
+    <path d="M59 56H69V106H59Z" fill="#F3E8D2" stroke="#2B2419" stroke-width="2" />
+    <path d="M36 68H92" stroke="#2B2419" stroke-width="2" />
+  </g>
+</svg>

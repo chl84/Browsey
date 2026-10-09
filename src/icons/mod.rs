@@ -35,6 +35,12 @@ pub mod icon_ids {
     pub const CLOUD: IconId = 21;
     pub const MODEL_3D_FILE: IconId = 22;
     pub const NETWORK_FOLDER: IconId = 23;
+    pub const DOCUMENT_FILE: IconId = 24;
+    pub const CODE_FILE: IconId = 25;
+    pub const PACKAGE_FILE: IconId = 26;
+    pub const DISK_IMAGE_FILE: IconId = 27;
+    pub const FONT_FILE: IconId = 28;
+    pub const EBOOK_FILE: IconId = 29;
 }
 
 use icon_ids::SHORTCUT;
@@ -82,22 +88,55 @@ mod tests {
     }
 
     #[test]
-    fn local_and_virtual_models_share_the_icon_while_links_keep_the_shortcut() {
-        // Only metadata is needed; no model contents or real user files are read.
+    fn local_and_virtual_file_types_share_icons_while_links_keep_the_shortcut() {
+        // Only metadata is needed; no file contents or real user files are read.
         let meta = std::fs::metadata(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"))
             .expect("project file metadata");
-        for name in ["mesh.STL", "scene.blend", "part.step"] {
+        for (name, expected) in [
+            ("mesh.STL", icon_ids::MODEL_3D_FILE),
+            ("scene.blend", icon_ids::MODEL_3D_FILE),
+            ("part.step", icon_ids::MODEL_3D_FILE),
+            ("report.DOCX", icon_ids::DOCUMENT_FILE),
+            ("report.odt", icon_ids::DOCUMENT_FILE),
+            ("report.rtf", icon_ids::DOCUMENT_FILE),
+            ("main.RS", icon_ids::CODE_FILE),
+            ("main.py", icon_ids::CODE_FILE),
+            ("main.js", icon_ids::CODE_FILE),
+            ("main.ts", icon_ids::CODE_FILE),
+            ("package.rpm", icon_ids::PACKAGE_FILE),
+            ("package.RPM", icon_ids::PACKAGE_FILE),
+            ("package.deb", icon_ids::PACKAGE_FILE),
+            ("image.ISO", icon_ids::DISK_IMAGE_FILE),
+            ("image.img", icon_ids::DISK_IMAGE_FILE),
+            ("typeface.TTF", icon_ids::FONT_FILE),
+            ("typeface.otf", icon_ids::FONT_FILE),
+            ("typeface.woff", icon_ids::FONT_FILE),
+            ("typeface.woff2", icon_ids::FONT_FILE),
+            ("book.EPUB", icon_ids::EBOOK_FILE),
+            ("book.mobi", icon_ids::EBOOK_FILE),
+            ("notes.txt", icon_ids::TEXTFILE),
+            ("config.toml", icon_ids::TEXTFILE),
+            ("run.sh", icon_ids::EXECUTABLE_FILE),
+            ("program.bin", icon_ids::EXECUTABLE_FILE),
+            ("song.mp3", icon_ids::AUDIO_FILE),
+            ("archive.tar.gz", icon_ids::COMPRESSED),
+            ("unknown.custom", icon_ids::FILE),
+        ] {
             assert_eq!(
                 icon_id_for(Path::new(name), &meta, false),
-                icon_ids::MODEL_3D_FILE
+                expected,
+                "{name}"
             );
+            assert_eq!(icon_id_for_virtual_entry(name, false), expected, "{name}");
             assert_eq!(
-                icon_id_for_virtual_entry(name, false),
-                icon_ids::MODEL_3D_FILE
+                icon_id_for_virtual_entry(name, true),
+                icon_ids::GENERIC_FOLDER,
+                "directory named {name}"
             );
             assert_eq!(
                 icon_id_for(Path::new(name), &meta, true),
-                icon_ids::SHORTCUT
+                icon_ids::SHORTCUT,
+                "link named {name}"
             );
         }
     }

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" role="img" aria-label="E-bok">
+  <g>
+    <path d="M28 14H76L100 38V114H28V14Z" fill="#F3E8D2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
+    <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
+
+    <rect x="40" y="56" width="48" height="50" fill="#DAF1E2" stroke="#2B2419" stroke-width="2" />
+    <rect x="40" y="56" width="9" height="50" fill="#B7E4C7" stroke="#2B2419" stroke-width="2" />
+    <path d="M76 56H84V77L80 73L76 77Z" fill="#E8DBC2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
+    <path d="M56 85H80M56 94H73" stroke="#2B2419" stroke-width="3" stroke-linecap="butt" stroke-opacity="0.8" />
+  </g>
+</svg>

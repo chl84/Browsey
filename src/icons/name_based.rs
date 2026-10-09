@@ -4,10 +4,11 @@ use mime::{APPLICATION, AUDIO, IMAGE, MODEL, TEXT, VIDEO};
 
 use super::{
     icon_ids::{
-        AUDIO_FILE, COMPRESSED, DESKTOP_FOLDER, DOCUMENT_FOLDER, DOWNLOAD_FOLDER, EXECUTABLE_FILE,
-        FILE, GENERIC_FOLDER, HOME_FOLDER, MODEL_3D_FILE, MUSIC_FOLDER, PDF_FILE, PICTURES_FOLDER,
-        PICTURE_FILE, PRESENTATION_FILE, PUBLIC_FOLDER, SPREADSHEET_FILE, TEMPLATES_FOLDER,
-        TEXTFILE, VIDEO_FILE, VIDEO_FOLDER,
+        AUDIO_FILE, CODE_FILE, COMPRESSED, DESKTOP_FOLDER, DISK_IMAGE_FILE, DOCUMENT_FILE,
+        DOCUMENT_FOLDER, DOWNLOAD_FOLDER, EBOOK_FILE, EXECUTABLE_FILE, FILE, FONT_FILE,
+        GENERIC_FOLDER, HOME_FOLDER, MODEL_3D_FILE, MUSIC_FOLDER, PACKAGE_FILE, PDF_FILE,
+        PICTURES_FOLDER, PICTURE_FILE, PRESENTATION_FILE, PUBLIC_FOLDER, SPREADSHEET_FILE,
+        TEMPLATES_FOLDER, TEXTFILE, VIDEO_FILE, VIDEO_FOLDER,
     },
     IconId,
 };
@@ -61,15 +62,22 @@ fn file_icon_id(name_lc: &str, ext: &str, mime: Option<&str>) -> IconId {
         // Executables / scripts
         "exe" | "bin" | "sh" | "bat" | "cmd" | "msi" => EXECUTABLE_FILE,
         "dll" | "so" | "dylib" => EXECUTABLE_FILE,
+        // Treat RPM/DEB as installation packages before MIME fallback. The
+        // extension-only MIME table also associates RPM with legacy audio.
+        "rpm" | "deb" => PACKAGE_FILE,
+        "iso" | "img" => DISK_IMAGE_FILE,
+        "ttf" | "otf" | "ttc" | "woff" | "woff2" | "eot" => FONT_FILE,
+        "epub" | "mobi" => EBOOK_FILE,
         // 3D models / scenes / CAD solids. Prefer their extension even when
         // a text-based model or packaged scene has a generic MIME type.
         "blend" | "blend1" | "blend2" | "obj" | "stl" | "fbx" | "gltf" | "glb" | "dae" | "ply"
         | "3ds" | "3mf" | "3dm" | "usd" | "usda" | "usdc" | "usdz" | "abc" | "step" | "stp"
         | "iges" | "igs" => MODEL_3D_FILE,
-        // Code / text
+        // Source code
         "rs" | "c" | "cpp" | "h" | "hpp" | "py" | "js" | "ts" | "tsx" | "jsx" | "java" | "go"
-        | "rb" | "php" | "lua" | "json" | "toml" | "yaml" | "yml" | "ini" | "cfg" | "md"
-        | "txt" | "lock" => TEXTFILE,
+        | "rb" | "php" | "lua" | "html" | "htm" | "css" => CODE_FILE,
+        // Plain text and configuration
+        "json" | "toml" | "yaml" | "yml" | "ini" | "cfg" | "md" | "txt" | "lock" => TEXTFILE,
         // Media
         "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "bmp" | "tiff" | "avif" | "heic" => {
             PICTURE_FILE
@@ -80,7 +88,7 @@ fn file_icon_id(name_lc: &str, ext: &str, mime: Option<&str>) -> IconId {
         "pdf" => PDF_FILE,
         "xls" | "xlsx" | "xlsm" | "xlt" | "xltx" | "ods" | "csv" => SPREADSHEET_FILE,
         "ppt" | "pptx" | "odp" => PRESENTATION_FILE,
-        "doc" | "docx" | "docm" | "dot" | "dotx" | "odt" | "rtf" => TEXTFILE,
+        "doc" | "docx" | "docm" | "dot" | "dotx" | "odt" | "rtf" => DOCUMENT_FILE,
         _ => mime_icon_id(mime),
     }
 }

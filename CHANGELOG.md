@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add matching document, source-code, installation-package, disk-image, font
+  and e-book icons for local and cloud files. Prefer the RPM package icon over
+  the legacy audio MIME guess, retaining existing folder and shortcut icons.
+
 - Use a blue network-folder icon for network connections and the matching
   cloud-folder icon for cloud providers in Network.
 
