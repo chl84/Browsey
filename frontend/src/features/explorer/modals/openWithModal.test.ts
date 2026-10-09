@@ -2,9 +2,16 @@ import { get } from 'svelte/store'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createOpenWithModal } from './openWithModal'
 
-const { invoke, prepareCloudWorkingCopy } = vi.hoisted(() => ({ invoke: vi.fn(), prepareCloudWorkingCopy: vi.fn() }))
+const { invoke, prepareCloudWorkingCopy, cancelTask, handlers } = vi.hoisted(() => ({ invoke: vi.fn(), prepareCloudWorkingCopy: vi.fn(), cancelTask: vi.fn(), handlers: new Map<string, (event: { payload: unknown }) => void>() }))
 vi.mock('@/shared/lib/tauri', () => ({ invoke }))
 vi.mock('@/features/network', () => ({ prepareCloudWorkingCopy }))
+vi.mock('../services/activity.service', () => ({ cancelTask }))
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: async (name: string, handler: (event: { payload: unknown }) => void) => {
+    handlers.set(name, handler)
+    return () => { handlers.delete(name) }
+  },
+}))
 
 const apps = [{ id: 'editor', name: 'Editor', defaultContentType: 'text/plain', matches: true, terminal: false, exec: 'editor' }]
 const setup = async () => {
@@ -18,7 +25,24 @@ const setup = async () => {
 }
 
 describe('open-with defaults', () => {
-  beforeEach(() => { invoke.mockReset(); prepareCloudWorkingCopy.mockReset() })
+  beforeEach(() => { invoke.mockReset(); prepareCloudWorkingCopy.mockReset(); cancelTask.mockReset(); handlers.clear() })
+
+  it('shows measured download progress and cancels preparation when the modal closes', async () => {
+    let resolve!: (copy: { localPath: string }) => void
+    prepareCloudWorkingCopy.mockReturnValue(new Promise(done => { resolve = done }))
+    const modal = createOpenWithModal({ showToast: vi.fn() })
+    modal.open({ path: 'rclone://work/report.txt', name: 'report.txt', kind: 'file', iconId: 0 })
+    await vi.waitFor(() => expect(prepareCloudWorkingCopy).toHaveBeenCalledOnce())
+    const event = prepareCloudWorkingCopy.mock.calls[0][1] as string
+    handlers.get(event)?.({ payload: { bytes: 1024, total: 2048 } })
+    expect(get(modal.state).progress).toMatchObject({ percent: 50, detail: '1.00 KB / 2.00 KB' })
+    modal.close()
+    expect(cancelTask).toHaveBeenCalledWith(event)
+    resolve({ localPath: '/private/work/report.txt' })
+    await vi.waitFor(() => expect(handlers.has(event)).toBe(false))
+    expect(get(modal.state).open).toBe(false)
+    expect(invoke).not.toHaveBeenCalled()
+  })
 
   it('uses the durable local copy for cloud app discovery, default and opening', async () => {
     prepareCloudWorkingCopy.mockResolvedValue({ localPath: '/private/work/report.txt' })
@@ -27,7 +51,7 @@ describe('open-with defaults', () => {
     const modal = createOpenWithModal({ showToast })
     modal.open({ path: 'rclone://work/report.txt', name: 'report.txt', kind: 'file', iconId: 0 })
     await vi.waitFor(() => expect(get(modal.state).loading).toBe(false))
-    expect(prepareCloudWorkingCopy).toHaveBeenCalledExactlyOnceWith('rclone://work/report.txt')
+    expect(prepareCloudWorkingCopy).toHaveBeenCalledExactlyOnceWith('rclone://work/report.txt', expect.stringMatching(/^cloud-open-with-/))
     expect(invoke).toHaveBeenCalledWith('list_open_with_apps', { path: '/private/work/report.txt' })
     invoke.mockClear()
     await modal.confirm({ appId: 'editor', setDefault: true })

@@ -456,6 +456,7 @@ pub(super) fn merge_dir(
         // Remove source directory but keep an empty backup so undo can recreate it
         // before moving items back.
         let backup = temp_backup_path(src).map_err(ClipboardError::from)?;
+        let _backup_use = crate::undo::write_backups(&[&backup]).map_err(ClipboardError::from)?;
         if let Some(parent) = backup.parent() {
             fs::create_dir_all(parent).map_err(|e| {
                 ClipboardError::from_io_error(
@@ -506,7 +507,7 @@ pub(super) fn copy_entry(
     copy_entry_with_receipt(src, dest, app, progress_event, cancel, false)
 }
 
-fn copy_entry_with_receipt(
+pub(super) fn copy_entry_with_receipt(
     src: &Path,
     dest: &Path,
     app: Option<&tauri::AppHandle>,
@@ -514,6 +515,9 @@ fn copy_entry_with_receipt(
     cancel: Option<&AtomicBool>,
     require_receipt: bool,
 ) -> ClipboardResult<crate::undo::CopyReceipt> {
+    // Reading a recovery source is protected by its caller's read lease. Only
+    // guard the destination here, otherwise a recovery reader would wait on itself.
+    let _backup_use = crate::undo::write_backups(&[dest]).map_err(ClipboardError::from)?;
     #[cfg(feature = "native-test")]
     crate::native_test::probes::checkpoint(
         &src.to_string_lossy(),
@@ -925,6 +929,7 @@ pub(super) fn move_entry(
     progress_event: Option<&CopyProgress<'_>>,
     cancel: Option<&AtomicBool>,
 ) -> ClipboardResult<()> {
+    let _backup_use = crate::undo::write_backups(&[src, dest]).map_err(ClipboardError::from)?;
     #[cfg(feature = "native-test")]
     crate::native_test::probes::checkpoint(
         &src.to_string_lossy(),

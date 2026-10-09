@@ -681,7 +681,7 @@ export const docsPages: DocPage[] = [
           'Clearing thumbnail cache removes cached files on disk and refreshes visible thumbnails in the UI',
           'Clearing cloud file cache removes disposable preview downloads, not persistent working copies or the legacy cloud-open directory, which may contain edits',
           'Clearing stars/bookmarks/recents applies globally and updates relevant views/state immediately',
-          'Undo and recovery backup information is read-only, with paths and manual guidance under Backup details and recovery guidance',
+          'Show backups lists unrecovered files and folders. Recover restores to the original location with progress; Recover to… opens if that destination is unavailable. Verified recovered entries leave the list across refresh/restart, with data kept for undo. Active writes and other running instances remain unavailable; paths and retention are under Advanced details',
         ],
       },
       {
@@ -1406,7 +1406,7 @@ capabilities/default.json`,
         title: 'Undo Lifecycle',
         bullets: [
           'Undo/redo history is in-memory and therefore resets when the app restarts',
-          'Startup cleanup under browsey/undo-sessions retains live or recovery-marked sessions. Protected backups may require manual recovery after restart',
+          'Stored backups under browsey/undo-sessions survive restart without automatic expiry, with or without recovery markers. Startup cleanup removes only completely empty abandoned sessions. Recover in Settings restores to the original location; Recover to… offers another folder when necessary',
           'When atomic no-replace rename is unavailable on a platform/filesystem, move/rename fallback is copy+delete and therefore non-atomic',
           'Copy/move and recovery are not whole-operation transactions or power-loss guarantees. Stop concurrent edits to sources and destinations during operations',
         ],

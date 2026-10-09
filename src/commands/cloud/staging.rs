@@ -15,19 +15,9 @@ use std::{
     path::{Path, PathBuf},
     sync::{atomic::AtomicBool, Arc},
 };
-use tauri::Emitter;
 use zeroize::Zeroizing;
 
-fn phase(app: &tauri::AppHandle, event: Option<&str>, label: &str) {
-    if let Some(event) = event {
-        let _ = app.emit(
-            event,
-            serde_json::json!({
-                "bytes": 0, "total": 0, "finished": false, "phase": label,
-            }),
-        );
-    }
-}
+use super::progress::phase;
 
 pub(crate) fn is_cloud_archive_candidate(raw: &str) -> bool {
     let Ok(path) = CloudPath::parse(raw) else {
@@ -164,7 +154,9 @@ pub async fn compress_cloud_entries(
         let stage = map_api_result(workspace::operation_dir("compress"))?;
         let result = (|| {
             let provider = map_api_result(
-                super::configured_rclone_provider().map_err(CloudCommandError::from),
+                super::configured_rclone_provider()
+                    .map(|provider| provider.with_progress(&app, progress_event.as_deref()))
+                    .map_err(CloudCommandError::from),
             )?;
             if map_api_result(provider.stat_path(&target))?.is_some() {
                 return Err(ApiError::new(

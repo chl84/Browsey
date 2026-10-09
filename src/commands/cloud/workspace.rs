@@ -389,14 +389,16 @@ pub struct CloudUploadResult {
 
 #[tauri::command]
 pub async fn upload_cloud_working_copy(
+    app: tauri::AppHandle,
     id: String,
     cancel: tauri::State<'_, crate::tasks::CancelState>,
     progress_event: Option<String>,
 ) -> ApiResult<CloudUploadResult> {
-    map_api_result(upload_working_copy_impl(id, cancel.inner().clone(), progress_event).await)
+    map_api_result(upload_working_copy_impl(app, id, cancel.inner().clone(), progress_event).await)
 }
 
 async fn upload_working_copy_impl(
+    app: tauri::AppHandle,
     id: String,
     cancel: crate::tasks::CancelState,
     progress_event: Option<String>,
@@ -410,7 +412,17 @@ async fn upload_working_copy_impl(
         let source = CloudPath::parse(&copy.source_path).map_err(super::map_cloud_path_error)?;
         super::limits::with_cloud_remote_permits(vec![source.remote().to_owned()], || {
             let provider = super::configured_rclone_provider().map_err(CloudCommandError::from)?;
-            sync::with_copy_lock(&id, || upload_at(&base, &id, &provider, token.as_deref()))
+            let provider = provider.with_progress(&app, progress_event.as_deref());
+            super::progress::phase(&app, progress_event.as_deref(), "Checking cloud original…");
+            sync::with_copy_lock(&id, || {
+                upload_at_with_phase(&base, &id, &provider, token.as_deref(), || {
+                    super::progress::phase(
+                        &app,
+                        progress_event.as_deref(),
+                        "Uploading new cloud file…",
+                    );
+                })
+            })
         })
     })
     .await;
@@ -419,11 +431,22 @@ async fn upload_working_copy_impl(
 
 // The command and acceptance tests use this same upload path. The injected
 // storage root keeps tests out of the user's working-copy registry.
+#[cfg(test)]
 pub(super) fn upload_at(
     base: &Path,
     id: &str,
     provider: &super::providers::rclone::RcloneCloudProvider,
     token: Option<&std::sync::atomic::AtomicBool>,
+) -> CloudCommandResult<CloudUploadResult> {
+    upload_at_with_phase(base, id, provider, token, || {})
+}
+
+fn upload_at_with_phase(
+    base: &Path,
+    id: &str,
+    provider: &super::providers::rclone::RcloneCloudProvider,
+    token: Option<&std::sync::atomic::AtomicBool>,
+    uploading: impl FnOnce(),
 ) -> CloudCommandResult<CloudUploadResult> {
     use super::provider::CloudProvider;
     let mut copy = load_at(base, id)?;
@@ -449,6 +472,7 @@ pub(super) fn upload_at(
         copy.original_modified.clone(),
     )?;
     let destination = save_as_new_path(&source, &snapshot.id)?;
+    uploading();
     let result = provider.upload_new_file(Path::new(&snapshot.local_path), &destination, token);
     super::invalidate_cloud_write_paths(std::slice::from_ref(&destination));
     result?;

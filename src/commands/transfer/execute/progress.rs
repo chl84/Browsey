@@ -272,7 +272,24 @@ pub(super) fn execute_cloud_to_local_file_transfer_with_aggregate_progress(
         total_bytes,
         file_size,
     } = aggregate;
-    let provider = mixed_cloud_provider_for_cli(cli);
+    let cli = cli.clone().with_observer(progress.app.as_ref().map(|app| {
+        let app = app.clone();
+        let event = progress.event_name.clone();
+        cloud::progress::StatsObserver::new(move |stats| {
+            if let Some(bytes) = stats.get("bytes").and_then(serde_json::Value::as_u64) {
+                crate::runtime_lifecycle::emit_if_running(
+                    &app,
+                    &event,
+                    cloud::progress::ProgressPayload::Bytes {
+                        bytes: completed_before.saturating_add(bytes.min(file_size)),
+                        total: total_bytes,
+                        finished: false,
+                    },
+                );
+            }
+        })
+    }));
+    let provider = mixed_cloud_provider_for_cli(&cli);
     provider
         .download_file_with_progress(src, dst, &progress.event_name, cancel, |bytes, _| {
             let aggregate = completed_before.saturating_add(bytes.min(file_size));
@@ -320,7 +337,24 @@ pub(super) fn execute_local_to_cloud_file_transfer_with_aggregate_progress(
         total_bytes,
         file_size,
     } = aggregate;
-    let provider = mixed_cloud_provider_for_cli(cli);
+    let cli = cli.clone().with_observer(progress.app.as_ref().map(|app| {
+        let app = app.clone();
+        let event = progress.event_name.clone();
+        cloud::progress::StatsObserver::new(move |stats| {
+            if let Some(bytes) = stats.get("bytes").and_then(serde_json::Value::as_u64) {
+                crate::runtime_lifecycle::emit_if_running(
+                    &app,
+                    &event,
+                    cloud::progress::ProgressPayload::Bytes {
+                        bytes: completed_before.saturating_add(bytes.min(file_size)),
+                        total: total_bytes,
+                        finished: false,
+                    },
+                );
+            }
+        })
+    }));
+    let provider = mixed_cloud_provider_for_cli(&cli);
     let source_snapshot = (op == MixedTransferOp::Move)
         .then(|| snapshot_mixed_move_source(src))
         .transpose()?;

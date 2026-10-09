@@ -1,14 +1,9 @@
+import type { ActivityApi as SharedActivityApi } from '../hooks/createActivity'
 import { writable } from 'svelte/store'
 import { getErrorMessage } from '@/shared/lib/error'
 import { createFolder } from '../services/files.service'
 
-type ActivityApi = {
-  start: (label: string, eventName: string, onCancel?: () => void) => Promise<void>
-  hideSoon: () => void
-  cleanup: (preserveTimer?: boolean) => Promise<void>
-  clearNow: () => void
-  hasHideTimer: () => boolean
-}
+type ActivityApi = Pick<SharedActivityApi, 'start' | 'hideSoon' | 'cleanup' | 'clearNow' | 'hasHideTimer'>
 
 type Deps = {
   getCurrentPath: () => string | null

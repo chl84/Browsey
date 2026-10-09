@@ -28,6 +28,17 @@ describe('deleteEntries', () => {
     deleteCloudDirRecursiveMock.mockResolvedValue(undefined)
   })
 
+  it('only advances cloud item progress after successful deletes and stops at an error', async () => {
+    const { deleteEntries } = await import('./trash.service')
+    const paths = ['rclone://work/a', 'rclone://work/b', 'rclone://work/c']
+    statCloudEntryMock.mockResolvedValue({ kind: 'file' })
+    deleteCloudFileMock.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('Denied'))
+    const progress = vi.fn()
+    await expect(deleteEntries(paths, 'delete', false, progress)).rejects.toThrow('Denied')
+    expect(progress.mock.calls.map(([payload]) => [payload.items, payload.total])).toEqual([[0, 3], [1, 3]])
+    expect(deleteCloudFileMock).toHaveBeenCalledTimes(2)
+  })
+
   it('uses local delete command for non-cloud paths', async () => {
     const { deleteEntries } = await import('./trash.service')
 

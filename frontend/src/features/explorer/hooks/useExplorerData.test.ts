@@ -411,6 +411,7 @@ describe('useExplorerData cloud refresh event', () => {
       clearNow: vi.fn(),
       cleanup: vi.fn(async () => {}),
       hideSoon: vi.fn(),
+      reportProgress: vi.fn(),
       hasHideTimer: vi.fn(() => false),
       activity: writable(null),
     }
@@ -448,6 +449,7 @@ describe('useExplorerData cloud refresh event', () => {
       clearNow: vi.fn(),
       cleanup: vi.fn(async () => {}),
       hideSoon: vi.fn(),
+      reportProgress: vi.fn(),
       hasHideTimer: vi.fn(() => false),
       activity: writable(null),
     }

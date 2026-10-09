@@ -60,6 +60,7 @@ export const useModalsController = ({
   const renameState = renameModal.state
 
   const advancedRenameModal = createAdvancedRenameModal({
+    activityApi,
     reloadCurrent,
     showToast,
   })

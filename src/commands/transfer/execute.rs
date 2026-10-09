@@ -17,7 +17,6 @@ use crate::commands::cloud::rclone_cli::{
 use crate::commands::cloud::types::CloudEntryKind;
 use crate::runtime_lifecycle;
 use crate::tasks::{CancelGuard, CancelState};
-use serde::Serialize;
 use std::fs;
 use std::io::ErrorKind;
 use std::sync::{
@@ -62,13 +61,6 @@ pub(super) fn copy_staged_entry(
 struct TransferProgressContext {
     app: Option<tauri::AppHandle>,
     event_name: String,
-}
-
-#[derive(Serialize, Clone)]
-struct TransferProgressPayload {
-    bytes: u64,
-    total: u64,
-    finished: bool,
 }
 
 struct RcloneTransferContext<'a> {
@@ -319,6 +311,14 @@ fn execute_rclone_transfer(
         return Err(transfer_err(TransferErrorCode::Unsupported,
             "Cannot overwrite a file with a folder or a folder with a file on this route; use Auto-rename or Skip"));
     }
+
+    let observed_cli = cli.clone().with_observer(progress.and_then(|progress| {
+        progress
+            .app
+            .as_ref()
+            .and_then(|app| cloud::progress::observer(app, Some(&progress.event_name)))
+    }));
+    let cli = &observed_cli;
 
     // Bind legacy Google sources to the metadata's ID before any transfer.
     // Ordinary local/OneDrive/Nextcloud routes never enter this branch.
@@ -800,7 +800,7 @@ fn emit_transfer_progress(
     let _ = runtime_lifecycle::emit_if_running(
         app,
         &progress.event_name,
-        TransferProgressPayload {
+        cloud::progress::ProgressPayload::Bytes {
             bytes,
             total,
             finished,

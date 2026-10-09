@@ -13,6 +13,7 @@ mod gio_copy;
 mod ops;
 mod owned_copy_paths;
 mod progress;
+mod recovery;
 #[cfg(test)]
 mod tests;
 
@@ -41,6 +42,7 @@ use ops::{
 };
 
 pub use drop_mode::resolve_drop_clipboard_mode;
+pub(crate) use recovery::copy_recovery_backup;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ClipboardMode {

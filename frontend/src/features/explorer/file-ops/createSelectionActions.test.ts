@@ -25,7 +25,7 @@ const setup = (overrides: Partial<Parameters<typeof createSelectionActions>[0]> 
   const deps = {
     clipboard,
     activityApi: { start: vi.fn(), cleanup: vi.fn(), clearNow: vi.fn(),
-      requestCancel: vi.fn(), hideSoon: vi.fn(), hasHideTimer: () => false },
+      requestCancel: vi.fn(), hideSoon: vi.fn(), reportProgress: vi.fn(), hasHideTimer: () => false },
     currentView: () => 'dir' as const,
     getCurrentPath: () => '/tmp', confirmDeleteEnabled: () => true,
     confirmDelete: vi.fn(), reloadCurrent: vi.fn(), showToast: vi.fn(),

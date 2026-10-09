@@ -38,7 +38,7 @@ export const createExplorerFileActions = (deps: Deps) => {
     const event = `cloud-open-${Date.now()}-${Math.random().toString(16).slice(2)}`
     let completed = false
     try {
-      await deps.activityApi.start('Opening cloud file…', event, () => void deps.activityApi.requestCancel(event))
+      await deps.activityApi.start('Opening cloud file…', event, () => void deps.activityApi.requestCancel(event), { completeOnReply: true })
       await openEntry(entry, { progressEvent: event })
       completed = true
       deps.activityApi.hideSoon()

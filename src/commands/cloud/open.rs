@@ -23,14 +23,6 @@ mod cache_store;
 mod inflight;
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct CloudOpenProgressPayload {
-    bytes: u64,
-    total: u64,
-    finished: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
 pub(crate) struct CloudOpenCacheClearResult {
     pub removed_files: u64,
     pub removed_bytes: u64,
@@ -142,7 +134,9 @@ pub(super) fn prepare_working_copy(
     progress_event: Option<&str>,
     cancel: Option<&AtomicBool>,
 ) -> CloudCommandResult<super::CloudWorkingCopy> {
-    let provider = configured_rclone_provider().map_err(CloudCommandError::from)?;
+    let provider = configured_rclone_provider()
+        .map_err(CloudCommandError::from)?
+        .with_progress(app, progress_event);
     let snapshot = resolve_cloud_materialize_snapshot(&provider, path)?;
     let (version, message) = match provider.cloud_write_version(path, None, cancel) {
         Ok(version) => (Some(version), None),
@@ -345,13 +339,10 @@ fn emit_cloud_open_progress(
     let Some(event_name) = progress_event else {
         return;
     };
-    if total == 0 {
-        return;
-    }
     let _ = runtime_lifecycle::emit_if_running(
         app,
         event_name,
-        CloudOpenProgressPayload {
+        super::progress::ProgressPayload::Bytes {
             bytes,
             total,
             finished,

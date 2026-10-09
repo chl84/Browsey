@@ -331,6 +331,7 @@ export const createExplorerShellProps = (p: ExplorerShellParams): ExplorerShellP
     openWithOpen: p.openWithState.open,
     openWithApps: p.openWithState.apps,
     openWithLoading: p.openWithState.loading,
+    openWithProgress: p.openWithState.progress,
     openWithError: p.openWithState.error,
     openWithBusy: p.openWithState.submitting,
     onConfirmOpenWith: (choice: OpenWithChoice) => p.openWithModal.confirm(choice),

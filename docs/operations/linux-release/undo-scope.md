@@ -59,8 +59,11 @@ history on Linux:
 The Linux 1.0 undo/redo claim is subject to these hard boundaries:
 
 - undo/redo history is not persisted across app restart
-- startup cleanup removes abandoned, unlocked undo sessions from previous runs;
-  backups belonging to running instances are protected by OS file locks
+- startup cleanup removes only completely empty abandoned, unlocked sessions;
+  all stored backups survive restart without automatic expiry, with or without
+  recovery markers. Nonrecursive removal preserves every remaining entry,
+  including zero-byte files and empty backed-up folders. Backups belonging to
+  running instances are protected by OS file locks
 - copy recovery markers also preserve abandoned sessions after failed or
   interrupted undo/redo; those sessions require explicit manual recovery and
   are not reconstructed into persistent undo history
@@ -99,9 +102,9 @@ The Linux 1.0 undo/redo claim is subject to these hard boundaries:
   enabled. Only marker metadata is scanned, never backup file contents
 - older builds may not recognize recovery markers; recover data before a
   downgrade or launching an older build against abandoned-session storage
-- backups are reused across copy undo/redo cycles and may remain until session
-  cleanup. The 50-action history cap is not a byte quota; first undo needs space
-  for an additional full copy, and marked sessions can grow across restarts
+- backups are reused across copy undo/redo cycles and survive restart while
+  stored. The 50-action history cap is not a byte quota; first undo needs space
+  for an additional full copy, and retained sessions can grow across restarts
 - history filesystem work runs on a blocking worker; repeated undo/redo requests
   in the same explorer page are suppressed until both operation and refresh
   finish. Listing refresh is attempted after errors, without retrying file work
@@ -130,7 +133,7 @@ The Linux 1.0 undo/redo claim is subject to these hard boundaries:
 - protection verification failure refuses rollback/history movement. Inspect the
   reported backup and destination paths rather than retrying automatically. If no
   marker could be created for an unprotected rollback action, manually recover
-  originals before closing Browsey or allowing startup cleanup
+  originals before manually removing backups
 - this protection is scoped to clipboard overwrite backups, not every delete,
   trash or history action. It does not imply atomic writes or power-loss durability;
   no directory-sync/journal recovery or persistent history guarantee is added
@@ -151,13 +154,39 @@ The Linux 1.0 undo/redo claim is subject to these hard boundaries:
   replacing or renaming them first; detection of some concurrent edits is not
   an active-writer safety guarantee. See the
   [concurrent-writer boundary decision](../../audits/daily-driver/concurrent-writer-boundary.md)
-- Settings > Stored data inspects undo-session storage without changing files, locks
-  or markers. Expand "Backup details and recovery guidance" for file-content
-  lengths, filesystem-reported allocation where available, session/marker counts,
-  a copyable directory path and manual recovery steps. Incomplete scans are
-  explicitly labelled, and marker counts also include work still in progress.
-  Allocation is not exclusive physical usage on compressed/CoW filesystems;
-  these diagnostics are not a quota or automatic recovery/cleanup
+- Settings > Stored data shows a concise undo-backup summary. "Advanced details"
+  contains allocation, the copyable storage path and retention information.
+  "Show backups" lists stored files/folders. "Recover" first copies to the
+  original path recorded privately when the backup is allocated. An occupied,
+  missing, unsafe or unwritable destination opens "Recover to…" for an explicitly
+  selected local directory. Cancellation and source lock/version failures do not
+  open the picker. Completed backups from the current process are available
+  without restarting; another process's live sessions remain unavailable. Current
+  ownership is verified against the in-process session registry, directory and
+  original lock identities, never just a PID in a folder name. Recovery holds a
+  read lease on the selected backup bucket. Backup-writing copy/move/deletion
+  primitives and empty merge backups register writes against that same bucket;
+  listing disables only busy buckets, and mutations wait until recovery releases
+  its lease. The lifetime session lock stays locked throughout. An abandoned
+  session's existing lock is held throughout recovery so startup cleanup cannot
+  remove its source. The restore command rechecks the listing
+  version, refuses unsafe paths/symlinks/special files and backup-storage targets,
+  and copies with the existing owned-stream writer, byte progress, cancellation,
+  readback verification and source/target tree checks. Existing names get a
+  numbered alternative; the writer still refuses a late collision rather than
+  merging or overwriting. Recovery never clears markers, deletes backups,
+  records history against a backup or reconstructs the interrupted operation.
+  Successful verified recovery persists a private status and removes the row
+  from the pending list, including after Refresh/restart. Backup bytes remain
+  usable by history. A changed measured backup becomes pending again; malformed
+  or unsafe status files cannot hide it. Failure/cancellation keeps the row;
+  status-write failure reports the verified output without trying another folder.
+  Failed/cancelled output is retained for inspection and never reported as
+  successful recovery. Stored bytes can already be incomplete from the original
+  failure; verifying their new copy does not establish an original recovery plan.
+  Listings and measurements are bounded, explicitly label partial results and
+  exclude legacy folders. Allocation is not exclusive physical usage on
+  compressed/CoW filesystems; this is not a quota or automatic recovery/cleanup
 
 These boundaries are part of the supported behavior, not incidental
 implementation details.

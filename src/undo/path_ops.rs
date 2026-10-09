@@ -18,6 +18,7 @@ pub(crate) fn copy_entry(src: &Path, dest: &Path) -> UndoResult<()> {
 }
 
 pub(super) fn copy_entry_recorded(src: &Path, dest: &Path) -> UndoResult<super::CopyReceipt> {
+    let _backup_use = super::write_backups(&[dest])?;
     let mut outputs = TreeSnapshot::default();
     copy_entry_tracked(src, dest, dest, &mut outputs)?;
     Ok(super::CopyReceipt::from_snapshot(outputs))
@@ -218,12 +219,14 @@ fn copy_dir(src: &Path, dest: &Path, root: &Path, outputs: &mut TreeSnapshot) ->
 }
 
 pub(crate) fn delete_entry_path(path: &Path) -> UndoResult<()> {
+    let _backup_use = super::write_backups(&[path])?;
     let snapshot = snapshot_existing_path(path)?;
     assert_path_snapshot(path, &snapshot)?;
     delete_entry_nofollow_io(path)
 }
 
 pub fn move_with_fallback(src: &Path, dst: &Path) -> UndoResult<()> {
+    let _backup_use = super::write_backups(&[src, dst])?;
     if cfg!(target_os = "linux") && is_mtp_case_only_rename(src, dst) {
         return move_case_only_via_temporary(src, dst, move_single_with_fallback);
     }

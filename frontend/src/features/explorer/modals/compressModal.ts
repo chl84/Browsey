@@ -1,15 +1,10 @@
+import type { ActivityApi as SharedActivityApi } from '../hooks/createActivity'
 import { invoke } from '@/shared/lib/tauri'
 import { writable, get } from 'svelte/store'
 import { getErrorMessage } from '@/shared/lib/error'
 import type { Entry } from '../model/types'
-import type { ActivityApi as SharedActivityApi } from '../hooks/createActivity'
 
-type ActivityApi = {
-  start: SharedActivityApi['start']
-  cleanup: (preserveTimer?: boolean) => Promise<void>
-  clearNow: () => void
-  requestCancel: (eventName: string) => Promise<void>
-}
+type ActivityApi = Pick<SharedActivityApi, 'start' | 'cleanup' | 'clearNow' | 'requestCancel'>
 
 type Deps = {
   activityApi: ActivityApi

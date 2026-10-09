@@ -11,6 +11,13 @@ The Saved badge disappears after four seconds. Close a need-attention notice wit
 its × button; new or changed problems show a new notice. Pending saves remain
 visible, and working-copy status and recovery details stay in Settings.
 
+Uploads show measured bytes and percentage in the Cloud saves badge, using the
+same progress component and units as file operations. Reaching 100% means the
+upload bytes have been sent; the badge shows Confirming save until the provider
+acknowledges the save. Save to original and Save as new file also use the shared
+activity bar. Preparation and confirmation remain indeterminate when the provider
+has no measurable total.
+
 The original object ID is retained for Google Drive and OneDrive. Identical Google
 Drive names remain separate. Each working copy has its own version baseline, so
 editing the same cloud object through two independently opened copies can produce

@@ -15,6 +15,7 @@ mod open;
 pub mod path;
 mod policy;
 mod probe;
+pub(crate) mod progress;
 pub mod provider;
 pub mod providers;
 pub mod rclone_cli;
@@ -253,19 +254,23 @@ pub async fn cloud_setup_status() -> ApiResult<CloudSetupStatus> {
 
 #[tauri::command]
 pub async fn probe_cloud_remote(
+    app: tauri::AppHandle,
     remote_id: String,
     cancel: tauri::State<'_, CancelState>,
     progress_event: Option<String>,
 ) -> ApiResult<CloudRemoteProbeStatus> {
-    map_api_result(probe_cloud_remote_impl(remote_id, cancel.inner().clone(), progress_event).await)
+    map_api_result(
+        probe_cloud_remote_impl(app, remote_id, cancel.inner().clone(), progress_event).await,
+    )
 }
 
 async fn probe_cloud_remote_impl(
+    app: tauri::AppHandle,
     remote_id: String,
     cancel_state: CancelState,
     progress_event: Option<String>,
 ) -> CloudCommandResult<CloudRemoteProbeStatus> {
-    probe::probe_cloud_remote_impl(remote_id, cancel_state, progress_event).await
+    probe::probe_cloud_remote_impl(app, remote_id, cancel_state, progress_event).await
 }
 
 async fn list_cloud_remotes_impl() -> CloudCommandResult<Vec<CloudRemote>> {
@@ -340,14 +345,18 @@ pub async fn delete_cloud_file(
 
 #[tauri::command]
 pub async fn trash_cloud_entries(
+    app: tauri::AppHandle,
     paths: Vec<String>,
     cancel: tauri::State<'_, CancelState>,
     progress_event: Option<String>,
 ) -> ApiResult<()> {
-    map_api_result(trash_cloud_entries_impl(paths, cancel.inner().clone(), progress_event).await)
+    map_api_result(
+        trash_cloud_entries_impl(app, paths, cancel.inner().clone(), progress_event).await,
+    )
 }
 
 async fn trash_cloud_entries_impl(
+    app: tauri::AppHandle,
     paths: Vec<String>,
     cancel: CancelState,
     progress_event: Option<String>,
@@ -370,9 +379,13 @@ async fn trash_cloud_entries_impl(
             paths.iter().map(|path| path.remote().to_owned()).collect(),
             || {
                 let provider = configured_rclone_provider().map_err(CloudCommandError::from)?;
-                let result = paths
-                    .iter()
-                    .try_for_each(|path| provider.trash_entry(path, token.as_deref()));
+                let total = paths.len() as u64;
+                progress::items(&app, progress_event.as_deref(), 0, total);
+                let result = paths.iter().enumerate().try_for_each(|(index, path)| {
+                    provider.trash_entry(path, token.as_deref())?;
+                    progress::items(&app, progress_event.as_deref(), index as u64 + 1, total);
+                    Ok(())
+                });
                 // Also invalidate partial outcomes; never retry destructive commands automatically.
                 invalidate_cloud_write_paths(&paths);
                 result
@@ -429,6 +442,7 @@ async fn delete_cloud_dir_empty_impl(
 
 #[tauri::command]
 pub async fn move_cloud_entry(
+    app: tauri::AppHandle,
     src: String,
     dst: String,
     overwrite: Option<bool>,
@@ -438,6 +452,7 @@ pub async fn move_cloud_entry(
 ) -> ApiResult<()> {
     map_api_result(
         move_cloud_entry_impl(
+            app,
             src,
             dst,
             overwrite.unwrap_or(false),
@@ -450,6 +465,7 @@ pub async fn move_cloud_entry(
 }
 
 async fn move_cloud_entry_impl(
+    app: tauri::AppHandle,
     src: String,
     dst: String,
     overwrite: bool,
@@ -458,6 +474,7 @@ async fn move_cloud_entry_impl(
     progress_event: Option<String>,
 ) -> CloudCommandResult<()> {
     write::move_cloud_entry_impl(
+        app,
         src,
         dst,
         overwrite,
@@ -470,6 +487,7 @@ async fn move_cloud_entry_impl(
 
 #[tauri::command]
 pub async fn rename_cloud_entry(
+    app: tauri::AppHandle,
     src: String,
     dst: String,
     overwrite: Option<bool>,
@@ -479,6 +497,7 @@ pub async fn rename_cloud_entry(
 ) -> ApiResult<()> {
     map_api_result(
         move_cloud_entry_impl(
+            app,
             src,
             dst,
             overwrite.unwrap_or(false),
@@ -492,6 +511,7 @@ pub async fn rename_cloud_entry(
 
 #[tauri::command]
 pub async fn copy_cloud_entry(
+    app: tauri::AppHandle,
     src: String,
     dst: String,
     overwrite: Option<bool>,
@@ -501,6 +521,7 @@ pub async fn copy_cloud_entry(
 ) -> ApiResult<()> {
     map_api_result(
         copy_cloud_entry_impl(
+            app,
             src,
             dst,
             overwrite.unwrap_or(false),
@@ -561,6 +582,7 @@ async fn prepare_cloud_working_copy_impl(
 }
 
 async fn copy_cloud_entry_impl(
+    app: tauri::AppHandle,
     src: String,
     dst: String,
     overwrite: bool,
@@ -569,6 +591,7 @@ async fn copy_cloud_entry_impl(
     progress_event: Option<String>,
 ) -> CloudCommandResult<()> {
     write::copy_cloud_entry_impl(
+        app,
         src,
         dst,
         overwrite,

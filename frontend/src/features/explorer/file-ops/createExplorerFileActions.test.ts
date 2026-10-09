@@ -12,7 +12,7 @@ const b: Entry = { ...a, path: '/mock/b', name: 'b' }
 const setup = (overrides: Partial<Parameters<typeof createExplorerFileActions>[0]> = {}) => {
   const deps = {
     selectionActions: { copy: vi.fn(), cut: vi.fn(), trash: vi.fn(), trashDropped: vi.fn(), deletePermanently: vi.fn() },
-    activityApi: { start: vi.fn(), requestCancel: vi.fn(), cleanup: vi.fn(), clearNow: vi.fn(), hideSoon: vi.fn(), hasHideTimer: () => false },
+    activityApi: { start: vi.fn(), requestCancel: vi.fn(), cleanup: vi.fn(), clearNow: vi.fn(), hideSoon: vi.fn(), reportProgress: vi.fn(), hasHideTimer: () => false },
     currentView: (): CurrentView => 'dir', getCurrentPath: () => '/mock',
     getSelected: () => new Set([a.path]), getEntries: () => [a, b], getFilteredEntries: () => [a],
     pasteIntoCurrent: vi.fn(async () => true), startRename: vi.fn(), openProperties: vi.fn(), setSelection: vi.fn(), showToast: vi.fn(),

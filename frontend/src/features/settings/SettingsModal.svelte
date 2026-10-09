@@ -31,14 +31,7 @@
   import AdvancedSection from './sections/AdvancedSection.svelte'
   import './SettingsModal.css'
 
-  type ActivityApi = {
-    start: (label: string, eventName: string, onCancel?: () => void) => Promise<void>
-    requestCancel: (eventName: string) => Promise<void>
-    cleanup: (preserveTimer?: boolean) => Promise<void>
-    clearNow: () => void
-    hideSoon: () => void
-    hasHideTimer: () => boolean
-  }
+  import type { ActivityApi } from '../explorer/hooks/createActivity'
 
   export let open = false
   export let onClose: () => void

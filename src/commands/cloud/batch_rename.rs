@@ -13,10 +13,30 @@ pub struct CloudRenameResult {
     pub error: Option<String>,
 }
 
+#[cfg(test)]
 pub(super) fn rename_batch(
     provider: &impl CloudProvider,
     entries: Vec<RenameEntryRequest>,
 ) -> CloudCommandResult<CloudRenameResult> {
+    rename_batch_with_progress(provider, entries, None, |_, _| {})
+}
+
+fn rename_batch_with_progress(
+    provider: &impl CloudProvider,
+    entries: Vec<RenameEntryRequest>,
+    cancel: Option<&std::sync::atomic::AtomicBool>,
+    report: impl Fn(u64, u64),
+) -> CloudCommandResult<CloudRenameResult> {
+    let check_cancel = || {
+        if cancel.is_some_and(|token| token.load(std::sync::atomic::Ordering::Relaxed)) {
+            Err(CloudCommandError::new(
+                CloudCommandErrorCode::Cancelled,
+                "Cloud rename cancelled",
+            ))
+        } else {
+            Ok(())
+        }
+    };
     let mut sources = HashSet::new();
     let mut targets = HashSet::new();
     let mut pairs = Vec::new();
@@ -24,6 +44,7 @@ pub(super) fn rename_batch(
     // Preflight the entire plan before moving anything. Cycles/swaps are refused,
     // not simulated through destructive temporary remote names.
     for entry in entries {
+        check_cancel()?;
         let source = super::parse_cloud_path_arg(entry.path)?;
         let parent = source.parent_dir_path().ok_or_else(|| {
             CloudCommandError::new(
@@ -81,14 +102,21 @@ pub(super) fn rename_batch(
         renamed: Vec::new(),
         error: None,
     };
-    for (source, target) in pairs {
+    let total = pairs.len() as u64;
+    report(0, total);
+    for (index, (source, target)) in pairs.into_iter().enumerate() {
+        check_cancel()?;
         if source == target || source.rel_path() == target.rel_path() {
+            report(index as u64 + 1, total);
             continue;
         }
-        let operation = provider.move_entry(&source, &target, false, false, None);
+        let operation = provider.move_entry(&source, &target, false, false, cancel);
         super::invalidate_cloud_write_paths(&[source.clone(), target.clone()]);
         match operation {
-            Ok(()) => result.renamed.push(target.to_string()),
+            Ok(()) => {
+                result.renamed.push(target.to_string());
+                report(index as u64 + 1, total);
+            }
             Err(error) => {
                 result.error = Some(format!("Renamed {} items before stopping at {source}: {error}. Refresh before retrying; cloud rename has no undo.", result.renamed.len()));
                 break;
@@ -100,6 +128,9 @@ pub(super) fn rename_batch(
 
 #[tauri::command]
 pub async fn rename_cloud_entries(
+    app: tauri::AppHandle,
+    cancel: tauri::State<'_, crate::tasks::CancelState>,
+    progress_event: Option<String>,
     entries: Vec<RenameEntryRequest>,
 ) -> ApiResult<CloudRenameResult> {
     map_api_result(super::ensure_cloud_enabled())?;
@@ -111,10 +142,14 @@ pub async fn rename_cloud_entries(
             })
             .collect::<CloudCommandResult<Vec<_>>>(),
     )?;
+    let guard = map_api_result(super::register_cloud_cancel(&cancel, &progress_event))?;
+    let token = guard.as_ref().map(|guard| guard.token());
     let result = tauri::async_runtime::spawn_blocking(move || {
         super::limits::with_cloud_remote_permits(remotes, || {
             let provider = super::configured_rclone_provider().map_err(CloudCommandError::from)?;
-            rename_batch(&provider, entries)
+            rename_batch_with_progress(&provider, entries, token.as_deref(), |done, total| {
+                super::progress::items(&app, progress_event.as_deref(), done, total);
+            })
         })
     })
     .await;

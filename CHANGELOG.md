@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Simplify undo backup settings and add recovery to the original location with
+  shared byte progress and cancellation. Preserve backups and recovery markers,
+  allow completed backups in the current instance, block backups being changed
+  or owned by another instance, and verify copied data. Record original paths for
+  new backups; offer Recover to… when the original destination is unavailable,
+  keeping existing files and choosing a new name on conflicts in the chosen folder.
+  Keep all stored backups across restarts without automatic expiry; startup
+  cleanup removes only completely empty abandoned sessions.
+  Remove verified recovered entries from the backup list across refresh/restart,
+  preserving the stored data for undo; keep failed/cancelled entries listed.
+
 - Add matching configuration, database and vector-graphics file icons. Use the
   approved pen nib without a top bar for vectors; preserve SVG thumbnails and
   classify icons by filename without reading file contents.

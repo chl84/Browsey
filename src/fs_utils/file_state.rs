@@ -79,6 +79,30 @@ enum TreeEntry {
 pub(crate) struct TreeSnapshot(BTreeMap<PathBuf, TreeEntry>);
 
 impl TreeSnapshot {
+    /// Add one no-follow metadata observation to a bounded caller-owned scan.
+    pub(crate) fn record_existing(
+        &mut self,
+        relative: PathBuf,
+        path: &Path,
+        meta: &Metadata,
+    ) -> io::Result<()> {
+        if meta.file_type().is_symlink() || (!meta.is_file() && !meta.is_dir()) {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "Unsafe snapshot input",
+            ));
+        }
+        let identity = FileIdentity::capture(path)
+            .ok_or_else(|| io::Error::other("Cannot verify snapshot identity"))?;
+        let entry = if meta.is_dir() {
+            TreeEntry::Directory(identity)
+        } else {
+            TreeEntry::File(FileState::from_metadata(identity, meta)?)
+        };
+        self.0.insert(relative, entry);
+        Ok(())
+    }
+
     // Build copy receipts from created directories and completed open writers,
     // never by adopting a fresh lookup of the destination after the copy.
     pub(crate) fn record_directory(&mut self, relative: PathBuf, identity: FileIdentity) {

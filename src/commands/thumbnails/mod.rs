@@ -44,7 +44,6 @@ const MAX_DIM_DEFAULT: u32 = 96;
 const MAX_DIM_HARD_LIMIT: u32 = 512;
 const MIN_DIM_HARD_LIMIT: u32 = 32;
 pub(super) const MAX_FILE_BYTES: u64 = 50 * 1024 * 1024;
-const MAX_FILE_BYTES_VIDEO: u64 = 1_000 * 1024 * 1024; // 1 GB
 const POOL_MIN_THREADS: usize = 2;
 const POOL_MAX_THREADS: usize = 8;
 const MAX_SOURCE_DIM: u32 = 20000;
@@ -396,15 +395,11 @@ fn get_thumbnail_sync(
         (target, meta, kind, ffmpeg_override, key)
     };
     control.check()?;
-    let size_limit = if matches!(kind, ThumbKind::Video) {
-        MAX_FILE_BYTES_VIDEO
-    } else {
-        MAX_FILE_BYTES
-    };
-    if meta.len() > size_limit {
+    // Video thumbnails seek to one frame; total file size does not bound decode cost.
+    if !matches!(kind, ThumbKind::Video) && meta.len() > MAX_FILE_BYTES {
         return Err(ThumbnailError::from_external_message(format!(
             "File too large for thumbnail (>{} MB)",
-            size_limit / 1024 / 1024
+            MAX_FILE_BYTES / 1024 / 1024
         )));
     }
     let cache_path = cache_dir.join(format!("{key}.png"));

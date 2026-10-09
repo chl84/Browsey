@@ -1,14 +1,9 @@
+import type { ActivityApi as SharedActivityApi } from '../hooks/createActivity'
 import { writable, get } from 'svelte/store'
 import type { Entry } from '../model/types'
 import { renameEntry } from '../services/files.service'
 
-type ActivityApi = {
-  start: (label: string, eventName: string, onCancel?: () => void) => Promise<void>
-  hideSoon: () => void
-  cleanup: (preserveTimer?: boolean) => Promise<void>
-  clearNow: () => void
-  hasHideTimer: () => boolean
-}
+type ActivityApi = Pick<SharedActivityApi, 'start' | 'hideSoon' | 'cleanup' | 'clearNow' | 'hasHideTimer'>
 
 type Deps = {
   loadPath: (path: string) => Promise<void>
@@ -81,7 +76,8 @@ export const createRenameModal = (deps: Deps) => {
       if (activityApi) {
         await activityApi.start('Renaming…', progressEvent)
       }
-      await renameEntry(current.target.path, name)
+      if (isCloudPath(current.target.path)) await renameEntry(current.target.path, name, progressEvent)
+      else await renameEntry(current.target.path, name)
       const refreshPath = parentPath(current.target.path)
       if (isCloudPath(current.target.path)) {
         void (async () => {

@@ -108,16 +108,25 @@ pub(super) fn execute_mixed_entries_blocking_with_cli(
                     )?;
                     completed_bytes = completed_bytes.saturating_add(plan.file_sizes[index]);
                 } else {
+                    if let Some(progress) = &progress {
+                        if let Some(app) = &progress.app {
+                            cloud::progress::phase(
+                                app,
+                                Some(&progress.event_name),
+                                &format!(
+                                    "Transferring item {} / {}…",
+                                    index + 1,
+                                    batch_source_count
+                                ),
+                            );
+                        }
+                    }
                     execute_rclone_transfer(
                         RcloneTransferContext {
                             cli,
                             cloud_remote_for_error_mapping: Some(dest_dir.remote()),
                             cancel: cancel.as_deref(),
-                            progress: if batch_source_count == 1 {
-                                progress.as_ref()
-                            } else {
-                                None
-                            },
+                            progress: progress.as_ref(),
                         },
                         op,
                         LocalOrCloudArg::Local(src.clone()),
@@ -176,16 +185,25 @@ pub(super) fn execute_mixed_entries_blocking_with_cli(
                     )?;
                     completed_bytes = completed_bytes.saturating_add(plan.file_sizes[index]);
                 } else {
+                    if let Some(progress) = &progress {
+                        if let Some(app) = &progress.app {
+                            cloud::progress::phase(
+                                app,
+                                Some(&progress.event_name),
+                                &format!(
+                                    "Transferring item {} / {}…",
+                                    index + 1,
+                                    batch_source_count
+                                ),
+                            );
+                        }
+                    }
                     execute_rclone_transfer(
                         RcloneTransferContext {
                             cli,
                             cloud_remote_for_error_mapping: Some(src.remote()),
                             cancel: cancel.as_deref(),
-                            progress: if batch_source_count == 1 {
-                                progress.as_ref()
-                            } else {
-                                None
-                            },
+                            progress: progress.as_ref(),
                         },
                         op,
                         LocalOrCloudArg::Cloud(src.clone()),

@@ -1,6 +1,7 @@
 import { invoke } from '@/shared/lib/tauri'
 import { deleteCloudDirRecursive, deleteCloudFile, statCloudEntry, trashCloudEntries } from '@/features/network'
 import { normalizeError } from '@/shared/lib/error'
+import type { ProgressPayload } from '../hooks/progress'
 
 const isCloudPath = (path: string) => path.startsWith('rclone://')
 const isNotFoundError = (error: unknown) => normalizeError(error).code === 'not_found'
@@ -55,7 +56,7 @@ const deleteCloudEntryWhenTypeUnknown = async (path: string, progressEvent?: str
   }
 }
 
-export const deleteEntries = async (paths: string[], progressEvent?: string, networkConfirmed = false) => {
+export const deleteEntries = async (paths: string[], progressEvent?: string, networkConfirmed = false, onProgress?: (payload: ProgressPayload) => void) => {
   const cloudCount = paths.filter(isCloudPath).length
   if (cloudCount === 0) {
     return mutateNativeEntries(paths, progressEvent, false, networkConfirmed)
@@ -64,10 +65,14 @@ export const deleteEntries = async (paths: string[], progressEvent?: string, net
     throw new Error('Mixed local/cloud delete is not supported yet')
   }
 
+  const report = (items: number) => onProgress?.({ unit: 'items', items, total: paths.length, phase: 'Deleting cloud items…' })
+  report(0)
+  let completed = 0
   for (const path of paths) {
     const entry = await statCloudEntry(path)
     if (!entry) {
       await deleteCloudEntryWhenTypeUnknown(path, progressEvent)
+      report(++completed)
       continue
     }
     if (entry.kind === 'dir') {
@@ -75,6 +80,7 @@ export const deleteEntries = async (paths: string[], progressEvent?: string, net
     } else {
       await deleteCloudFile(path, progressEvent)
     }
+    report(++completed)
   }
 }
 

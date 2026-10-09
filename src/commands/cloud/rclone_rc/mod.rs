@@ -186,6 +186,7 @@ fn allowlisted_method_from_name(method_name: &str) -> Option<RcloneRcMethod> {
 #[derive(Debug, Clone)]
 pub struct RcloneRcClient {
     binary: OsString,
+    observer: Option<super::progress::StatsObserver>,
     read_enabled_override: Option<bool>,
     write_enabled_override: Option<bool>,
     #[cfg(test)]
@@ -196,6 +197,7 @@ impl Default for RcloneRcClient {
     fn default() -> Self {
         Self {
             binary: std::ffi::OsString::from("rclone"),
+            observer: None,
             read_enabled_override: None,
             write_enabled_override: None,
             #[cfg(test)]
@@ -205,9 +207,18 @@ impl Default for RcloneRcClient {
 }
 
 impl RcloneRcClient {
+    pub(crate) fn with_observer(
+        mut self,
+        observer: Option<super::progress::StatsObserver>,
+    ) -> Self {
+        self.observer = observer;
+        self
+    }
+
     pub(crate) fn with_binary(binary: impl Into<OsString>) -> Self {
         Self {
             binary: binary.into(),
+            observer: None,
             read_enabled_override: None,
             write_enabled_override: None,
             #[cfg(test)]

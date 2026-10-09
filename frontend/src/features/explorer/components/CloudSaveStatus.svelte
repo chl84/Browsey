@@ -4,6 +4,8 @@
   import { cloudWritebackStatuses, type CloudWritebackStatus } from '@/features/network'
   import { cloudSaveSummary, mergeCloudSaveStatus } from '@/features/network'
   import { CloudWorkingCopies } from '@/features/settings'
+  import ProgressBar from '@/shared/ui/ProgressBar.svelte'
+  import { progressPresentation } from '../hooks/progress'
   import type { ActivityApi } from '../hooks/createActivity'
   export let activityApi: ActivityApi | null = null
   let rows: CloudWritebackStatus[] = []
@@ -67,6 +69,19 @@
     <button type="button" on:click={() => dialog?.show()} aria-label={`Cloud saves: ${summary}`}>
       Cloud saves · <span role="status" aria-live="polite">{summary}</span>
     </button>
+    {#if savingRows.length}
+      <div class="save-progress-list">
+        {#each savingRows as row (row.id)}
+          {@const progress = progressPresentation({ bytes: row.bytes, total: row.total })}
+          <div class="save-progress">
+            <span>{row.name} · {row.total > 0 && row.bytes >= row.total ? 'Confirming save…' : row.status === 'pending' ? 'Preparing…' : 'Uploading…'}</span>
+            <ProgressBar percent={progress.percent} label={`Uploading ${row.name}`} width="140px" />
+            {#if progress.detail}<span>{progress.detail}</span>{/if}
+            {#if progress.percent !== null}<span>{progress.percent}%</span>{/if}
+          </div>
+        {/each}
+      </div>
+    {/if}
     {#if attention && !notificationHidden}
       <button class="dismiss" type="button" aria-label="Dismiss cloud save notification" title="Dismiss notification" on:click={() => { notificationHidden = true }}>
         <span aria-hidden="true">×</span>
@@ -76,7 +91,9 @@
 {/if}
 <CloudWorkingCopies bind:this={dialog} showTrigger={false} {activityApi} />
 <style>
-  .cloud-save-status { position: fixed; right: 16px; bottom: 42px; z-index: 5; display: flex; align-items: center; gap: 4px; }
+  .cloud-save-status { position: fixed; right: 16px; bottom: 42px; z-index: 5; display: flex; flex-wrap: wrap; max-width: calc(100vw - 32px); align-items: center; gap: 4px; }
+  .save-progress-list { display: grid; gap: 6px; padding: 6px 10px; background: var(--panel, var(--bg)); border: 1px solid var(--border); border-radius: 6px; }
+  .save-progress { display: flex; flex-wrap: wrap; overflow-wrap: anywhere; align-items: center; gap: 8px; font-size: 12px; }
   button { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel, var(--bg)); color: var(--text); font-size: 12px; box-shadow: 0 2px 8px #0002; }
   .attention button { border-color: var(--accent); }
   .dismiss { padding: 6px 8px; }

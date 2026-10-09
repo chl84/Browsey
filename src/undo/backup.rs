@@ -3,7 +3,7 @@ use std::fs::{self, File, OpenOptions};
 use std::hash::{Hash, Hasher};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing::warn;
 
@@ -132,6 +132,71 @@ struct BackupSession {
     directory: PathBuf,
     // Held until process exit. Cleanup in other instances must acquire this lock.
     _lock: File,
+    identity: crate::fs_utils::FileIdentity,
+    access: Arc<super::backup_access::BackupAccess>,
+}
+
+static SESSIONS: OnceLock<Mutex<HashMap<PathBuf, BackupSession>>> = OnceLock::new();
+
+pub(super) struct OwnedSession {
+    pub directory: PathBuf,
+    pub identity: crate::fs_utils::FileIdentity,
+    pub lock_identity: crate::fs_utils::FileIdentity,
+    pub access: Arc<super::backup_access::BackupAccess>,
+}
+
+impl OwnedSession {
+    pub fn bucket(&self, path: &Path) -> UndoResult<PathBuf> {
+        let relative = path
+            .strip_prefix(&self.directory)
+            .map_err(|_| UndoError::invalid_input("Backup is outside the owned session"))?;
+        if relative
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+        {
+            return Err(UndoError::invalid_input("Invalid backup path"));
+        }
+        Ok(relative
+            .components()
+            .next()
+            .map(|component| PathBuf::from(component.as_os_str()))
+            .unwrap_or_default())
+    }
+}
+
+/// Ownership comes from the in-process registry and verified filesystem
+/// identities, never a PID parsed from a directory name or a borrowed file lock.
+pub(super) fn owned_session(path: &Path) -> UndoResult<Option<OwnedSession>> {
+    let Some(sessions) = SESSIONS.get() else {
+        return Ok(None);
+    };
+    let sessions = sessions
+        .lock()
+        .map_err(|_| UndoError::lock_failed("Undo session registry poisoned"))?;
+    let Some(session) = sessions
+        .values()
+        .find(|session| path.starts_with(&session.directory))
+    else {
+        return Ok(None);
+    };
+    let name = session
+        .directory
+        .file_name()
+        .ok_or_else(|| UndoError::invalid_input("Invalid session directory"))?;
+    let mut lock_name = name.to_os_string();
+    lock_name.push(".lock");
+    let lock_path = session.directory.with_file_name(lock_name);
+    let lock_identity = crate::fs_utils::FileIdentity::from_file(&session._lock)
+        .ok_or_else(|| UndoError::invalid_input("Cannot verify owned session lock"))?;
+    if !session.identity.matches(&session.directory) || !lock_identity.matches(&lock_path) {
+        return Err(UndoError::snapshot_mismatch(&session.directory));
+    }
+    Ok(Some(OwnedSession {
+        directory: session.directory.clone(),
+        identity: session.identity.clone(),
+        lock_identity,
+        access: session.access.clone(),
+    }))
 }
 
 impl BackupSession {
@@ -176,9 +241,13 @@ impl BackupSession {
             builder
                 .create(&directory)
                 .map_err(|e| UndoError::from_io_error("Create undo session", e))?;
+            let identity = crate::fs_utils::FileIdentity::capture(&directory)
+                .ok_or_else(|| UndoError::invalid_input("Cannot verify undo session identity"))?;
             return Ok(Self {
                 directory,
                 _lock: lock,
+                identity,
+                access: Arc::default(),
             });
         }
         Err(UndoError::invalid_input(
@@ -187,7 +256,10 @@ impl BackupSession {
     }
 }
 
-/// Remove only abandoned sessions, never another running instance's backups.
+/// Remove only completely empty abandoned sessions. Stored backups have no
+/// automatic expiry, whether or not a recovery marker is present. `max_age`
+/// restricts empty-session cleanup; it never authorizes deleting backup data.
+/// Never remove another running instance's session.
 /// Legacy `undo/` backups are deliberately left intact: old versions have no
 /// ownership locks, and may still be running while the new version is installed.
 pub fn cleanup_stale_backups(max_age: Option<Duration>) {
@@ -238,8 +310,8 @@ fn cleanup_sessions(base: &Path, max_age: Option<Duration>) {
         if lock.try_lock().is_err() {
             continue;
         }
-        // Recovery markers pin the entire abandoned session. Fail closed on
-        // scan errors or suspicious marker types; these are not persistent undo.
+        // Markers describe interrupted operations and retain their diagnostics.
+        // Unmarked backups must also survive restart for manual recovery.
         match super::recovery_notice::scan(&entry.path()) {
             super::recovery_notice::RecoveryScan::Clean => {}
             super::recovery_notice::RecoveryScan::Marked(fingerprint) => {
@@ -257,9 +329,14 @@ fn cleanup_sessions(base: &Path, max_age: Option<Duration>) {
                 continue;
             }
         }
-        if let Err(e) = fs::remove_dir_all(entry.path()) {
+        // This must stay nonrecursive: even a zero-byte file, an empty backed-up
+        // folder or an entry added after the scan prevents session deletion.
+        if let Err(e) = fs::remove_dir(entry.path()) {
+            if e.kind() == std::io::ErrorKind::DirectoryNotEmpty {
+                continue;
+            }
             warn!(
-                "Failed to remove abandoned undo session {:?}: {}",
+                "Failed to remove empty abandoned undo session {:?}: {}",
                 entry.path(),
                 e
             );
@@ -294,16 +371,19 @@ fn session_requires_recovery(directory: &Path) -> bool {
 }
 
 pub fn temp_backup_path(original: &Path) -> UndoResult<PathBuf> {
-    static SESSIONS: OnceLock<Mutex<HashMap<PathBuf, BackupSession>>> = OnceLock::new();
     let base = base_undo_dir();
+    temp_backup_path_at(&base, original)
+}
+
+pub(super) fn temp_backup_path_at(base: &Path, original: &Path) -> UndoResult<PathBuf> {
     let mut sessions = SESSIONS
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
         .map_err(|_| UndoError::lock_failed("Undo session registry lock poisoned"))?;
-    let session = match sessions.entry(base.clone()) {
+    let session = match sessions.entry(base.to_path_buf()) {
         std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
         std::collections::hash_map::Entry::Vacant(entry) => {
-            entry.insert(BackupSession::create(&base)?)
+            entry.insert(BackupSession::create(base)?)
         }
     };
     let mut hasher = DefaultHasher::new();
@@ -322,7 +402,15 @@ pub fn temp_backup_path(original: &Path) -> UndoResult<PathBuf> {
         candidate = session.directory.join(&bucket).join(alternate);
         idx += 1;
     }
+    super::backup_origin::record(&candidate, original)?;
     Ok(candidate)
+}
+
+#[cfg(test)]
+pub(super) fn forget_test_session(base: &Path) {
+    if let Some(sessions) = SESSIONS.get() {
+        sessions.lock().unwrap().remove(base);
+    }
 }
 
 pub(super) fn base_undo_dir() -> PathBuf {
@@ -511,13 +599,15 @@ mod tests {
         assert_eq!(fs::read(&marker.path).unwrap(), marker_bytes);
         assert_eq!(fs::read(&backup).unwrap(), b"recoverable");
 
-        // Only explicit fixture marker removal allows ordinary cleanup.
+        // Clearing diagnostics never authorizes deleting stored backups.
         fs::remove_file(&marker.path).unwrap();
         additional_marker.clear().unwrap();
         second_marker.clear().unwrap();
         cleanup_in_child(&base);
-        assert!(!directory.exists() && !second_directory.exists());
-        assert!(!notice.exists());
+        assert_eq!(fs::read(&backup).unwrap(), b"recoverable");
+        assert_eq!(fs::read(&second_backup).unwrap(), b"second original");
+        assert!(directory.exists() && second_directory.exists());
+        assert!(notice.exists());
         fs::remove_dir_all(base).unwrap();
     }
 
@@ -563,7 +653,7 @@ mod tests {
     }
 
     #[test]
-    fn cleanup_keeps_live_sessions_and_prunes_abandoned_sessions_across_processes() {
+    fn cleanup_keeps_unmarked_backups_after_the_owner_exits() {
         let base = unique_base();
         let session = BackupSession::create(&base).unwrap();
         let backup = session.directory.join("original.txt");
@@ -572,7 +662,10 @@ mod tests {
         assert_eq!(fs::read(&backup).unwrap(), b"original");
         drop(session);
         cleanup_in_child(&base);
-        assert!(!backup.exists(), "released session should be pruned");
+        assert_eq!(fs::read(&backup).unwrap(), b"original");
+        // Only an explicitly emptied session can be pruned.
+        fs::remove_file(&backup).unwrap();
+        cleanup_in_child(&base);
         assert_eq!(fs::read_dir(&base).unwrap().count(), 0);
         fs::remove_dir_all(base).unwrap();
     }
@@ -638,7 +731,10 @@ mod tests {
         assert!(!session_requires_recovery(&directory));
         drop(session);
         cleanup_in_child(&base);
-        assert!(!directory.exists());
+        // Moving the restored file leaves an empty bucket. Cleanup does not
+        // recursively erase even apparently empty trees.
+        assert!(directory.join("bucket").is_dir());
+        assert!(!directory.join("bucket/original.txt").exists());
         assert_eq!(fs::read(&destination).unwrap(), b"original document");
         fs::remove_dir_all(base).unwrap();
     }
@@ -720,7 +816,7 @@ mod tests {
         assert!(!ordinary_directory.exists());
         marker.clear().unwrap();
         cleanup_in_child(&base);
-        assert!(!backup.exists());
+        assert_eq!(fs::read(&backup).unwrap(), b"recoverable");
         fs::remove_dir_all(base).unwrap();
     }
 
@@ -772,7 +868,7 @@ mod tests {
     }
 
     #[test]
-    fn cleanup_after_killed_process_keeps_the_other_live_session() {
+    fn cleanup_after_killed_process_keeps_unmarked_backups_and_the_other_live_session() {
         use std::io::{BufRead, BufReader};
         use std::process::{Command, Stdio};
 
@@ -821,7 +917,17 @@ mod tests {
                 .filter_map(Result::ok)
                 .filter(|entry| entry.file_type().unwrap().is_dir())
                 .count(),
-            1
+            2
+        );
+        let abandoned = fs::read_dir(&base)
+            .unwrap()
+            .filter_map(Result::ok)
+            .find(|entry| entry.file_type().unwrap().is_dir() && entry.path() != live.directory)
+            .unwrap()
+            .path();
+        assert_eq!(
+            fs::read(abandoned.join("document.txt")).unwrap(),
+            b"owned-backup"
         );
         drop(live);
         cleanup_sessions(&base, None);

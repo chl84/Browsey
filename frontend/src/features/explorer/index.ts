@@ -14,3 +14,5 @@ export type {
 export type { ContextAction } from './context/createContextMenus'
 export type { ThemeMode } from './theme/types'
 export type { ActivityApi } from './hooks/createActivity'
+export { createActivity } from './hooks/createActivity'
+export { parentPath } from './utils'

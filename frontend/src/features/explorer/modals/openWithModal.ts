@@ -1,4 +1,5 @@
 import { writable, get } from 'svelte/store'
+import { createActivity, type ActivityState } from '../hooks/createActivity'
 import { getErrorMessage } from '@/shared/lib/error'
 import { prepareCloudWorkingCopy } from '@/features/network'
 import type { Entry } from '../model/types'
@@ -12,6 +13,7 @@ export type OpenWithState = {
   loading: boolean
   error: string
   submitting: boolean
+  progress: ActivityState | null
 }
 
 type Deps = {
@@ -27,12 +29,16 @@ export const createOpenWithModal = (deps: Deps) => {
     loading: false,
     error: '',
     submitting: false,
+    progress: null,
   })
   let loadId = 0
   let localPath: string | null = null
+  let cancelPreparation: (() => void) | null = null
 
   const close = () => {
     if (get(state).submitting) return
+    cancelPreparation?.()
+    cancelPreparation = null
     ++loadId
     localPath = null
     state.set({
@@ -42,14 +48,26 @@ export const createOpenWithModal = (deps: Deps) => {
       loading: false,
       error: '',
       submitting: false,
+      progress: null,
     })
   }
 
   const loadOpenWithApps = async (path: string) => {
     const requestId = ++loadId
+    const cloud = path.startsWith('rclone://')
+    const progressApi = createActivity()
+    const event = `cloud-open-with-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const cancel = () => void progressApi.requestCancel(event)
+    if (cloud) cancelPreparation = cancel
+    const unsubscribe = progressApi.activity.subscribe(progress => {
+      if (requestId === loadId) state.update(s => ({ ...s, progress }))
+    })
     state.update((s) => ({ ...s, loading: true, error: '', apps: [defaultOpenWithApp] }))
     try {
-      const target = path.startsWith('rclone://') ? (await prepareCloudWorkingCopy(path)).localPath : path
+      if (cloud) await progressApi.start('Downloading cloud file…', event, cancel, { completeOnReply: true })
+      if (requestId !== loadId) return
+      const target = cloud ? (await prepareCloudWorkingCopy(path, event)).localPath : path
+      progressApi.clearNow()
       if (requestId !== loadId) return
       localPath = target
       const list = await fetchOpenWithApps(target)
@@ -65,14 +83,19 @@ export const createOpenWithModal = (deps: Deps) => {
         error: getErrorMessage(err),
       }))
     } finally {
+      unsubscribe()
+      await progressApi.cleanup()
+      if (cancelPreparation === cancel) cancelPreparation = null
       if (requestId === loadId) {
-        state.update((s) => ({ ...s, loading: false }))
+        state.update((s) => ({ ...s, loading: false, progress: null }))
       }
     }
   }
 
   const open = (entry: Entry) => {
     if (get(state).submitting) return
+    cancelPreparation?.()
+    cancelPreparation = null
     localPath = null
     state.set({
       open: true,
@@ -81,6 +104,7 @@ export const createOpenWithModal = (deps: Deps) => {
       loading: false,
       error: '',
       submitting: false,
+      progress: null,
     })
     void loadOpenWithApps(entry.path)
   }

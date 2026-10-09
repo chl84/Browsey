@@ -2,6 +2,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { get, writable } from 'svelte/store'
 import { getErrorMessage, normalizeError } from '@/shared/lib/error'
 import { cancelTask } from '../services/activity.service'
+import { progressPresentation, type ProgressPayload } from './progress'
 
 export type ActivityState = {
   label: string
@@ -13,29 +14,10 @@ export type ActivityState = {
 
 export type ActivityApi = Omit<ReturnType<typeof createActivity>, 'activity'>
 
-export type ProgressPayload = { total: number; finished?: boolean; phase?: string } & (
-  | { unit?: 'bytes'; bytes: number }
-  | { unit: 'items'; items: number }
-)
+export type { ProgressPayload } from './progress'
 
 type Options = {
   onError?: (message: string) => void
-}
-
-const formatByteProgress = (bytes: number, total: number) => {
-  const formatSize = (value: number) => {
-    const units = ['B', 'KB', 'MB', 'GB', 'TB']
-    let size = value
-    let unitIndex = 0
-    while (size >= 1024 && unitIndex < units.length - 1) {
-      size /= 1024
-      unitIndex += 1
-    }
-    const precision = unitIndex === 0 ? 0 : size >= 100 ? 0 : size >= 10 ? 1 : 2
-    return `${size.toFixed(precision)} ${units[unitIndex]}`
-  }
-
-  return `${formatSize(bytes)} / ${formatSize(total)}`
 }
 
 export const createActivity = (opts: Options = {}) => {
@@ -44,6 +26,8 @@ export const createActivity = (opts: Options = {}) => {
 
   let activityHideTimer: ReturnType<typeof setTimeout> | null = null
   let activityUnlisten: UnlistenFn | null = null
+  let activityGeneration = 0
+  let progressReporter: { eventName: string; report: (payload: ProgressPayload) => void } | null = null
 
   const queueActivityHide = () => {
     if (activityHideTimer) {
@@ -58,6 +42,8 @@ export const createActivity = (opts: Options = {}) => {
   const hasHideTimer = () => activityHideTimer !== null
 
   const cleanup = async (preserveTimer = false) => {
+    activityGeneration += 1
+    progressReporter = null
     if (activityUnlisten) {
       await activityUnlisten()
       activityUnlisten = null
@@ -85,23 +71,14 @@ export const createActivity = (opts: Options = {}) => {
     }
     activity.set({ label, detail: null, percent: null, cancel: onCancel ?? null, cancelling: false })
     let phaseLabel = label
-    activityUnlisten = await listen<ProgressPayload>(eventName, (event) => {
-      const payload = event.payload
+    const generation = activityGeneration
+    const report = (payload: ProgressPayload) => {
+      if (generation !== activityGeneration) return
       if (payload.phase) phaseLabel = payload.phase
-      const completed = payload.unit === 'items' ? payload.items : payload.bytes
-      let pct =
-        payload.total > 0 ? Math.min(100, Math.round((completed / payload.total) * 100)) : null
-      if (pct === 0 && completed > 0) {
-        pct = 1
-      }
+      const { percent: pct, detail } = progressPresentation(payload)
       const existing = get(activity)
       const cancelling = existing?.cancelling ?? false
       const displayLabel = cancelling ? 'Cancelling…' : phaseLabel
-      const detail = payload.total > 0
-        ? payload.unit === 'items'
-          ? `${completed} / ${payload.total} ${payload.total === 1 ? 'item' : 'items'}`
-          : formatByteProgress(completed, payload.total)
-        : null
       if (payload.finished && options?.completeOnReply) {
         // A staged operation has more phases after a child transfer/archive
         // finishes. Only the command reply owns final completion and cleanup.
@@ -125,7 +102,13 @@ export const createActivity = (opts: Options = {}) => {
           cancelling,
         })
       }
-    })
+    }
+    progressReporter = { eventName, report }
+    activityUnlisten = await listen<ProgressPayload>(eventName, (event) => report(event.payload))
+  }
+
+  const reportProgress = (eventName: string, payload: ProgressPayload) => {
+    if (progressReporter?.eventName === eventName) progressReporter.report(payload)
   }
 
   const requestCancel = async (eventName: string) => {
@@ -150,6 +133,7 @@ export const createActivity = (opts: Options = {}) => {
     activity,
     start,
     requestCancel,
+    reportProgress,
     cleanup,
     clearNow,
     hasHideTimer,

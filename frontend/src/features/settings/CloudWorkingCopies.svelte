@@ -113,12 +113,14 @@
   const saveOriginal = async (copy: CloudWorkingCopy) => {
     if (uploading) return
     uploading = true; error = ''; message = ''
+    const event = `cloud-edit-save-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
-      const saved = await saveCloudWorkingCopy(copy.id)
+      await activityApi?.start('Saving edited cloud file…', event, () => void activityApi?.requestCancel(event), { completeOnReply: true })
+      const saved = await saveCloudWorkingCopy(copy.id, event)
       message = saved.dirty ? 'Saved to the original cloud file. Newer local edits are waiting to save.' : 'Saved to the original cloud file.'
       await refresh()
     } catch (err) { error = getErrorMessage(err); await refresh() }
-    finally { uploading = false }
+    finally { uploading = false; activityApi?.clearNow(); await activityApi?.cleanup() }
   }
   const toggleAutomatic = async (copy: CloudWorkingCopy) => {
     if (uploading) return
@@ -135,7 +137,7 @@
     message = ''
     const event = `cloud-edit-upload-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
-      await activityApi?.start('Checking and uploading edited file…', event, () => void activityApi?.requestCancel(event))
+      await activityApi?.start('Checking and uploading edited file…', event, () => void activityApi?.requestCancel(event), { completeOnReply: true })
       const result = await uploadCloudWorkingCopy(copy.id, event)
       message = `${result.sourceChanged ? 'The cloud original changed. ' : ''}Saved as a new file: ${result.path}. The original and working copy were kept.`
       await refresh()

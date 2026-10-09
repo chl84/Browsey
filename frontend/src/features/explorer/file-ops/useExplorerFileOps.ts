@@ -99,13 +99,10 @@ const cloudConflictNameKey = (provider: CloudProviderKind | null, name: string) 
 
 const pasteActivityLabel = (mode: 'copy' | 'cut') => (mode === 'cut' ? 'Moving…' : 'Copying…')
 
-type ActivityApi = {
-  start: SharedActivityApi['start']
-  requestCancel: (eventName: string) => Promise<void> | void
-  hideSoon: () => void
-  clearNow: () => void
-  cleanup: (preserveTimer?: boolean) => Promise<void>
-}
+type ActivityApi = Pick<SharedActivityApi, 'start' | 'hideSoon' | 'clearNow' | 'cleanup'> &
+  Partial<Pick<SharedActivityApi, 'reportProgress'>> & {
+    requestCancel: (eventName: string) => Promise<void> | void
+  }
 
 type Deps = {
   currentView: () => CurrentView
@@ -338,6 +335,8 @@ export const useExplorerFileOps = (deps: Deps) => {
       for (const src of sources) {
         if (cancelled) throw new Error('Transfer cancelled')
         attemptedSources += 1
+        deps.activityApi.reportProgress?.(progressEvent, { unit: 'items', items: completedSources.length, total: sources.length,
+          phase: `${state.mode === 'cut' ? 'Moving' : 'Copying'} item ${attemptedSources} / ${sources.length}…` })
         const leaf = cloudLeafName(src)
         if (!leaf) {
           throw new Error(`Invalid cloud source path: ${src}`)
@@ -439,6 +438,8 @@ export const useExplorerFileOps = (deps: Deps) => {
           for (const src of sources) {
             if (cancelled) throw new Error('Transfer cancelled')
             attemptedSources += 1
+            deps.activityApi.reportProgress?.(progressEvent, { unit: 'items', items: completedSources.length, total: sources.length,
+              phase: `${state.mode === 'cut' ? 'Moving' : 'Copying'} item ${attemptedSources} / ${sources.length}…` })
             const leaf = route === 'local_to_cloud' ? localLeafName(src) : cloudLeafName(src)
             if (!leaf) {
               throw new Error(`Invalid source path: ${src}`)
@@ -503,6 +504,8 @@ export const useExplorerFileOps = (deps: Deps) => {
           for (const src of sources) {
             if (cancelled) throw new Error('Transfer cancelled')
             attemptedSources += 1
+            deps.activityApi.reportProgress?.(progressEvent, { unit: 'items', items: completedSources.length, total: sources.length,
+              phase: `${state.mode === 'cut' ? 'Moving' : 'Copying'} item ${attemptedSources} / ${sources.length}…` })
             const leaf = route === 'local_to_cloud' ? localLeafName(src) : cloudLeafName(src)
             if (!leaf) throw new Error(`Invalid source path: ${src}`)
             const finalTarget = route === 'local_to_cloud' ? cloudJoin(target, leaf) : localJoin(target, leaf)

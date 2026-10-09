@@ -74,7 +74,8 @@ export const createSelectionActions = (deps: Deps) => {
       if (inTrash) {
         await purgeTrashItems(entries.map(entry => entry.trash_id ?? entry.path))
       } else if (permanent) {
-        await deleteEntries(paths, event)
+        if (cloud) await deleteEntries(paths, event, false, payload => activityApi.reportProgress(event, payload))
+        else await deleteEntries(paths, event)
       } else {
         await moveToTrashMany(paths, event)
       }

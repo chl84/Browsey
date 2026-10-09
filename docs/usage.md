@@ -222,8 +222,26 @@ Local manual copies compare output against the written stream before accepting
 completion or deleting fallback move sources. The extra target-read pass is
 not a lock against later edits; GIO/cloud copy paths are different.
 
-Settings > Stored data has a read-only backup overview. Expand **Backup details
-and recovery guidance** for allocation, paths, and recovery steps. Startup logs
+Settings > Stored data shows an undo-backup overview. **Show backups** lists
+stored files and folders. **Recover** creates a verified copy at the original
+location with progress and cancellation. If the location is occupied, missing,
+unsafe or unwritable, **Recover to…** opens so you can select another local
+folder and press **Recover here**. New backups record their original paths before
+the original is moved or removed.
+Existing files are kept; a numbered name is used on conflicts. Backups and their
+protection markers remain for undo/recovery safety. A successfully verified
+recovery leaves the backup list and stays hidden across Refresh and app restarts.
+Failed or cancelled recoveries remain listed. Completed backups from the current Browsey instance
+can be recovered without restarting. Backups being changed by a file operation
+or owned by another running instance are unavailable; recover those in their
+owning instance. Recovery copies the stored data; it does not undo an interrupted
+operation or guarantee that the stored backup was originally complete.
+
+Expand **Advanced details** for allocation, paths and retention information.
+Stored backups survive app restarts without automatic expiry, with or without
+recovery markers. Startup cleanup only removes completely empty abandoned
+sessions; undo/redo history remains limited to the current session. Older builds
+may delete backups on startup, so recover needed data before downgrading. Startup logs
 unchanged recovery findings at Debug; new/changed or uncertain findings produce one
 combined log warning. No startup dialog or toast is shown. Diagnostic notices
 do not authorize backup deletion or reconstruct undo history. Do not remove

@@ -214,6 +214,7 @@ pub(super) async fn delete_cloud_dir_empty_impl(
 }
 
 pub(super) async fn move_cloud_entry_impl(
+    app: tauri::AppHandle,
     src: String,
     dst: String,
     overwrite: bool,
@@ -245,8 +246,9 @@ pub(super) async fn move_cloud_entry_impl(
             },
         );
         with_cloud_remote_permits(remotes, || {
-            let provider =
-                configured_rclone_provider().map_err(super::error::CloudCommandError::from)?;
+            let provider = configured_rclone_provider()
+                .map_err(super::error::CloudCommandError::from)?
+                .with_progress(&app, progress_event.as_deref());
             provider.move_entry(&src, &dst, overwrite, prechecked, cancel_token.as_deref())
         })
     });
@@ -278,6 +280,7 @@ pub(super) async fn move_cloud_entry_impl(
 }
 
 pub(super) async fn copy_cloud_entry_impl(
+    app: tauri::AppHandle,
     src: String,
     dst: String,
     overwrite: bool,
@@ -297,8 +300,9 @@ pub(super) async fn copy_cloud_entry_impl(
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(remotes, || {
-            let provider =
-                configured_rclone_provider().map_err(super::error::CloudCommandError::from)?;
+            let provider = configured_rclone_provider()
+                .map_err(super::error::CloudCommandError::from)?
+                .with_progress(&app, progress_event.as_deref());
             provider.copy_entry(&src, &dst, overwrite, prechecked, cancel_token.as_deref())
         })
     });

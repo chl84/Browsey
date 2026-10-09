@@ -6,6 +6,11 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Instant;
 
+type TransferTelemetry = (
+    Arc<Mutex<TransferActivity>>,
+    Option<crate::commands::cloud::progress::StatsObserver>,
+);
+
 pub(super) const STDOUT_LIMIT: usize = 128 * 1024 * 1024;
 pub(super) const STDERR_LIMIT: usize = 8 * 1024 * 1024;
 
@@ -45,6 +50,7 @@ fn read_transfer_stderr(
     mut source: impl Read,
     limit: usize,
     activity: &Mutex<TransferActivity>,
+    observer: Option<&crate::commands::cloud::progress::StatsObserver>,
 ) -> io::Result<Captured> {
     const LINE_LIMIT: usize = 64 * 1024;
     let mut result = Captured {
@@ -61,6 +67,9 @@ fn read_transfer_stderr(
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner())
                     .observe(stats, Instant::now());
+                if let Some(observer) = observer {
+                    observer.observe(stats);
+                }
                 // Do not retain periodic stats: a long successful transfer must
                 // not overflow the diagnostic memory cap. Preserve error logs.
                 if matches!(
@@ -109,12 +118,14 @@ fn read_transfer_stderr(
 fn reader(
     source: impl Read + Send + 'static,
     limit: usize,
-    activity: Option<Arc<Mutex<TransferActivity>>>,
+    activity: Option<TransferTelemetry>,
 ) -> io::Result<JoinHandle<io::Result<Captured>>> {
     thread::Builder::new()
         .name("browsey-rclone-capture".into())
         .spawn(move || match activity {
-            Some(activity) => read_transfer_stderr(source, limit, &activity),
+            Some((activity, observer)) => {
+                read_transfer_stderr(source, limit, &activity, observer.as_ref())
+            }
             None => read_bounded(source, limit),
         })
 }
@@ -125,10 +136,7 @@ pub(super) struct Pipes {
 }
 
 impl Pipes {
-    pub fn start(
-        child: &mut Child,
-        activity: Option<Arc<Mutex<TransferActivity>>>,
-    ) -> io::Result<Self> {
+    pub fn start(child: &mut Child, activity: Option<TransferTelemetry>) -> io::Result<Self> {
         let stdout = reader(
             child
                 .stdout
@@ -168,6 +176,26 @@ impl Pipes {
 mod tests {
     use super::*;
     #[test]
+    fn live_statistics_reach_the_observer_without_forwarding_error_logs() {
+        let activity = Mutex::new(TransferActivity::new(Instant::now()));
+        let received = Arc::new(Mutex::new(Vec::new()));
+        let observed = received.clone();
+        let observer = crate::commands::cloud::progress::StatsObserver::new(move |stats| {
+            observed.lock().unwrap().push(stats.clone());
+        });
+        let input = b"{\"level\":\"notice\",\"stats\":{\"bytes\":10,\"totalBytes\":100}}\n{\"level\":\"error\",\"msg\":\"quota exceeded\"}\n{\"level\":\"notice\",\"stats\":{\"bytes\":50,\"totalBytes\":100}}\n";
+        let output =
+            read_transfer_stderr(io::Cursor::new(input), 1024, &activity, Some(&observer)).unwrap();
+        let received = received.lock().unwrap();
+        assert_eq!(received.len(), 2);
+        assert_eq!(received[0]["bytes"], 10);
+        assert_eq!(received[1]["bytes"], 50);
+        assert!(String::from_utf8(output.bytes)
+            .unwrap()
+            .contains("quota exceeded"));
+    }
+
+    #[test]
     fn transfer_stats_are_drained_without_losing_failure_diagnostics() {
         let activity = Mutex::new(TransferActivity::new(
             Instant::now() - std::time::Duration::from_secs(600),
@@ -176,7 +204,7 @@ mod tests {
         let error = b"{\"level\":\"error\",\"msg\":\"quota exceeded\"}\n";
         let mut input = stats.repeat(200_000);
         input.extend_from_slice(error);
-        let result = read_transfer_stderr(io::Cursor::new(input), 1024, &activity).unwrap();
+        let result = read_transfer_stderr(io::Cursor::new(input), 1024, &activity, None).unwrap();
         assert!(!result.overflow);
         assert_eq!(result.bytes, error);
         assert!(
@@ -193,7 +221,7 @@ mod tests {
         input
             .extend_from_slice(b"\nnot json\n{\"level\":\"notice\",\"stats\":{\"transfers\":1}}\n");
         let mut source = io::Cursor::new(input);
-        let result = read_transfer_stderr(&mut source, 1024, &activity).unwrap();
+        let result = read_transfer_stderr(&mut source, 1024, &activity, None).unwrap();
         assert!(result.overflow);
         assert_eq!(result.bytes, vec![b'x'; 1024]);
         assert_eq!(source.position(), source.get_ref().len() as u64);

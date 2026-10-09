@@ -339,7 +339,21 @@ pub async fn save_cloud_working_copy(
                 || {
                     let provider = super::super::configured_rclone_provider()
                         .map_err(CloudCommandError::from)?;
-                    save_original_at(&base, &id, &provider, stop, super::monitor::callback(&app))
+                    let publish = super::monitor::callback(&app);
+                    let progress_app = app.clone();
+                    let event = progress_event.clone();
+                    let status_callback: StatusCallback = Arc::new(move |copy, bytes, total, saved| {
+                        publish(copy, bytes, total, saved);
+                        if let Some(event) = event.as_deref() {
+                            let phase = if saved { "Cloud file saved" }
+                                else if total > 0 && bytes >= total { "Confirming cloud save…" }
+                                else if matches!(copy.save_status, CloudSaveStatus::Uploading) { "Uploading edited file…" }
+                                else { "Checking edited cloud file…" };
+                            crate::runtime_lifecycle::emit_if_running(&progress_app, event,
+                                serde_json::json!({"bytes": bytes, "total": total, "finished": false, "phase": phase}));
+                        }
+                    });
+                    save_original_at(&base, &id, &provider, stop, status_callback)
                 },
             )?;
             super::monitor::register(&app, &saved)?;

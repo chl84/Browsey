@@ -25,21 +25,21 @@ export const openEntry = (entry: Entry, options?: { progressEvent?: string }) =>
   return invoke<void>('open_entry', { path: entry.path })
 }
 
-export const renameEntry = async (path: string, newName: string) => {
+export const renameEntry = async (path: string, newName: string, progressEvent?: string) => {
   newName = entryName(newName, 'entry')
   if (!isCloudPath(path)) {
     return invoke<string>('rename_entry', { path, newName })
   }
   const dst = joinCloudPath(cloudParentPath(path), newName)
-  await renameCloudEntry(path, dst, { overwrite: false })
+  await renameCloudEntry(path, dst, { overwrite: false, ...(progressEvent ? { progressEvent } : {}) })
   return dst
 }
 
-export const renameEntries = async (entries: Array<{ path: string; newName: string }>) => {
+export const renameEntries = async (entries: Array<{ path: string; newName: string }>, progressEvent?: string) => {
   entries = entries.map(entry => ({ ...entry, newName: entryName(entry.newName, 'entry') }))
   if (entries.some((entry) => isCloudPath(entry.path))) {
     if (!entries.every((entry) => isCloudPath(entry.path))) throw new Error('Rename local and cloud entries separately')
-    const result = await invoke<{ renamed: string[]; error: string | null }>('rename_cloud_entries', { entries })
+    const result = await invoke<{ renamed: string[]; error: string | null }>('rename_cloud_entries', { entries, ...(progressEvent ? { progressEvent } : {}) })
     if (result.error) throw new Error(result.error)
     return result.renamed
   }

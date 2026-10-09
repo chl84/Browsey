@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ProgressBar from '@/shared/ui/ProgressBar.svelte'
+  import type { ActivityState } from '../hooks/createActivity'
   import type { OpenWithApp, OpenWithChoice } from '../services/openWith.service'
 
   import ModalShell from '../../../shared/ui/ModalShell.svelte'
@@ -7,6 +9,7 @@
   export let open = false
   export let apps: OpenWithApp[] = []
   export let loading = false
+  export let progress: ActivityState | null = null
   export let error = ''
   export let busy = false
   export let onConfirm: (choice: OpenWithChoice) => void = () => {}
@@ -76,7 +79,14 @@
       />
       <div class="apps">
         {#if loading}
-          <div class="muted">Loading apps…</div>
+          {#if progress}
+            <div role="status">{progress.label}</div>
+            <ProgressBar percent={progress.percent} label={progress.label} />
+            {#if progress.detail}<div class="muted">{progress.detail}</div>{/if}
+            {#if progress.percent !== null}<div class="muted">{progress.percent}%</div>{/if}
+          {:else}
+            <div class="muted">Loading apps…</div>
+          {/if}
         {:else if filtered.length === 0}
           <div class="muted">{apps.length ? 'No applications match your filter.' : 'No associated applications found.'}</div>
         {:else}

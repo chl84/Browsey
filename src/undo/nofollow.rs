@@ -239,6 +239,7 @@ fn rename_nofollow_raw(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
 }
 
 pub(crate) fn rename_nofollow_io(src: &Path, dst: &Path) -> UndoResult<()> {
+    let _backup_use = super::write_backups(&[src, dst])?;
     #[cfg(test)]
     crate::fs_utils::copy_test_hooks::hit(
         src,
@@ -406,6 +407,7 @@ fn delete_nofollow_io(path: &Path) -> Result<(), std::io::Error> {
 }
 
 pub(crate) fn delete_entry_nofollow_io(path: &Path) -> UndoResult<()> {
+    let _backup_use = super::write_backups(&[path])?;
     delete_nofollow_io(path).map_err(|error| map_delete_nofollow_error(path, error))
 }
 

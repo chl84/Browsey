@@ -26,6 +26,7 @@ const CLOUD_PROBE_CLI_TIMEOUT: Duration = Duration::from_secs(20);
 const CLOUD_PROBE_CLI_TIMEOUT: Duration = Duration::from_millis(200);
 
 pub(super) async fn probe_cloud_remote_impl(
+    app: tauri::AppHandle,
     remote_id: String,
     cancel_state: CancelState,
     progress_event: Option<String>,
@@ -35,7 +36,9 @@ pub(super) async fn probe_cloud_remote_impl(
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let remote_id_for_log = remote_id.clone();
     let task = tauri::async_runtime::spawn_blocking(move || {
-        probe_cloud_remote_sync(&remote_id, cancel_token.as_deref())
+        probe_cloud_remote_sync_with_progress(&remote_id, cancel_token.as_deref(), |done| {
+            super::progress::items(&app, progress_event.as_deref(), done, 3);
+        })
     });
     let result = map_spawn_result(task.await, "cloud probe task failed");
     if let Err(error) = &result {
@@ -49,10 +52,20 @@ pub(super) async fn probe_cloud_remote_impl(
     result
 }
 
+#[cfg(test)]
 fn probe_cloud_remote_sync(
     remote_id: &str,
     cancel: Option<&AtomicBool>,
 ) -> CloudCommandResult<CloudRemoteProbeStatus> {
+    probe_cloud_remote_sync_with_progress(remote_id, cancel, |_| {})
+}
+
+fn probe_cloud_remote_sync_with_progress(
+    remote_id: &str,
+    cancel: Option<&AtomicBool>,
+    report: impl Fn(u64),
+) -> CloudCommandResult<CloudRemoteProbeStatus> {
+    report(0);
     let provider = configured_rclone_provider().map_err(CloudCommandError::from)?;
     let remote = provider
         .list_remotes()?
@@ -71,6 +84,7 @@ fn probe_cloud_remote_sync(
         )
     })?;
 
+    report(1);
     let rc = probe_backend(
         &provider,
         &remote,
@@ -79,6 +93,9 @@ fn probe_cloud_remote_sync(
         RcloneReadBackend::RcOnly,
         CLOUD_PROBE_RC_TIMEOUT,
     );
+    if !matches!(rc.state, CloudProbeState::Cancelled) {
+        report(2);
+    }
     let cli = probe_backend(
         &provider,
         &remote,
@@ -88,6 +105,9 @@ fn probe_cloud_remote_sync(
         CLOUD_PROBE_CLI_TIMEOUT,
     );
 
+    if !matches!(cli.state, CloudProbeState::Cancelled) {
+        report(3);
+    }
     Ok(CloudRemoteProbeStatus {
         remote,
         recommendation: probe_recommendation(&rc, &cli),

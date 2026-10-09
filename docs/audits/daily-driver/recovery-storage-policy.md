@@ -11,6 +11,17 @@ and avoid automatic quota eviction. Settings now additionally reports
 filesystem-allocated bytes where the platform exposes them. This remains a
 bounded, read-only diagnostic, not a reclamation or admission-control feature.
 
+## Retention update, 2026-10-10
+
+The recovery modal now offers stored backups across restarts. Startup cleanup
+therefore no longer deletes abandoned unmarked backup trees: it removes only
+completely empty session directories with nonrecursive removal after acquiring
+their existing ownership lock. All stored backups have no automatic expiry,
+including zero-byte files and empty folders. Undo history is still session-only.
+This supersedes the original cleanup recommendation below; the measurements and
+historical verification results remain unchanged. See [backup recovery modal](backup-recovery-modal.md)
+for the current access rules and separate-process regression coverage.
+
 ## Reproduction
 
 The opt-in test uses the production action, backup, verification and history

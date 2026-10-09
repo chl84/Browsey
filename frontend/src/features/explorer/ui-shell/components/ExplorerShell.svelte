@@ -221,6 +221,7 @@ import type { ActivityState } from '../../hooks/createActivity'
   let openWithOpen = false
   let openWithApps: OpenWithApp[] = []
   let openWithLoading = false
+  let openWithProgress: ActivityState | null = null
   let openWithError = ''
   let openWithBusy = false
   let onConfirmOpenWith: (choice: OpenWithChoice) => void = () => {}
@@ -457,6 +458,7 @@ import type { ActivityState } from '../../hooks/createActivity'
     openWithOpen: boolean
     openWithApps: OpenWithApp[]
     openWithLoading: boolean
+    openWithProgress: ActivityState | null
     openWithError: string
     openWithBusy: boolean
     onConfirmOpenWith: typeof onConfirmOpenWith
@@ -678,6 +680,7 @@ import type { ActivityState } from '../../hooks/createActivity'
     openWithOpen,
     openWithApps,
     openWithLoading,
+    openWithProgress,
     openWithError,
     openWithBusy,
     onConfirmOpenWith,
@@ -973,6 +976,7 @@ import type { ActivityState } from '../../hooks/createActivity'
   open={openWithOpen}
   apps={openWithApps}
   loading={openWithLoading}
+  progress={openWithProgress}
   error={openWithError}
   busy={openWithBusy}
   onConfirm={onConfirmOpenWith}

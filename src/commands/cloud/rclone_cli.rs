@@ -362,12 +362,14 @@ pub(crate) fn output_limit_message(
 #[derive(Debug, Clone)]
 pub struct RcloneCli {
     binary: OsString,
+    observer: Option<super::progress::StatsObserver>,
 }
 
 impl Default for RcloneCli {
     fn default() -> Self {
         Self {
             binary: OsString::from("rclone"),
+            observer: None,
         }
     }
 }
@@ -376,7 +378,16 @@ impl RcloneCli {
     pub(crate) fn with_binary(binary: impl Into<OsString>) -> Self {
         Self {
             binary: binary.into(),
+            observer: None,
         }
+    }
+
+    pub(crate) fn with_observer(
+        mut self,
+        observer: Option<super::progress::StatsObserver>,
+    ) -> Self {
+        self.observer = observer;
+        self
     }
 
     #[cfg(test)]
@@ -454,7 +465,12 @@ impl RcloneCli {
         command.stderr(Stdio::piped());
         let mut process =
             spawn_with_etxtbsy_retry(&mut command, subcommand).map_err(RcloneCliError::Io)?;
-        let pipes = match capture::Pipes::start(&mut process, activity.clone()) {
+        let pipes = match capture::Pipes::start(
+            &mut process,
+            activity
+                .clone()
+                .map(|activity| (activity, self.observer.clone())),
+        ) {
             Ok(pipes) => pipes,
             Err(error) => {
                 let _ = process.kill();
@@ -827,7 +843,8 @@ mod tests {
             .stderr(std::process::Stdio::piped())
             .spawn()
             .unwrap();
-        let pipes = super::capture::Pipes::start(&mut child, Some(activity.clone())).unwrap();
+        let pipes =
+            super::capture::Pipes::start(&mut child, Some((activity.clone(), None))).unwrap();
         let child = Arc::new(Mutex::new(Some(child)));
         let result = super::wait_for_child_output_or_cancel(
             &child,

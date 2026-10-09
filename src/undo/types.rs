@@ -60,6 +60,7 @@ impl CopyReceipt {
     }
 
     pub(crate) fn remove(&self, path: &std::path::Path) -> UndoResult<()> {
+        let _backup_use = super::write_backups(&[path])?;
         self.snapshot(path)?.remove_recorded(path).map_err(|error| {
             UndoError::from_io_error(
                 format!(

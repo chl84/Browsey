@@ -73,7 +73,7 @@ describe('cloud modal background refresh', () => {
     await flushMicrotasks()
 
     expect(ok).toBe(true)
-    expect(renameEntryMock).toHaveBeenCalledWith('rclone://work/docs/report.txt', 'report-renamed.txt')
+    expect(renameEntryMock).toHaveBeenCalledWith('rclone://work/docs/report.txt', 'report-renamed.txt', expect.stringMatching(/^rename-progress-/))
     expect(loadPath).toHaveBeenCalledWith('rclone://work/docs')
     expect(showToast).toHaveBeenCalledWith(
       'Rename completed, but refresh took too long. Press F5 to refresh.',
@@ -188,6 +188,7 @@ describe('cloud modal background refresh', () => {
       ['rclone://work/docs/sample.txt'],
       expect.stringMatching(/^delete-progress-/),
       true,
+      expect.any(Function),
     )
     expect(reloadCurrent).toHaveBeenCalledTimes(1)
     expect(showToast).toHaveBeenCalledWith(

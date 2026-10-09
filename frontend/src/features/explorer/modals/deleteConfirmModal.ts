@@ -1,15 +1,11 @@
 import { writable, get } from 'svelte/store'
 import { getErrorMessage } from '@/shared/lib/error'
+import type { ActivityApi as SharedActivityApi } from '../hooks/createActivity'
 import type { Entry } from '../model/types'
 import { deleteEntries, moveToTrashMany, purgeTrashItems } from '../services/trash.service'
 
-type ActivityApi = {
-  start: (label: string, eventName: string, onCancel?: () => void) => Promise<void>
-  cleanup: (preserveTimer?: boolean) => Promise<void>
-  clearNow: () => void
-  hasHideTimer: () => boolean
-  requestCancel?: (eventName: string) => Promise<void>
-}
+type ActivityApi = Pick<SharedActivityApi, 'start' | 'cleanup' | 'clearNow' | 'hasHideTimer'> &
+  Partial<Pick<SharedActivityApi, 'requestCancel' | 'reportProgress'>>
 
 type Deps = {
   activityApi: ActivityApi
@@ -50,7 +46,7 @@ export const createDeleteConfirmModal = (deps: Deps) => {
     const progressEvent = `delete-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
       await activityApi.start(current.mode === 'network-trash' ? 'Moving to trash / deleting…' : 'Deleting…', progressEvent,
-        activityApi.requestCancel ? () => void activityApi.requestCancel?.(progressEvent) : undefined)
+        activityApi.requestCancel ? () => void activityApi.requestCancel?.(progressEvent) : undefined, { completeOnReply: current.targets.some(t => isCloudPath(t.path)) })
       if (current.mode === 'trash') {
         const ids = current.targets.map((t) => t.trash_id ?? t.path)
         await purgeTrashItems(ids)
@@ -58,7 +54,8 @@ export const createDeleteConfirmModal = (deps: Deps) => {
         await moveToTrashMany(current.targets.map(t => t.path), progressEvent, true)
       } else {
         const paths = current.targets.map((t) => t.path)
-        await deleteEntries(paths, progressEvent, true)
+        if (paths.every(isCloudPath)) await deleteEntries(paths, progressEvent, true, payload => activityApi.reportProgress?.(progressEvent, payload))
+        else await deleteEntries(paths, progressEvent, true)
       }
       const cloudDelete =
         current.mode !== 'trash' && current.targets.length > 0 && current.targets.every((t) => isCloudPath(t.path))

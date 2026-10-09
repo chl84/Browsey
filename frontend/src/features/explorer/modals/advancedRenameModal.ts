@@ -1,4 +1,5 @@
 import { get, writable } from 'svelte/store'
+import type { ActivityApi } from '../hooks/createActivity'
 import type { Entry } from '../model/types'
 import {
   previewRenameEntries,
@@ -34,11 +35,12 @@ export type AdvancedRenameState = {
 }
 
 type Deps = {
+  activityApi?: ActivityApi
   reloadCurrent: () => Promise<void>
   showToast: (msg: string, timeout?: number) => void
 }
 
-export const createAdvancedRenameModal = ({ reloadCurrent, showToast }: Deps) => {
+export const createAdvancedRenameModal = ({ reloadCurrent, showToast, activityApi }: Deps) => {
   const defaultPayload = (): AdvancedRenamePayload => ({
     regex: '',
     replacement: '',
@@ -202,8 +204,11 @@ export const createAdvancedRenameModal = ({ reloadCurrent, showToast }: Deps) =>
       newName: rows[idx]?.next ?? entry.name,
     }))
 
+    const cloud = entries.every(entry => entry.path.startsWith('rclone://'))
+    const event = `cloud-rename-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
-      const renamed = await renameEntries(entries)
+      if (cloud) await activityApi?.start('Renaming cloud items…', event, () => void activityApi?.requestCancel(event), { completeOnReply: true })
+      const renamed = cloud ? await renameEntries(entries, event) : await renameEntries(entries)
       close()
       if (renamed.length === 0) {
         showToast('No names changed')
@@ -218,6 +223,8 @@ export const createAdvancedRenameModal = ({ reloadCurrent, showToast }: Deps) =>
       try { await reloadCurrent() } catch { /* Preserve partial-operation details. */ }
       state.update((s) => ({ ...s, error: msg }))
       return false
+    } finally {
+      if (cloud) { activityApi?.clearNow(); await activityApi?.cleanup() }
     }
   }
 

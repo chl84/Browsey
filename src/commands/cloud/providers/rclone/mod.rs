@@ -52,6 +52,9 @@ pub(crate) struct RcloneCloudProvider {
 
 impl RcloneCloudProvider {
     pub(crate) fn from_cli(cli: RcloneCli) -> Self {
+        // Explicit file callbacks own RC batch aggregation. A CLI observer is
+        // for fallback telemetry; with_progress opts both transports into the
+        // shared activity stream when no separate aggregation is needed.
         let rc = RcloneRcClient::with_binary(cli.binary().to_os_string());
         Self { cli, rc }
     }
@@ -59,6 +62,13 @@ impl RcloneCloudProvider {
     #[cfg(test)]
     pub fn new(cli: RcloneCli) -> Self {
         Self::from_cli(cli)
+    }
+
+    pub(crate) fn with_progress(mut self, app: &tauri::AppHandle, event: Option<&str>) -> Self {
+        let observer = crate::commands::cloud::progress::observer(app, event);
+        self.cli = self.cli.with_observer(observer.clone());
+        self.rc = self.rc.with_observer(observer);
+        self
     }
 
     pub fn cli(&self) -> &RcloneCli {

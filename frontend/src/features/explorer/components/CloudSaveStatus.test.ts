@@ -119,3 +119,16 @@ it('removes completion notices with deleted copies and ignores late completion e
   await emit(row('saved', 2, true))
   expect(badge()).toBeNull()
 })
+
+it('shows upload bytes and percentage, then confirmation until the save is acknowledged', async () => {
+  await start()
+  await emit({ ...row('uploading', 1), bytes: 1024, total: 2048 })
+  expect(badge()?.textContent).toContain('1.00 KB / 2.00 KB')
+  expect(badge()?.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('50')
+  await emit({ ...row('uploading', 2), bytes: 2048, total: 2048 })
+  expect(badge()?.textContent).toContain('Confirming save…')
+  expect(badge()?.textContent).toContain('Saving 1…')
+  await emit(row('saved', 3, true))
+  expect(badge()?.querySelector('[role="progressbar"]')).toBeNull()
+  expect(badge()?.textContent).toContain('Saved')
+})

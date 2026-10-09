@@ -173,4 +173,37 @@ describe('createActivity', () => {
     })
     await activityApi.cleanup()
   })
+
+  it('shows measured bytes with an unknown total without inventing a percentage', async () => {
+    const api = createActivity()
+    await api.start('Uploading…', 'unknown-size', undefined, { completeOnReply: true })
+    api.reportProgress('unknown-size', { bytes: 4096, total: 0 })
+    expect(get(api.activity)).toMatchObject({ percent: null, detail: '4.00 KB processed' })
+    await api.cleanup()
+  })
+
+  it('keeps a staged operation cancellable across measured completion and its next phase', async () => {
+    const api = createActivity()
+    const cancel = vi.fn()
+    await api.start('Downloading…', 'staged', cancel, { completeOnReply: true })
+    api.reportProgress('staged', { bytes: 100, total: 100, finished: true })
+    expect(api.hasHideTimer()).toBe(false)
+    expect(get(api.activity)?.cancel).toBe(cancel)
+    api.reportProgress('staged', { bytes: 0, total: 0, phase: 'Uploading archive…' })
+    api.reportProgress('staged', { bytes: 40, total: 80 })
+    expect(get(api.activity)).toMatchObject({ label: 'Uploading archive…', percent: 50, detail: '40 B / 80 B' })
+    await api.cleanup()
+  })
+
+  it('ignores late events and local reports from an earlier operation', async () => {
+    const api = createActivity()
+    await api.start('Old task', 'old')
+    const oldHandler = eventHandlers.get('old')
+    await api.start('New task', 'new')
+    oldHandler?.({ payload: { bytes: 100, total: 100, finished: true } })
+    api.reportProgress('old', { unit: 'items', items: 10, total: 10 })
+    expect(get(api.activity)).toMatchObject({ label: 'New task', percent: null })
+    expect(api.hasHideTimer()).toBe(false)
+    await api.cleanup()
+  })
 })

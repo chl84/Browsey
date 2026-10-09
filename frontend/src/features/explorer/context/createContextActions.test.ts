@@ -56,7 +56,7 @@ const createDeps = (entries: Entry[], selectedPaths: string[], view: CurrentView
   activityApi: {
     start: vi.fn(async () => {}), cleanup: vi.fn(async () => {}),
     requestCancel: vi.fn(async () => {}), clearNow: vi.fn(),
-    hideSoon: vi.fn(), hasHideTimer: () => false,
+    hideSoon: vi.fn(), reportProgress: vi.fn(), hasHideTimer: () => false,
   },
   getCurrentPath: () => '/tmp',
   isWindows: () => false,

@@ -163,6 +163,9 @@ impl RcloneRcClient {
             if let Some(group) = stats_group.as_deref() {
                 if let Ok(stats) = self.core_stats(Some(group), true) {
                     activity.observe(&stats, Instant::now());
+                    if let Some(observer) = &self.observer {
+                        observer.observe(&stats);
+                    }
                     on_progress(stats);
                 }
             }
@@ -194,6 +197,9 @@ impl RcloneRcClient {
             if finished {
                 if let Some(group) = stats_group.as_deref() {
                     if let Ok(stats) = self.core_stats(Some(group), true) {
+                        if let Some(observer) = &self.observer {
+                            observer.observe(&stats);
+                        }
                         on_progress(stats);
                     }
                 }

@@ -9,13 +9,15 @@ const fixture: UndoStorageSummary = {
 
 describe('undo storage diagnostics', () => {
   it('keeps the overview concise without losing partial-scan or missing-storage states', () => {
-    expect(describeUndoStorageOverview(fixture)).toBe('Last scan: 8.2 kB of file contents · 3 sessions')
+    expect(describeUndoStorageOverview(fixture)).toBe('8.2 kB stored in backups.')
     expect(describeUndoStorageOverview({ ...fixture, sessions: 1, allocatedBytes: 4096 }))
-      .toBe('Last scan: 8.2 kB of file contents · 1 session')
+      .toBe('8.2 kB stored in backups.')
     expect(describeUndoStorageOverview({ ...fixture, incomplete: true, logicalBytes: 0 }))
-      .toContain('Incomplete scan — counted 0 B')
+      .toBe('Partial scan: at least 0 B stored.')
     expect(describeUndoStorageOverview({ ...fixture, exists: false }))
-      .toBe('No undo storage directory exists yet.')
+      .toBe('No backups found.')
+    expect(describeUndoStorageOverview({ ...fixture, sessions: 0, files: 0, logicalBytes: 0 }))
+      .toBe('No backups found.')
   })
   it('labels allocation separately and supports backends without block accounting', () => {
     expect(describeUndoStorage({ ...fixture, allocatedBytes: 4 * 1024 * 1024 }))

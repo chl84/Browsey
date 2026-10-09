@@ -56,6 +56,11 @@ type E2eMockControl = {
   emptyTrashHold?: boolean
   undoStorage?: { directory: string; exists: boolean; sessions: number; markedSessions: number; files: number; logicalBytes: number; incomplete: boolean }
   undoStorageHold?: boolean
+  recoveryBackups?: { entries: Array<{ id: string; version: string; name: string; kind: string; bytes: number | null; modifiedAt: number | null; blockedReason: string | null }>; incomplete: boolean }
+  recoveryHold?: boolean
+  recoveryOriginalPaths?: Record<string, string>
+  recoveryOriginalError?: { code: string; message: string }
+  recoveryProgress?: { bytes: number; total: number }
   archivePassword?: string
   formatHold?: boolean
   ntfsFormatAvailable?: boolean
@@ -350,6 +355,24 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
         directory: '/mock/browsey/undo-sessions', exists: false, sessions: 0,
         markedSessions: 0, files: 0, logicalBytes: 0, incomplete: false,
       }) as T
+    }
+    case 'list_recovery_backups':
+      return (control?.recoveryBackups ?? { entries: [], incomplete: false }) as T
+    case 'restore_recovery_backup': {
+      const original = control?.recoveryOriginalPaths?.[String(args?.id)]
+      if (args?.destinationDir == null && (control?.recoveryOriginalError || !original)) {
+        throw control?.recoveryOriginalError ?? {
+          code: 'recovery_destination_unavailable', message: 'The original location is unavailable. Choose another folder.',
+        }
+      }
+      const event = String(args?.progressEvent)
+      emitMockEvent(event, { ...(control?.recoveryProgress ?? { bytes: 1024, total: 2048 }), finished: false })
+      while (control?.recoveryHold) await new Promise(resolve => setTimeout(resolve, 20))
+      const name = control?.recoveryBackups?.entries.find(entry => entry.id === args?.id)?.name ?? 'file.txt'
+      if (control?.recoveryBackups) {
+        control.recoveryBackups.entries = control.recoveryBackups.entries.filter(entry => entry.id !== args?.id || entry.version !== args?.version)
+      }
+      return (args?.destinationDir == null ? original : `${String(args.destinationDir)}/${name}`) as T
     }
     case 'search_stream': {
       const path = typeof args?.path === 'string' ? args.path : ROOT
