@@ -206,6 +206,9 @@ fn cleanup_sessions(base: &Path, max_age: Option<Duration>) {
     let Ok(entries) = fs::read_dir(base) else {
         return;
     };
+    let mut retained = 0;
+    let mut changed = 0;
+    let mut uncertain = 0;
     for entry in entries.flatten() {
         let name = entry.file_name();
         let Some(name) = name.to_str().filter(|name| name.starts_with("session-")) else {
@@ -214,7 +217,7 @@ fn cleanup_sessions(base: &Path, max_age: Option<Duration>) {
         if !entry.file_type().is_ok_and(|kind| kind.is_dir()) {
             continue;
         }
-        if let Some(age) = max_age {
+        if let Some(age) = max_age.filter(|age| !age.is_zero()) {
             if !entry
                 .metadata()
                 .ok()
@@ -237,12 +240,22 @@ fn cleanup_sessions(base: &Path, max_age: Option<Duration>) {
         }
         // Recovery markers pin the entire abandoned session. Fail closed on
         // scan errors or suspicious marker types; these are not persistent undo.
-        if session_requires_recovery(&entry.path()) {
-            warn!(
-                "Retain undo session requiring manual recovery: {:?}",
-                entry.path()
-            );
-            continue;
+        match super::recovery_notice::scan(&entry.path()) {
+            super::recovery_notice::RecoveryScan::Clean => {}
+            super::recovery_notice::RecoveryScan::Marked(fingerprint) => {
+                retained += 1;
+                changed += usize::from(super::recovery_notice::notify_changed(
+                    &entry.path(),
+                    &fingerprint,
+                ));
+                tracing::debug!(session = %entry.path().display(), "Retain protected undo recovery session");
+                continue;
+            }
+            super::recovery_notice::RecoveryScan::Uncertain => {
+                retained += 1;
+                uncertain += 1;
+                continue;
+            }
         }
         if let Err(e) = fs::remove_dir_all(entry.path()) {
             warn!(
@@ -254,20 +267,30 @@ fn cleanup_sessions(base: &Path, max_age: Option<Duration>) {
         }
         drop(lock);
         let _ = fs::remove_file(lock_path);
+        super::recovery_notice::remove(&entry.path());
+    }
+    if changed > 0 || uncertain > 0 {
+        warn!(
+            directory = %base.display(),
+            retained_sessions = retained,
+            new_or_changed_sessions = changed,
+            uncertain_sessions = uncertain,
+            "Undo recovery sessions retained; inspect backup details in Settings before removing backups"
+        );
+    } else if retained > 0 {
+        tracing::debug!(
+            retained_sessions = retained,
+            "Unchanged undo recovery sessions retained"
+        );
     }
 }
 
+#[cfg(test)]
 fn session_requires_recovery(directory: &Path) -> bool {
-    let Ok(entries) = fs::read_dir(directory) else {
-        return true;
-    };
-    entries.into_iter().any(|entry| match entry {
-        Ok(entry) => entry
-            .file_name()
-            .to_str()
-            .is_some_and(|name| name.ends_with(RECOVERY_SUFFIX)),
-        Err(_) => true,
-    })
+    !matches!(
+        super::recovery_notice::scan(directory),
+        super::recovery_notice::RecoveryScan::Clean
+    )
 }
 
 pub fn temp_backup_path(original: &Path) -> UndoResult<PathBuf> {
@@ -309,11 +332,31 @@ pub(super) fn base_undo_dir() -> PathBuf {
     default_undo_dir()
 }
 
+#[cfg(not(test))]
 fn default_undo_dir() -> PathBuf {
     dirs_next::data_dir()
         .unwrap_or_else(std::env::temp_dir)
         .join("browsey")
         .join("undo-sessions")
+}
+
+#[cfg(test)]
+fn default_undo_dir() -> PathBuf {
+    // Filtered tests may never call the helpers setting BROWSEY_UNDO_DIR.
+    // Their recovery backups must still never enter the user's app storage.
+    static DIRECTORY: OnceLock<PathBuf> = OnceLock::new();
+    DIRECTORY
+        .get_or_init(|| {
+            std::env::temp_dir().join(format!(
+                "browsey-undo-default-test-{}-{}",
+                std::process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            ))
+        })
+        .clone()
 }
 
 pub(super) fn validate_undo_dir(path: &Path) -> UndoResult<()> {
@@ -361,8 +404,153 @@ mod tests {
     #[test]
     fn cleanup_child() {
         if let Some(base) = std::env::var_os("BROWSEY_TEST_CLEANUP_ROOT") {
-            cleanup_sessions(Path::new(&base), None);
+            let subscriber = tracing_subscriber::fmt()
+                .without_time()
+                .with_ansi(false)
+                .with_max_level(tracing::Level::WARN)
+                .finish();
+            tracing::subscriber::with_default(subscriber, || {
+                cleanup_sessions(Path::new(&base), None);
+            });
         }
+    }
+
+    fn cleanup_log_in_child(base: &Path) -> String {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "undo::backup::tests::cleanup_child",
+                "--nocapture",
+            ])
+            .env("BROWSEY_TEST_CLEANUP_ROOT", base)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        String::from_utf8(output.stdout).unwrap()
+    }
+
+    #[test]
+    fn recovery_warnings_survive_restarts_and_report_changes_once_without_clearing_markers() {
+        let base = unique_base();
+        let recovery = BackupSession::create(&base).unwrap();
+        let backup = recovery.directory.join("bucket/file.txt");
+        fs::create_dir(backup.parent().unwrap()).unwrap();
+        fs::write(&backup, b"recoverable").unwrap();
+        let marker = RecoveryMarker::create(&backup, &base.join("destination.txt")).unwrap();
+        let marker_bytes = fs::read(&marker.path).unwrap();
+        let directory = recovery.directory.clone();
+        drop(recovery);
+        let message = "Undo recovery sessions retained;";
+        let first = cleanup_log_in_child(&base);
+        assert_eq!(first.matches(message).count(), 1);
+        assert!(first.contains("new_or_changed_sessions=1"));
+        assert!(!cleanup_log_in_child(&base).contains(message));
+        assert_eq!(fs::read(&marker.path).unwrap(), marker_bytes);
+        assert_eq!(fs::read(&backup).unwrap(), b"recoverable");
+
+        let additional_backup = directory.join("additional/file.txt");
+        fs::create_dir(additional_backup.parent().unwrap()).unwrap();
+        fs::write(&additional_backup, b"additional original").unwrap();
+        let additional_marker =
+            RecoveryMarker::create(&additional_backup, &base.join("additional.txt")).unwrap();
+        assert!(cleanup_log_in_child(&base).contains("new_or_changed_sessions=1"));
+        assert!(!cleanup_log_in_child(&base).contains(message));
+
+        // Same marker name/content, but a different filesystem identity.
+        let parked = directory.join("parked-marker");
+        fs::rename(&marker.path, &parked).unwrap();
+        fs::write(&marker.path, &marker_bytes).unwrap();
+        let replaced = cleanup_log_in_child(&base);
+        assert_eq!(replaced.matches(message).count(), 1);
+        assert!(!cleanup_log_in_child(&base).contains(message));
+
+        let second = BackupSession::create(&base).unwrap();
+        let second_backup = second.directory.join("bucket/file.txt");
+        fs::create_dir(second_backup.parent().unwrap()).unwrap();
+        fs::write(&second_backup, b"second original").unwrap();
+        let second_marker =
+            RecoveryMarker::create(&second_backup, &base.join("second.txt")).unwrap();
+        let second_directory = second.directory.clone();
+        drop(second);
+        // Concurrent startup processes must not both report the same new session.
+        let children: Vec<_> = (0..2)
+            .map(|_| {
+                std::process::Command::new(std::env::current_exe().unwrap())
+                    .args([
+                        "--exact",
+                        "undo::backup::tests::cleanup_child",
+                        "--nocapture",
+                    ])
+                    .env("BROWSEY_TEST_CLEANUP_ROOT", &base)
+                    .stdout(std::process::Stdio::piped())
+                    .spawn()
+                    .unwrap()
+            })
+            .collect();
+        let added = children
+            .into_iter()
+            .map(|child| {
+                let output = child.wait_with_output().unwrap();
+                assert!(output.status.success());
+                String::from_utf8(output.stdout).unwrap()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(added.matches(message).count(), 1);
+        assert!(added.contains("new_or_changed_sessions=1"));
+        assert!(!cleanup_log_in_child(&base).contains(message));
+
+        // Diagnostic cache corruption must re-warn and recover, never unpin data.
+        let notice = base.join(format!(
+            "{}.recovery-notice",
+            directory.file_name().unwrap().to_str().unwrap()
+        ));
+        fs::write(&notice, b"").unwrap();
+        assert!(cleanup_log_in_child(&base).contains(message));
+        assert!(!cleanup_log_in_child(&base).contains(message));
+        assert_eq!(fs::read(&marker.path).unwrap(), marker_bytes);
+        assert_eq!(fs::read(&backup).unwrap(), b"recoverable");
+
+        // Only explicit fixture marker removal allows ordinary cleanup.
+        fs::remove_file(&marker.path).unwrap();
+        additional_marker.clear().unwrap();
+        second_marker.clear().unwrap();
+        cleanup_in_child(&base);
+        assert!(!directory.exists() && !second_directory.exists());
+        assert!(!notice.exists());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn suspicious_recovery_entries_warn_and_notice_links_never_modify_foreign_data() {
+        use std::os::unix::fs::symlink;
+        let base = unique_base();
+        let session = BackupSession::create(&base).unwrap();
+        let directory = session.directory.clone();
+        let foreign = base.join("foreign.txt");
+        fs::write(&foreign, b"foreign document").unwrap();
+        let marker = directory.join("bucket.recovery-required");
+        symlink(&foreign, &marker).unwrap();
+        drop(session);
+        let uncertain = cleanup_log_in_child(&base);
+        assert!(uncertain.contains("uncertain_sessions=1"));
+        assert!(cleanup_log_in_child(&base).contains("uncertain_sessions=1"));
+        assert!(marker.is_symlink());
+
+        fs::remove_file(&marker).unwrap();
+        fs::write(&marker, b"recovery protection").unwrap();
+        let notice = base.join(format!(
+            "{}.recovery-notice",
+            directory.file_name().unwrap().to_str().unwrap()
+        ));
+        symlink(&foreign, &notice).unwrap();
+        assert!(cleanup_log_in_child(&base).contains("new_or_changed_sessions=1"));
+        assert!(cleanup_log_in_child(&base).contains("new_or_changed_sessions=1"));
+        assert_eq!(fs::read(&foreign).unwrap(), b"foreign document");
+        assert_eq!(fs::read(&marker).unwrap(), b"recovery protection");
+        assert!(notice.is_symlink());
+        fs::remove_dir_all(base).unwrap();
     }
 
     fn cleanup_in_child(base: &Path) {

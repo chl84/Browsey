@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Remember reported undo recovery markers across restarts and log one combined
+  warning only for new/changed or uncertain findings. Keep protected backups,
+  provide details through Settings, and isolate unit-test undo storage.
+
 - Copy cloud files and folders between Browsey instances on Linux, including
   OneDrive ↔ Google Drive. Preserve Drive object IDs, verify the source account
   before transfer, and reuse conflicts, progress and cancellation. Incoming

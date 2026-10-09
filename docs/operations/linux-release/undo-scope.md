@@ -91,6 +91,12 @@ The Linux 1.0 undo/redo claim is subject to these hard boundaries:
 - recovery markers remain until the entire action/batch completes successfully.
   On failure/interruption, startup cleanup keeps the whole marked session.
   Marker-clear failure is logged and conservatively retains the session
+- startup records a private fingerprint of reported recovery markers. Unchanged
+  abandoned sessions log at Debug across restarts; new/changed markers or
+  uncertain scans produce one combined warning. Notices neither clear markers
+  nor permit deletion, and no startup dialog/toast is introduced. Session locks
+  serialize notices across instances; failed notice persistence keeps warnings
+  enabled. Only marker metadata is scanned, never backup file contents
 - older builds may not recognize recovery markers; recover data before a
   downgrade or launching an older build against abandoned-session storage
 - backups are reused across copy undo/redo cycles and may remain until session

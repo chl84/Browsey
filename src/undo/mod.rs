@@ -5,6 +5,7 @@ mod error;
 mod nofollow;
 mod path_checks;
 mod path_ops;
+mod recovery_notice;
 mod security;
 mod storage;
 mod types;

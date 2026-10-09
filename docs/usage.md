@@ -223,10 +223,13 @@ completion or deleting fallback move sources. The extra target-read pass is
 not a lock against later edits; GIO/cloud copy paths are different.
 
 Settings > Stored data has a read-only backup overview. Expand **Backup details
-and recovery guidance** for allocation, paths, and recovery steps. Do not remove
-markers merely to free space. Cache/list maintenance, including the cloud file cache,
-uses confirmation; clearing previews does not clear persistent cloud
-working copies.
+and recovery guidance** for allocation, paths, and recovery steps. Startup logs
+unchanged recovery findings at Debug; new/changed or uncertain findings produce one
+combined log warning. No startup dialog or toast is shown. Diagnostic notices
+do not authorize backup deletion or reconstruct undo history. Do not remove
+markers merely to acknowledge a warning or free space. Cache/list maintenance,
+including the cloud file cache, uses confirmation; clearing previews does not
+clear persistent cloud working copies.
 
 Right-click Wastebasket > **Empty Wastebasket…** opens a permanent-deletion
 warning. Emptying cannot be undone and does not empty cloud-provider trash.
