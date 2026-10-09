@@ -41,6 +41,9 @@ pub mod icon_ids {
     pub const DISK_IMAGE_FILE: IconId = 27;
     pub const FONT_FILE: IconId = 28;
     pub const EBOOK_FILE: IconId = 29;
+    pub const CONFIG_FILE: IconId = 30;
+    pub const DATABASE_FILE: IconId = 31;
+    pub const VECTOR_FILE: IconId = 32;
 }
 
 use icon_ids::SHORTCUT;
@@ -115,7 +118,22 @@ mod tests {
             ("book.EPUB", icon_ids::EBOOK_FILE),
             ("book.mobi", icon_ids::EBOOK_FILE),
             ("notes.txt", icon_ids::TEXTFILE),
-            ("config.toml", icon_ids::TEXTFILE),
+            ("config.TOML", icon_ids::CONFIG_FILE),
+            ("config.yaml", icon_ids::CONFIG_FILE),
+            ("config.yml", icon_ids::CONFIG_FILE),
+            ("config.ini", icon_ids::CONFIG_FILE),
+            ("config.cfg", icon_ids::CONFIG_FILE),
+            ("config.conf", icon_ids::CONFIG_FILE),
+            ("config.json", icon_ids::CONFIG_FILE),
+            ("database.SQLITE", icon_ids::DATABASE_FILE),
+            ("database.sqlite3", icon_ids::DATABASE_FILE),
+            ("database.db", icon_ids::DATABASE_FILE),
+            ("drawing.SVG", icon_ids::VECTOR_FILE),
+            ("drawing.svgz", icon_ids::VECTOR_FILE),
+            ("drawing.ai", icon_ids::VECTOR_FILE),
+            ("drawing.eps", icon_ids::VECTOR_FILE),
+            ("photo.png", icon_ids::PICTURE_FILE),
+            ("report.pdf", icon_ids::PDF_FILE),
             ("run.sh", icon_ids::EXECUTABLE_FILE),
             ("program.bin", icon_ids::EXECUTABLE_FILE),
             ("song.mp3", icon_ids::AUDIO_FILE),

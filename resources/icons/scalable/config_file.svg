@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" role="img" aria-label="Konfigurasjon">
+  <g>
+    <path d="M28 14H76L100 38V114H28V14Z" fill="#F3E8D2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
+    <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
+
+    <rect x="28" y="60" width="72" height="48" fill="#D8EEF9" stroke="#2B2419" stroke-width="2" />
+    <path d="M36 72H92M36 84H92M36 96H92" stroke="#2B2419" stroke-width="2.5" />
+    <g fill="#F3E8D2" stroke="#2B2419" stroke-width="2">
+      <circle cx="48" cy="72" r="5" />
+      <circle cx="78" cy="84" r="5" />
+      <circle cx="58" cy="96" r="5" />
+    </g>
+  </g>
+</svg>

@@ -4,11 +4,11 @@ use mime::{APPLICATION, AUDIO, IMAGE, MODEL, TEXT, VIDEO};
 
 use super::{
     icon_ids::{
-        AUDIO_FILE, CODE_FILE, COMPRESSED, DESKTOP_FOLDER, DISK_IMAGE_FILE, DOCUMENT_FILE,
-        DOCUMENT_FOLDER, DOWNLOAD_FOLDER, EBOOK_FILE, EXECUTABLE_FILE, FILE, FONT_FILE,
-        GENERIC_FOLDER, HOME_FOLDER, MODEL_3D_FILE, MUSIC_FOLDER, PACKAGE_FILE, PDF_FILE,
-        PICTURES_FOLDER, PICTURE_FILE, PRESENTATION_FILE, PUBLIC_FOLDER, SPREADSHEET_FILE,
-        TEMPLATES_FOLDER, TEXTFILE, VIDEO_FILE, VIDEO_FOLDER,
+        AUDIO_FILE, CODE_FILE, COMPRESSED, CONFIG_FILE, DATABASE_FILE, DESKTOP_FOLDER,
+        DISK_IMAGE_FILE, DOCUMENT_FILE, DOCUMENT_FOLDER, DOWNLOAD_FOLDER, EBOOK_FILE,
+        EXECUTABLE_FILE, FILE, FONT_FILE, GENERIC_FOLDER, HOME_FOLDER, MODEL_3D_FILE, MUSIC_FOLDER,
+        PACKAGE_FILE, PDF_FILE, PICTURES_FOLDER, PICTURE_FILE, PRESENTATION_FILE, PUBLIC_FOLDER,
+        SPREADSHEET_FILE, TEMPLATES_FOLDER, TEXTFILE, VECTOR_FILE, VIDEO_FILE, VIDEO_FOLDER,
     },
     IconId,
 };
@@ -76,12 +76,14 @@ fn file_icon_id(name_lc: &str, ext: &str, mime: Option<&str>) -> IconId {
         // Source code
         "rs" | "c" | "cpp" | "h" | "hpp" | "py" | "js" | "ts" | "tsx" | "jsx" | "java" | "go"
         | "rb" | "php" | "lua" | "html" | "htm" | "css" => CODE_FILE,
-        // Plain text and configuration
-        "json" | "toml" | "yaml" | "yml" | "ini" | "cfg" | "md" | "txt" | "lock" => TEXTFILE,
+        // Configuration and database files
+        "json" | "toml" | "yaml" | "yml" | "ini" | "cfg" | "conf" => CONFIG_FILE,
+        "sqlite" | "sqlite3" | "db" => DATABASE_FILE,
+        // Plain text
+        "md" | "txt" | "lock" => TEXTFILE,
         // Media
-        "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "bmp" | "tiff" | "avif" | "heic" => {
-            PICTURE_FILE
-        }
+        "svg" | "svgz" | "ai" | "eps" => VECTOR_FILE,
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "tiff" | "avif" | "heic" => PICTURE_FILE,
         "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "opus" => AUDIO_FILE,
         "mp4" | "mkv" | "mov" | "avi" | "wmv" | "webm" | "flv" | "m4v" => VIDEO_FILE,
         // Documents

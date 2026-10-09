@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add matching configuration, database and vector-graphics file icons. Use the
+  approved pen nib without a top bar for vectors; preserve SVG thumbnails and
+  classify icons by filename without reading file contents.
+
 - Add matching document, source-code, installation-package, disk-image, font
   and e-book icons for local and cloud files. Prefer the RPM package icon over
   the legacy audio MIME guess, retaining existing folder and shortcut icons.
