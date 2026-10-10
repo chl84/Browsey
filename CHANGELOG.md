@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v1.0.6 — 2026-10-10
+
 - Simplify undo backup settings and add recovery to the original location with
   shared byte progress and cancellation. Preserve backups and recovery markers,
   allow completed backups in the current instance, block backups being changed
@@ -12,6 +14,11 @@
   cleanup removes only completely empty abandoned sessions.
   Remove verified recovered entries from the backup list across refresh/restart,
   preserving the stored data for undo; keep failed/cancelled entries listed.
+
+- Add confirmed Delete all for stored backups and undo/redo history. Standardize
+  recovery dialogs, Escape handling and scrollbar spacing, and keep the recovery
+  modal stable during refresh and list changes. Show partial/all recovered status
+  beside stored size using verified root-item counts that survive restarts.
 
 - Add matching configuration, database and vector-graphics file icons. Use the
   approved pen nib without a top bar for vectors; preserve SVG thumbnails and

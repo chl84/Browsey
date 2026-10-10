@@ -88,9 +88,16 @@ test('archive/password and cloud-cache guidance does not regress to obsolete cla
   assert.match(text(section('user-workflows', 'archives-flow')), /encrypted ZIP, 7z and RAR/)
   assert.doesNotMatch(text(section('user-workflows', 'archives-flow')), /password-protected archives report explicit errors/)
   assert.match(text(section('settings-shortcuts', 'settings-data-actions')), /not persistent working copies/)
-  assert.match(text(section('known-limitations', 'undo-lifecycle')), /retains live or recovery-marked/)
   assert.match(text(section('getting-started', 'cloud-rclone-ops-model')), /never automatically replayed/)
   assert.doesNotMatch(text(section('getting-started', 'cloud-rclone-ops-model')), /current main \(Unreleased\)/)
+})
+
+test('undo lifecycle describes retained backups independently of session-only history', () => {
+  const lifecycle = text(section('known-limitations', 'undo-lifecycle'))
+  assert.match(lifecycle, /history is in-memory.*resets when the app restarts/)
+  assert.match(lifecycle, /survive restart without automatic expiry, with or without recovery markers/)
+  assert.match(lifecycle, /Startup cleanup removes only completely empty abandoned sessions/)
+  assert.match(lifecycle, /Recover in Settings restores to the original location; Recover to… offers another folder/)
 })
 
 test('Properties and Open With describe the actual modal controls', () => {

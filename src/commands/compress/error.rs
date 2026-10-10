@@ -126,6 +126,28 @@ impl From<crate::fs_utils::FsUtilsError> for CompressError {
     }
 }
 
+impl From<crate::undo::UndoError> for CompressError {
+    fn from(error: crate::undo::UndoError) -> Self {
+        use crate::undo::UndoErrorCode;
+        let code = match error.code() {
+            UndoErrorCode::InvalidInput => CompressErrorCode::InvalidInput,
+            UndoErrorCode::NotFound => CompressErrorCode::NotFound,
+            UndoErrorCode::PermissionDenied => CompressErrorCode::PermissionDenied,
+            UndoErrorCode::ReadOnlyFilesystem => CompressErrorCode::ReadOnlyFilesystem,
+            UndoErrorCode::TargetExists => CompressErrorCode::TargetExists,
+            UndoErrorCode::SymlinkUnsupported => CompressErrorCode::InvalidPath,
+            UndoErrorCode::LockFailed
+            | UndoErrorCode::CrossDeviceMove
+            | UndoErrorCode::AtomicRenameUnsupported
+            | UndoErrorCode::SnapshotMismatch
+            | UndoErrorCode::UndoUnavailable
+            | UndoErrorCode::RedoUnavailable
+            | UndoErrorCode::IoError => CompressErrorCode::TaskFailed,
+        };
+        Self::new(code, error.message())
+    }
+}
+
 pub(super) type CompressResult<T> = Result<T, CompressError>;
 
 pub(super) fn map_api_result<T>(result: CompressResult<T>) -> ApiResult<T> {
@@ -199,6 +221,27 @@ mod tests {
     use super::CompressError;
     use crate::errors::domain::DomainError;
     use crate::fs_utils::{FsUtilsError, FsUtilsErrorCode};
+
+    #[test]
+    fn maps_undo_codes_without_reclassifying_diagnostic_text() {
+        use crate::undo::{UndoError, UndoErrorCode};
+        for (code, expected) in [
+            (UndoErrorCode::LockFailed, "task_failed"),
+            (UndoErrorCode::NotFound, "not_found"),
+            (UndoErrorCode::PermissionDenied, "permission_denied"),
+            (UndoErrorCode::ReadOnlyFilesystem, "read_only_filesystem"),
+            (UndoErrorCode::TargetExists, "target_exists"),
+            (UndoErrorCode::InvalidInput, "invalid_input"),
+            (UndoErrorCode::SymlinkUnsupported, "invalid_path"),
+        ] {
+            let error = CompressError::from(UndoError::new(
+                code,
+                "compression cancelled: permission denied",
+            ));
+            assert_eq!(error.code_str(), expected);
+            assert_eq!(error.message(), "compression cancelled: permission denied");
+        }
+    }
 
     #[test]
     fn maps_fs_utils_read_only_to_compress_read_only_filesystem() {
