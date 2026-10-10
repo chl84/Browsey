@@ -29,7 +29,7 @@ Downloads: [Browsey 1.0.6](https://github.com/chl84/Browsey/releases/tag/v1.0.6)
 
 ## Status
 
-Browsey `1.0.6` is Linux-first. Planned RPM and DEB packages target Linux x86_64. See the [release notes](docs/releases/1.0.6.md) for changes and outstanding validation; this version bump does not confirm publication.
+Browsey `1.0.6` is Linux-first. Published RPM and DEB packages target Linux x86_64. See the [release notes](docs/releases/1.0.6.md) for changes, validation evidence and remaining platform acceptance checks.
 
 - Linux: RPM and DEB packages; GTK 3, WebKitGTK 4.1 and OpenSSL 3 are required.
 - Windows: maintenance mode; no new Windows installer is included in 1.0.6.

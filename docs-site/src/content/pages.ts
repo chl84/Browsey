@@ -924,7 +924,7 @@ capabilities/default.json`,
           "Reuse the existing URL encoder for cloud API query parameters, removing `serde_urlencoded` and `ryu` from the dependency graph.",
           "Automatically save newly opened cloud editor copies back to their original object with conditional version checks, debounced file watching, durable upload recovery and visible saved/pending/conflict/error states. Preserve local edits on conflicts or failures and keep save-as-new/manual recovery. Google Drive and OneDrive writes address exact object IDs; ordinary local file operations and idle cloud listings do not gain hashing or polling.",
         ],
-        note: 'See CHANGELOG.md and docs/releases/1.0.6.md for full changes. Release preparation does not confirm testing or publication; review validation evidence before publishing.',
+        note: 'RPM, DEB and SHA256SUMS are published on GitHub. See CHANGELOG.md and docs/releases/1.0.6.md for full changes, validation evidence and remaining platform acceptance checks.',
       },
       {
         id: 'v1-0-5',
