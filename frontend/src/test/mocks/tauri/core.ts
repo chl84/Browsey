@@ -58,6 +58,7 @@ type E2eMockControl = {
   undoStorageHold?: boolean
   recoveryBackups?: { entries: Array<{ id: string; version: string; name: string; kind: string; bytes: number | null; modifiedAt: number | null; blockedReason: string | null }>; incomplete: boolean }
   recoveryHold?: boolean
+  recoveryListHold?: boolean
   recoveryOriginalPaths?: Record<string, string>
   recoveryOriginalError?: { code: string; message: string; details?: { reason: string } }
   recoveryProgress?: { bytes: number; total: number }
@@ -356,8 +357,10 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
         markedSessions: 0, files: 0, logicalBytes: 0, incomplete: false,
       }) as T
     }
-    case 'list_recovery_backups':
+    case 'list_recovery_backups': {
+      while (control?.recoveryListHold) await new Promise(resolve => setTimeout(resolve, 20))
       return (control?.recoveryBackups ?? { entries: [], incomplete: false }) as T
+    }
     case 'delete_all_recovery_backups': {
       if (control?.undoStorage) Object.assign(control.undoStorage, { sessions: 0, markedSessions: 0, files: 0, logicalBytes: 0 })
       if (control?.recoveryBackups) control.recoveryBackups.entries = []

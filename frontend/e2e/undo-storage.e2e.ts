@@ -5,6 +5,7 @@ type Control = {
   failCommands?: string[]
   undoStorageHold?: boolean
   recoveryHold?: boolean
+  recoveryListHold?: boolean
   recoveryOriginalPaths?: Record<string, string>
   recoveryOriginalError?: { code: string; message: string; details?: { reason: string } }
   listingEntries?: Array<{ name: string; path: string; kind: 'dir'; iconId: number }>
@@ -51,6 +52,66 @@ const expectScrollbarClearance = async (surface: Locator, contentSelector: strin
   expect(layout.scrollHeight).toBeGreaterThan(layout.height)
   // Leave enough room even when the native track overlays the client area.
   expect(layout.gap).toBeGreaterThanOrEqual(layout.required - 1)
+}
+
+for (const viewport of [{ width: 900, height: 800 }, { width: 520, height: 360 }]) {
+  test(`backup modal stays still during loading, refresh and recovery at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await page.evaluate(() => {
+      const control = (window as unknown as { __BROWSEY_E2E__: Control }).__BROWSEY_E2E__
+      control.recoveryListHold = true
+      control.recoveryOriginalPaths = { 'session-layout/a/photo.jpg': '/mock/photo.jpg' }
+      control.recoveryBackups = { incomplete: false, entries: Array.from({ length: 20 }, (_, index) => ({
+        id: index === 0 ? 'session-layout/a/photo.jpg' : `session-layout/${index}/photo.jpg`,
+        version: 'v1', name: index === 0 ? 'photo.jpg' : `other-${index}.jpg`,
+        kind: 'file', bytes: 2048, modifiedAt: null, blockedReason: null,
+      })) }
+    })
+    const section = await openRecoverySettings(page)
+    await section.getByRole('button', { name: 'Show all', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'Recovery backups', exact: true })
+    await expect(dialog.getByRole('status')).toHaveText('Loading backups…')
+    const initial = await dialog.evaluate(element => {
+      const rect = element.getBoundingClientRect(), footer = element.querySelector('.actions')!.getBoundingClientRect()
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, footerY: footer.y }
+    })
+    const expectStill = async () => {
+      const rect = await dialog.boundingBox()
+      expect(rect).not.toBeNull()
+      for (const key of ['x', 'y', 'width', 'height'] as const) expect(rect![key]).toBeCloseTo(initial[key], 0)
+      expect(await dialog.locator('.actions').evaluate(element => element.getBoundingClientRect().y)).toBeCloseTo(initial.footerY, 0)
+      expect(initial.y).toBeGreaterThanOrEqual(0)
+      expect(initial.y + initial.height).toBeLessThanOrEqual(viewport.height)
+    }
+    await page.evaluate(() => { (window as unknown as { __BROWSEY_E2E__: Control }).__BROWSEY_E2E__.recoveryListHold = false })
+    await expect(dialog.getByRole('button', { name: /^Recover / })).toHaveCount(20)
+    await expectStill()
+    await page.evaluate(() => {
+      const control = (window as unknown as { __BROWSEY_E2E__: Control }).__BROWSEY_E2E__
+      control.recoveryListHold = true
+      control.recoveryBackups!.entries = control.recoveryBackups!.entries.slice(0, 1)
+    })
+    await dialog.getByRole('button', { name: 'Refresh', exact: true }).click()
+    await expect(dialog.locator('.recovery-content')).toHaveAttribute('aria-busy', 'true')
+    await expectStill()
+    await page.evaluate(() => { (window as unknown as { __BROWSEY_E2E__: Control }).__BROWSEY_E2E__.recoveryListHold = false })
+    await expect(dialog.getByRole('button', { name: /^Recover / })).toHaveCount(1)
+    await expectStill()
+    await page.evaluate(() => { (window as unknown as { __BROWSEY_E2E__: Control }).__BROWSEY_E2E__.recoveryHold = true })
+    await dialog.getByRole('button', { name: 'Recover photo.jpg', exact: true }).click()
+    await expect(dialog.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
+    await expectStill()
+    await page.evaluate(() => { (window as unknown as { __BROWSEY_E2E__: Control }).__BROWSEY_E2E__.recoveryHold = false })
+    await expect(dialog.getByText('Recovered photo.jpg', { exact: true })).toBeVisible()
+    await expect(dialog.getByText('No backups to recover.', { exact: true })).toBeVisible()
+    await expectStill()
+    await dialog.getByRole('button', { name: 'Refresh', exact: true }).click()
+    await expect(dialog.getByRole('button', { name: 'Refresh', exact: true })).toBeEnabled()
+    await expectStill()
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+    await expect(dialog).toBeHidden()
+    await expect(page.locator('.settings-modal')).toBeVisible()
+  })
 }
 
 for (const [width, density] of [[900, 'Cozy'], [620, 'Compact']] as const) {

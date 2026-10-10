@@ -26,9 +26,9 @@
   onDestroy(model.dispose)
 </script>
 
-<ModalShell open title={selected ? 'Recover to…' : 'Recovery backups'} modalWidth="640px"
+<ModalShell open title={selected ? 'Recover to…' : 'Recovery backups'} modalWidth="640px" modalClass="recovery-modal"
   onClose={() => { if (!$restoring) onClose() }} closeOnEscape={!$restoring} closeOnOverlay={!$restoring}>
-  <div class="recovery-content">
+  <div class="recovery-content modal-scroll" aria-busy={$loading || $restoring}>
     {#if $error}<div class="pill error" role="alert">{$error}</div>{/if}
     {#if $notice}<p class="muted" role="status">{$notice}</p>{/if}
     {#if $restoredPath}
@@ -43,9 +43,9 @@
       <FolderDestination bind:value={destination} disabled={$restoring} />
     {:else}
       <p class="muted">Recover to the original location. Recovered backups leave this list.</p>
-      {#if $loading}<p role="status">Loading backups…</p>{/if}
+      {#if $loading && !$overview}<p role="status">Loading backups…</p>{/if}
       {#if $overview?.incomplete}<p class="muted" role="status">Some backups could not be inspected. The list may be incomplete.</p>{/if}
-      {#if $overview}
+      {#if $overview?.entries.length}
         <ul class="backups modal-scroll" aria-label="Backups">
           {#each $overview.entries as backup (backup.id)}
             <li>
@@ -59,8 +59,7 @@
             </li>
           {/each}
         </ul>
-        {#if !$overview.entries.length && !$overview.incomplete}<p>No backups to recover.</p>{/if}
-      {/if}
+      {:else if $overview && !$overview.incomplete}<p>No backups to recover.</p>{/if}
     {/if}
     {#if $activity}
       <div class="recovery-progress" role="status" aria-live="polite">
@@ -84,9 +83,12 @@
 </ModalShell>
 
 <style>
-  .recovery-content { display: flex; flex-direction: column; gap: var(--modal-gap); min-width: 0; overflow-wrap: anywhere; }
+  :global(.recovery-modal) { height: min(600px, 92vh); overflow: hidden; }
+  :global(.recovery-modal > header), :global(.recovery-modal > .actions) { flex-shrink: 0; }
+  .recovery-content { display: flex; flex-direction: column; flex: 1; gap: var(--modal-gap); min-width: 0; min-height: 0; overflow-wrap: anywhere; }
+  .recovery-content > :not(.backups) { flex-shrink: 0; }
   .backup-name { font-weight: 600; }
-  .backups { list-style: none; padding-block: 0; padding-inline-start: 0; margin: 0; max-height: 360px; }
+  .backups { list-style: none; padding-block: 0; padding-inline-start: 0; margin: 0; flex: 1; min-height: 120px; }
   li { display: flex; align-items: center; gap: var(--modal-actions-gap); padding: var(--modal-actions-gap) 0; border-bottom: 1px solid var(--border); }
   .backup-info { display: flex; flex-direction: column; gap: calc(var(--modal-field-gap) / 2); flex: 1; min-width: 0; }
   .backups button { flex-shrink: 0; }

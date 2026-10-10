@@ -16,6 +16,10 @@ folder browser reuses local listing; paths can also be pasted and opened with Go
 Both the backup list and fallback folder picker use the shared ModalShell,
 modal spacing/density tokens, button styles, and error presentation. The folder
 path uses TextField; recovery progress uses ProgressBar.
+The recovery dialog keeps a viewport-bounded height through loading, refresh,
+progress and list changes. Header and actions stay fixed while the list and,
+when needed, the content scroll. Refresh retains the current list without adding
+a temporary loading row; the content exposes its busy state to assistive tools.
 Verified success shows “Recovered <name>” beside Open folder; the full output
 path is available in the message tooltip. A typed occupied-original reason opens
 the folder picker with neutral guidance. Other errors retain their diagnostics
