@@ -24,6 +24,10 @@ pub struct UndoStorageSummary {
     pub logical_bytes: u64,
     // Filesystem-reported blocks, not exclusive physical usage on CoW filesystems.
     pub allocated_bytes: Option<u64>,
+    // Root items, not the number of regular files inside folder backups.
+    // Unknown when the recovery inventory cannot finish within this scan budget.
+    pub backup_count: Option<u64>,
+    pub recovered_backups: Option<u64>,
     pub incomplete: bool,
 }
 
@@ -105,6 +109,14 @@ fn inspect_directory(base: &Path, mut budget: ScanBudget) -> UndoResult<UndoStor
         }
         summary.sessions += 1;
         scan_session(&entry.path(), &mut budget, &mut summary);
+    }
+    if !summary.incomplete {
+        if let Ok(Some((total, recovered))) =
+            super::recovery::counts_at(base, budget.remaining, budget.deadline)
+        {
+            summary.backup_count = Some(total);
+            summary.recovered_backups = Some(recovered);
+        }
     }
     Ok(summary)
 }

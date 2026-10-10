@@ -37,6 +37,9 @@ pub struct RecoveryBackup {
 pub struct RecoveryBackups {
     entries: Vec<RecoveryBackup>,
     incomplete: bool,
+    // Hidden rows still count as stored backups in Settings.
+    #[serde(skip)]
+    recovered_backups: u64,
 }
 
 struct ScanBudget {
@@ -355,6 +358,7 @@ fn list_at(base: &Path, mut budget: ScanBudget) -> UndoResult<RecoveryBackups> {
                             .and_then(Option::as_ref)
                             .is_none_or(|measurement| measurement.fingerprint == recovered)
                         {
+                            result.recovered_backups += 1;
                             continue;
                         }
                     }
@@ -394,6 +398,25 @@ fn list_at(base: &Path, mut budget: ScanBudget) -> UndoResult<RecoveryBackups> {
         .entries
         .sort_by(|a, b| b.modified_at.cmp(&a.modified_at).then(a.id.cmp(&b.id)));
     Ok(result)
+}
+
+pub(super) fn counts_at(
+    base: &Path,
+    remaining: usize,
+    deadline: Instant,
+) -> UndoResult<Option<(u64, u64)>> {
+    let listing = list_at(
+        base,
+        ScanBudget {
+            remaining,
+            deadline,
+        },
+    )?;
+    // A bounded/unsafe scan cannot establish an exact total or "all recovered".
+    Ok((!listing.incomplete).then_some((
+        listing.entries.len() as u64 + listing.recovered_backups,
+        listing.recovered_backups,
+    )))
 }
 
 #[tauri::command]

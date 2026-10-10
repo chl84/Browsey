@@ -13,6 +13,7 @@ type Control = {
   undoStorage: {
     directory: string; exists: boolean; sessions: number; markedSessions: number
     files: number; logicalBytes: number; incomplete: boolean
+    backupCount?: number | null; recoveredBackups?: number | null
   }
 }
 
@@ -34,6 +35,44 @@ test.beforeEach(async ({ page }) => {
     }
   })
   await page.goto('/')
+})
+
+test('stored size retains partial and completed recovery status after closing and reopening Settings', async ({ page }) => {
+  await page.evaluate(() => {
+    const control = (window as unknown as { __BROWSEY_E2E__: Control }).__BROWSEY_E2E__
+    Object.assign(control.undoStorage, { backupCount: 3, recoveredBackups: 1 })
+    control.recoveryOriginalPaths = { 'session-count/a/one.jpg': '/mock/one.jpg', 'session-count/b/two.jpg': '/mock/two.jpg' }
+    control.recoveryBackups = { incomplete: false, entries: ['one', 'two'].map((name, index) => ({
+      id: `session-count/${index ? 'b' : 'a'}/${name}.jpg`, version: 'v1', name: `${name}.jpg`,
+      kind: 'file', bytes: 2048, modifiedAt: null, blockedReason: null,
+    })) }
+  })
+  let section = await openRecoverySettings(page)
+  await expect(section.getByRole('status')).toHaveText('8.2 kB stored · 1 of 3 backups recovered')
+  for (const [name, status] of [
+    ['one', '8.2 kB stored · 2 of 3 backups recovered'],
+    ['two', '8.2 kB stored · All backups recovered'],
+  ]) {
+    await section.getByRole('button', { name: 'Show all', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'Recovery backups', exact: true })
+    await dialog.getByRole('button', { name: `Recover ${name}.jpg`, exact: true }).click()
+    await expect(dialog.getByText(`Recovered ${name}.jpg`, { exact: true })).toBeVisible()
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+    await expect(section.getByRole('status')).toHaveText(status)
+  }
+  await section.getByRole('button', { name: 'Show all', exact: true }).focus()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.settings-modal')).toBeHidden()
+  section = await openRecoverySettings(page)
+  await expect(section.getByRole('status')).toHaveText('8.2 kB stored · All backups recovered')
+  await section.getByRole('button', { name: 'Show all', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Recovery backups', exact: true })
+  await expect(dialog.getByText('No backups to recover.', { exact: true })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await section.getByRole('button', { name: 'Delete all', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Delete all backups?', exact: true }).getByRole('button', { name: 'Delete all', exact: true }).click()
+  await expect(section.getByRole('status')).toContainText('No backups found.')
+  await expect(section.getByRole('status')).not.toContainText('All backups recovered')
 })
 
 const expectScrollbarClearance = async (surface: Locator, contentSelector: string) => {

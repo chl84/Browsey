@@ -8,6 +8,22 @@ const fixture: UndoStorageSummary = {
 }
 
 describe('undo storage diagnostics', () => {
+  it('distinguishes retained recovered backups from pending items using root counts', () => {
+    expect(describeUndoStorageOverview({ ...fixture, backupCount: 5, recoveredBackups: 3 }))
+      .toBe('8.2 kB stored · 3 of 5 backups recovered')
+    expect(describeUndoStorageOverview({ ...fixture, backupCount: 5, recoveredBackups: 5 }))
+      .toBe('8.2 kB stored · All backups recovered')
+    expect(describeUndoStorageOverview({ ...fixture, backupCount: 1, recoveredBackups: 1, files: 20 }))
+      .toBe('8.2 kB stored · All backups recovered')
+    for (const counts of [
+      { backupCount: 5, recoveredBackups: 0 },
+      { backupCount: null, recoveredBackups: null },
+      { backupCount: 0, recoveredBackups: 0 },
+      { backupCount: 1, recoveredBackups: 2 },
+    ]) expect(describeUndoStorageOverview({ ...fixture, ...counts })).toBe('8.2 kB stored in backups.')
+    expect(describeUndoStorageOverview({ ...fixture, backupCount: 5, recoveredBackups: 5, incomplete: true }))
+      .toBe('Partial scan: at least 8.2 kB stored.')
+  })
   it('keeps the overview concise without losing partial-scan or missing-storage states', () => {
     expect(describeUndoStorageOverview(fixture)).toBe('8.2 kB stored in backups.')
     expect(describeUndoStorageOverview({ ...fixture, sessions: 1, allocatedBytes: 4096 }))

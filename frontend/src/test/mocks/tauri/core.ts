@@ -54,7 +54,7 @@ type E2eMockControl = {
   sortField?: 'name' | 'type' | 'modified' | 'size'
   trashEntries?: ExplorerEntry[]
   emptyTrashHold?: boolean
-  undoStorage?: { directory: string; exists: boolean; sessions: number; markedSessions: number; files: number; logicalBytes: number; incomplete: boolean }
+  undoStorage?: { directory: string; exists: boolean; sessions: number; markedSessions: number; files: number; logicalBytes: number; incomplete: boolean; backupCount?: number | null; recoveredBackups?: number | null }
   undoStorageHold?: boolean
   recoveryBackups?: { entries: Array<{ id: string; version: string; name: string; kind: string; bytes: number | null; modifiedAt: number | null; blockedReason: string | null }>; incomplete: boolean }
   recoveryHold?: boolean
@@ -362,7 +362,7 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       return (control?.recoveryBackups ?? { entries: [], incomplete: false }) as T
     }
     case 'delete_all_recovery_backups': {
-      if (control?.undoStorage) Object.assign(control.undoStorage, { sessions: 0, markedSessions: 0, files: 0, logicalBytes: 0 })
+      if (control?.undoStorage) Object.assign(control.undoStorage, { sessions: 0, markedSessions: 0, files: 0, logicalBytes: 0, backupCount: 0, recoveredBackups: 0 })
       if (control?.recoveryBackups) control.recoveryBackups.entries = []
       return { deletedSessions: 1, retainedSessions: 0, errors: [] } as T
     }
@@ -379,6 +379,9 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       const name = control?.recoveryBackups?.entries.find(entry => entry.id === args?.id)?.name ?? 'file.txt'
       if (control?.recoveryBackups) {
         control.recoveryBackups.entries = control.recoveryBackups.entries.filter(entry => entry.id !== args?.id || entry.version !== args?.version)
+      }
+      if (control?.undoStorage?.backupCount != null) {
+        control.undoStorage.recoveredBackups = (control.undoStorage.recoveredBackups ?? 0) + 1
       }
       return (args?.destinationDir == null ? original : `${String(args.destinationDir)}/${name}`) as T
     }

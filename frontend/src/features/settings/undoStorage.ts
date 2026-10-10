@@ -11,6 +11,8 @@ export type UndoStorageSummary = {
   files: number
   logicalBytes: number
   allocatedBytes?: number | null
+  backupCount?: number | null
+  recoveredBackups?: number | null
   incomplete: boolean
 }
 
@@ -21,6 +23,13 @@ export const deleteAllRecoveryBackups = () => invoke<DeleteBackupsResult>('delet
 export const describeUndoStorageOverview = (summary: UndoStorageSummary) => {
   if (summary.incomplete) return `Partial scan: at least ${formatSize(summary.logicalBytes)} stored.`
   if (!summary.exists || summary.sessions === 0) return 'No backups found.'
+  const { backupCount, recoveredBackups } = summary
+  if (backupCount != null && recoveredBackups != null && Number.isInteger(backupCount)
+    && Number.isInteger(recoveredBackups) && recoveredBackups > 0 && recoveredBackups <= backupCount) {
+    const status = recoveredBackups === backupCount ? 'All backups recovered'
+      : `${recoveredBackups} of ${backupCount} backups recovered`
+    return `${formatSize(summary.logicalBytes)} stored · ${status}`
+  }
   return `${formatSize(summary.logicalBytes)} stored in backups.`
 }
 

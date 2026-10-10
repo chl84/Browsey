@@ -46,6 +46,9 @@ fn restart_recovery_child() {
     assert!(!listing.incomplete);
     if std::env::var_os("BROWSEY_TEST_RESTART_VERIFY_HIDDEN").is_some() {
         assert!(listing.entries.is_empty());
+        let summary = super::super::storage::inspect_storage().unwrap();
+        assert_eq!(summary.backup_count, Some(3));
+        assert_eq!(summary.recovered_backups, Some(3));
         assert_eq!(fs::read(root.join("photo.jpg")).unwrap(), [9; 32 * 1024]);
         assert!(root.join("empty-folder").is_dir());
         let retained = walkdir::WalkDir::new(&base)
@@ -57,6 +60,9 @@ fn restart_recovery_child() {
         return;
     }
     assert_eq!(listing.entries.len(), names.len());
+    let summary = super::super::storage::inspect_storage().unwrap();
+    assert_eq!(summary.backup_count, Some(3));
+    assert_eq!(summary.recovered_backups, Some(0));
     let destination = root.join("recovered");
     fs::create_dir_all(&destination).unwrap();
     for name in names {
@@ -373,11 +379,29 @@ fn changed_backup_contents_become_pending_again_and_recovery_updates_the_status(
     let row = fixture.list().entries.remove(0);
     let first = PathBuf::from(fixture.restore(&row, None).unwrap());
     assert!(fixture.list().entries.is_empty());
+    assert_eq!(
+        counts_at(
+            &fixture.base,
+            10_000,
+            Instant::now() + Duration::from_secs(10)
+        )
+        .unwrap(),
+        Some((1, 1))
+    );
     fs::write(fixture.source.join("file.bin"), b"new backup contents").unwrap();
     // A nested file edit need not change the root folder's metadata version.
     assert_eq!(version(&fixture.source).unwrap(), row.version);
     let changed = fixture.list();
     assert_eq!(changed.entries.len(), 1);
+    assert_eq!(
+        counts_at(
+            &fixture.base,
+            10_000,
+            Instant::now() + Duration::from_secs(10)
+        )
+        .unwrap(),
+        Some((1, 0))
+    );
     let second = PathBuf::from(fixture.restore(&changed.entries[0], None).unwrap());
     assert!(fixture.list().entries.is_empty());
     assert_eq!(fs::read(first.join("file.bin")).unwrap(), [7; 19]);
@@ -661,6 +685,54 @@ fn absent_and_partial_scans_never_create_storage_or_claim_complete_empty_results
     .unwrap();
     assert!(partial.entries.is_empty());
     assert!(partial.incomplete);
+    assert_eq!(
+        counts_at(&fixture.base, 0, Instant::now() + Duration::from_secs(1)).unwrap(),
+        None
+    );
+}
+
+#[test]
+fn recovery_counts_include_hidden_roots_and_not_nested_files_or_metadata() {
+    let fixture = BackupFixture::new(true);
+    fs::write(fixture.source.join("extra.bin"), [8; 17]).unwrap();
+    let pending = fixture.source.parent().unwrap().join("pending.txt");
+    fs::write(&pending, b"pending").unwrap();
+    let row = fixture
+        .list()
+        .entries
+        .into_iter()
+        .find(|row| row.name == "report.txt")
+        .unwrap();
+    let counts = || {
+        counts_at(
+            &fixture.base,
+            10_000,
+            Instant::now() + Duration::from_secs(10),
+        )
+        .unwrap()
+    };
+    assert_eq!(counts(), Some((2, 0)));
+    fixture.restore(&row, None).unwrap();
+    assert_eq!(counts(), Some((2, 1)));
+    assert_eq!(fixture.list().entries.len(), 1);
+    // Another valid status completes the count; later tree mutations undo it.
+    let pending_version = version(&pending).unwrap();
+    let fingerprint = measure(
+        &pending,
+        &mut ScanBudget {
+            remaining: 100,
+            deadline: Instant::now() + Duration::from_secs(1),
+        },
+    )
+    .unwrap()
+    .unwrap()
+    .fingerprint;
+    super::super::recovery_state::record(&pending, &pending_version, &fingerprint).unwrap();
+    assert_eq!(counts(), Some((2, 2)));
+    let changed_version = version(&fixture.source).unwrap();
+    fs::write(fixture.source.join("extra.bin"), b"changed backup").unwrap();
+    assert_eq!(version(&fixture.source).unwrap(), changed_version);
+    assert_eq!(counts(), Some((2, 1)));
 }
 
 #[test]

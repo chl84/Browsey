@@ -10,6 +10,11 @@ exclude maintenance, including gaps between allocation and history recording.
 Owned session directories and their lifetime locks remain for new allocations;
 abandoned sessions and their locks are removed. Legacy folders stay excluded.
 The storage summary refreshes automatically after deletion or closing Show all.
+It keeps the stored size and reports "N of M backups recovered" or "All backups
+recovered" when exact recovery counts are available. Counts refer to root files
+and folders, reuse the verified recovery-state inventory, and honor changes to
+backup contents. Partial scans never claim that all backups were recovered.
+Storage and recovery counts share the existing bounded inspection budget.
 Recovery lists backup root
 entries by filename, regular-file content size and modification time. A small
 folder browser reuses local listing; paths can also be pasted and opened with Go.

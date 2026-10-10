@@ -46,6 +46,8 @@ fn summary_serialization_matches_the_settings_contract() {
         files: 4,
         logical_bytes: 8192,
         allocated_bytes: None,
+        backup_count: Some(5),
+        recovered_backups: Some(3),
         incomplete: false,
     };
     assert_eq!(
@@ -53,7 +55,7 @@ fn summary_serialization_matches_the_settings_contract() {
         serde_json::json!({
             "directory": "/fixture/undo-sessions", "exists": true, "sessions": 3,
             "markedSessions": 1, "files": 4, "logicalBytes": 8192,
-            "allocatedBytes": null, "incomplete": false,
+            "allocatedBytes": null, "backupCount": 5, "recoveredBackups": 3, "incomplete": false,
         })
     );
 }
@@ -140,6 +142,8 @@ fn entry_and_time_limits_report_incomplete_not_zero_as_a_complete_total() {
     assert!(limited.incomplete);
     assert!(limited.files < 10);
     assert!(limited.logical_bytes < 50);
+    assert!(limited.backup_count.is_none());
+    assert!(limited.recovered_backups.is_none());
     let timed = inspect_directory(
         &fixture.0,
         ScanBudget {
