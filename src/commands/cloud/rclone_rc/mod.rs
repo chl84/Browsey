@@ -191,6 +191,8 @@ pub struct RcloneRcClient {
     write_enabled_override: Option<bool>,
     #[cfg(test)]
     forced_async_status_error: Option<ForcedAsyncStatusErrorState>,
+    #[cfg(test)]
+    forced_stat_response: Option<Value>,
 }
 
 impl Default for RcloneRcClient {
@@ -202,6 +204,8 @@ impl Default for RcloneRcClient {
             write_enabled_override: None,
             #[cfg(test)]
             forced_async_status_error: None,
+            #[cfg(test)]
+            forced_stat_response: None,
         }
     }
 }
@@ -223,6 +227,8 @@ impl RcloneRcClient {
             write_enabled_override: None,
             #[cfg(test)]
             forced_async_status_error: None,
+            #[cfg(test)]
+            forced_stat_response: None,
         }
     }
 
@@ -253,6 +259,12 @@ impl RcloneRcClient {
     pub fn with_enabled_override_for_tests(mut self, enabled: bool) -> Self {
         self.read_enabled_override = Some(enabled);
         self.write_enabled_override = Some(enabled);
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_stat_response_for_tests(mut self, response: Value) -> Self {
+        self.forced_stat_response = Some(response);
         self
     }
 
@@ -301,6 +313,12 @@ impl RcloneRcClient {
                 io::ErrorKind::Unsupported,
                 format!("rclone rc method {} backend is disabled", method.as_str()),
             )));
+        }
+        #[cfg(test)]
+        if matches!(method, RcloneRcMethod::OperationsStat) {
+            if let Some(response) = &self.forced_stat_response {
+                return Ok(response.clone());
+            }
         }
         let socket_path = self.ensure_daemon_ready()?;
         let timeout = timeout_override.unwrap_or_else(|| method_timeout(method));

@@ -1,7 +1,7 @@
 use super::*;
 use crate::commands::cloud::set_cloud_provider_kind_override_for_tests;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     fs,
     io::Write,
     net::TcpListener,
@@ -16,6 +16,8 @@ pub(crate) struct ServerState {
     pub lose_response: bool,
     pub native: bool,
     pub puts: Vec<(String, String)>,
+    download_responses: VecDeque<(u16, Option<String>)>,
+    download_requests: Vec<(String, bool)>,
     revisions: HashMap<String, u64>,
 }
 pub(crate) struct Fixture {
@@ -127,6 +129,25 @@ sys.exit(3)
                 };
                 let content = server_base.join(format!("{id}.bytes"));
                 let mut state = server_state.lock().unwrap();
+                let downloading =
+                    method == "GET" && (path.contains("/content") || path.starts_with("/download"));
+                if downloading {
+                    let authenticated = headers.lines().any(|line| {
+                        line.split_once(':')
+                            .is_some_and(|(name, _)| name.eq_ignore_ascii_case("authorization"))
+                    });
+                    state.download_requests.push((path.into(), authenticated));
+                    if let Some((status, location)) = state.download_responses.pop_front() {
+                        let location = location
+                            .map(|value| format!("Location: {value}\r\n"))
+                            .unwrap_or_default();
+                        let response = format!(
+                            "HTTP/1.1 {status} Fixture\r\n{location}Content-Length: 0\r\nConnection: close\r\n\r\n"
+                        );
+                        let _ = socket.write_all(response.as_bytes());
+                        continue;
+                    }
+                }
                 let mut revision = *state.revisions.entry(id.into()).or_insert(1);
                 let mut status = "200 OK";
                 let mut body = Vec::new();
@@ -158,7 +179,7 @@ sys.exit(3)
                         continue;
                     }
                 }
-                if method == "GET" && path.contains("/content") {
+                if downloading {
                     body = fs::read(&content).unwrap();
                 } else if method != "HEAD" && status == "200 OK" {
                     body=serde_json::json!({"id":id,"etag":tag,"eTag":tag,"mimeType":if state.native {"application/vnd.google-apps.document"}else{"text/plain"},"labels":{"trashed":false},"capabilities":{"canModifyContent":true},"file":{"mimeType":"text/plain"}}).to_string().into_bytes();
@@ -270,6 +291,199 @@ fn one_drive_baseline_download_is_scoped_to_item_id() {
     assert!(f.state.lock().unwrap().puts[0]
         .0
         .ends_with("/items/fileA/content"));
+}
+
+fn first_download_response() -> Response {
+    let base = API_BASE.with(|value| value.borrow().clone().unwrap());
+    send_download_request(
+        Credentials::Bearer(Zeroizing::new("owned-fixture-token".into())).apply(
+            http()
+                .unwrap()
+                .get(format!("{base}/drives/drive/items/fileA/content")),
+        ),
+        None,
+    )
+    .unwrap()
+}
+
+fn fetch_fixture_download(request: RequestBuilder) -> CloudCommandResult<Response> {
+    // Logical HTTPS destinations are served by the owned HTTP fixture. The
+    // production callback uses the validated URL directly and adds no token.
+    let base = API_BASE.with(|value| value.borrow().clone().unwrap());
+    let mut request = request.build().unwrap();
+    assert!(!request
+        .headers()
+        .contains_key(reqwest::header::AUTHORIZATION));
+    let mut local = url::Url::parse(&base).unwrap();
+    local.set_path(request.url().path());
+    local.set_query(request.url().query());
+    *request.url_mut() = local;
+    send_download_request(RequestBuilder::from_parts(http()?.clone(), request), None)
+}
+
+#[test]
+fn onedrive_download_follows_redirect_chains_without_forwarding_credentials() {
+    for statuses in [vec![302, 302], vec![301, 302, 303, 307, 308]] {
+        let f = Fixture::new(CloudProviderKind::Onedrive);
+        f.state.lock().unwrap().download_responses = statuses
+            .iter()
+            .enumerate()
+            .map(|(index, status)| {
+                (
+                    *status,
+                    Some(format!(
+                        "https://cdn{index}.example.test/download?secret=owned-signed-link"
+                    )),
+                )
+            })
+            .collect();
+        let mut download =
+            follow_download_redirects(first_download_response(), None, fetch_fixture_download)
+                .unwrap();
+        let mut bytes = Vec::new();
+        download.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"original");
+        let state = f.state.lock().unwrap();
+        assert_eq!(state.download_requests.len(), statuses.len() + 1);
+        assert!(state.download_requests[0].1);
+        assert!(state.download_requests[1..]
+            .iter()
+            .all(|(_, authenticated)| !authenticated));
+        assert!(state.puts.is_empty());
+    }
+}
+
+#[test]
+fn onedrive_download_stops_redirect_loops_without_exposing_signed_urls() {
+    let f = Fixture::new(CloudProviderKind::Onedrive);
+    f.state.lock().unwrap().download_responses = (0..=MAX_DOWNLOAD_REDIRECTS)
+        .map(|_| {
+            (
+                302,
+                Some("https://cdn.example.test/download?secret=owned-signed-link".into()),
+            )
+        })
+        .collect();
+    let error = follow_download_redirects(first_download_response(), None, fetch_fixture_download)
+        .unwrap_err();
+    assert_eq!(error.code(), CloudCommandErrorCode::Unsupported);
+    assert!(error.message().contains("too many redirects"));
+    assert!(!error.message().contains("owned-signed-link"));
+    assert_eq!(
+        f.state.lock().unwrap().download_requests.len(),
+        MAX_DOWNLOAD_REDIRECTS + 1
+    );
+}
+
+#[test]
+fn onedrive_download_rejects_unsafe_or_missing_redirects_at_every_hop() {
+    for location in [
+        None,
+        Some("http://cdn.example.test/download?secret=owned-signed-link"),
+    ] {
+        let f = Fixture::new(CloudProviderKind::Onedrive);
+        f.state.lock().unwrap().download_responses = [
+            (302, Some("https://cdn.example.test/download".into())),
+            (302, location.map(str::to_owned)),
+        ]
+        .into();
+        let error =
+            follow_download_redirects(first_download_response(), None, fetch_fixture_download)
+                .unwrap_err();
+        assert_eq!(error.code(), CloudCommandErrorCode::Unsupported);
+        assert!(!error.message().contains("owned-signed-link"));
+        assert_eq!(f.state.lock().unwrap().download_requests.len(), 2);
+    }
+    let base = url::Url::parse("https://cdn.example.test/path/download").unwrap();
+    assert_eq!(
+        download_redirect_url(&base, "../file?key=fixture")
+            .unwrap()
+            .as_str(),
+        "https://cdn.example.test/file?key=fixture"
+    );
+    for location in [
+        "",
+        " ",
+        "https://[",
+        "http://cdn.example.test",
+        "https://name:secret@cdn.example.test",
+        "https://name@cdn.example.test",
+        "https://cdn.example.test/#fragment",
+        "file:///tmp/document",
+    ] {
+        assert!(
+            download_redirect_url(&base, location).is_none(),
+            "{location}"
+        );
+    }
+}
+
+#[test]
+fn onedrive_download_checks_cancellation_between_redirects() {
+    let f = Fixture::new(CloudProviderKind::Onedrive);
+    f.state.lock().unwrap().download_responses = [
+        (302, Some("https://cdn.example.test/download".into())),
+        (302, Some("https://cdn.example.test/download-again".into())),
+    ]
+    .into();
+    let cancel = AtomicBool::new(false);
+    let error = follow_download_redirects(first_download_response(), Some(&cancel), |url| {
+        let result = fetch_fixture_download(url);
+        cancel.store(true, Ordering::Relaxed);
+        result
+    })
+    .unwrap_err();
+    assert_eq!(error.code(), CloudCommandErrorCode::Cancelled);
+    assert_eq!(f.state.lock().unwrap().download_requests.len(), 2);
+}
+
+#[test]
+fn onedrive_download_preserves_http_failure_codes() {
+    for (status, expected) in [
+        (401, CloudCommandErrorCode::AuthRequired),
+        (403, CloudCommandErrorCode::PermissionDenied),
+        (404, CloudCommandErrorCode::Conflict),
+        (429, CloudCommandErrorCode::RateLimited),
+        (500, CloudCommandErrorCode::TaskFailed),
+    ] {
+        let f = Fixture::new(CloudProviderKind::Onedrive);
+        f.state
+            .lock()
+            .unwrap()
+            .download_responses
+            .push_back((status, None));
+        let error = follow_download_redirects(first_download_response(), None, |_| {
+            panic!("failed responses must not be retried")
+        })
+        .unwrap_err();
+        assert_eq!(error.code(), expected);
+        assert_eq!(f.state.lock().unwrap().download_requests.len(), 1);
+    }
+}
+
+#[test]
+fn download_request_errors_do_not_expose_urls_or_credentials() {
+    let error = send_download_request(
+        http()
+            .unwrap()
+            .get("https://secret:token@[invalid?key=owned-signed-link"),
+        None,
+    )
+    .unwrap_err();
+    assert_eq!(error.code(), CloudCommandErrorCode::NetworkError);
+    for secret in ["secret", "token", "owned-signed-link"] {
+        assert!(!error.message().contains(secret));
+    }
+    let cancelled = AtomicBool::new(true);
+    assert_eq!(
+        send_download_request(
+            http().unwrap().get("https://example.test"),
+            Some(&cancelled)
+        )
+        .unwrap_err()
+        .code(),
+        CloudCommandErrorCode::Cancelled
+    );
 }
 #[test]
 fn native_google_documents_and_weak_validators_are_not_overwritten() {

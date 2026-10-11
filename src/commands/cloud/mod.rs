@@ -570,6 +570,8 @@ async fn prepare_cloud_working_copy_impl(
 ) -> CloudCommandResult<CloudWorkingCopy> {
     ensure_cloud_enabled()?;
     let path = parse_cloud_path_arg(path)?;
+    let path_for_log = path.clone();
+    let started = std::time::Instant::now();
     let guard = register_cloud_cancel(&cancel, &progress_event)?;
     let token = guard.as_ref().map(|guard| guard.token());
     let result = tauri::async_runtime::spawn_blocking(move || {
@@ -578,7 +580,20 @@ async fn prepare_cloud_working_copy_impl(
         })
     })
     .await;
-    map_spawn_result(result, "Cloud working-copy download task failed")
+    let result = map_spawn_result(result, "Cloud working-copy download task failed");
+    if let Err(error) = &result {
+        if error.code() != CloudCommandErrorCode::Cancelled {
+            warn!(
+                op = "prepare_cloud_working_copy",
+                path = %path_for_log,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                error_code = ?error.code(),
+                error_message = %error.message(),
+                "cloud working-copy preparation failed"
+            );
+        }
+    }
+    result
 }
 
 async fn copy_cloud_entry_impl(

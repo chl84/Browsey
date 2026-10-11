@@ -90,10 +90,10 @@ impl RcloneCloudProvider {
         options: RcloneReadOptions<'_>,
     ) -> CloudCommandResult<Option<CloudEntry>> {
         self.ensure_runtime_ready()?;
+        let provider_kind = crate::commands::cloud::cloud_provider_kind_for_remote(path.remote());
         if !path.is_root()
             && !path.is_drive_address()
-            && crate::commands::cloud::cloud_provider_kind_for_remote(path.remote())
-                == Some(CloudProviderKind::Gdrive)
+            && provider_kind == Some(CloudProviderKind::Gdrive)
         {
             if let Some(resolved) = self.resolve_drive_path(path, false, options.cancel)? {
                 if resolved.is_drive_address() {
@@ -114,9 +114,19 @@ impl RcloneCloudProvider {
             };
         }
 
-        if matches!(options.backend, RcloneReadBackend::CliOnly) {
+        // OneDrive operations/stat can report existing directories as files
+        // (observed with rclone 1.75.1). lsjson --stat resolves their type correctly.
+        // Keep explicit RcOnly probes available, but use CLI for automatic stats.
+        let onedrive_cli_stat = matches!(options.backend, RcloneReadBackend::Auto)
+            && provider_kind == Some(CloudProviderKind::Onedrive);
+        if matches!(options.backend, RcloneReadBackend::CliOnly) || onedrive_cli_stat {
             let entry = self.stat_path_via_cli(path, options, false, None)?;
-            log_backend_selected("cloud_stat_entry", "cli", false, None);
+            log_backend_selected(
+                "cloud_stat_entry",
+                "cli",
+                false,
+                onedrive_cli_stat.then_some("onedrive_stat_requires_cli"),
+            );
             return Ok(entry);
         }
         let mut fell_back_from_rc = false;

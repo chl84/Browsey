@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Follow bounded HTTPS redirect chains when opening OneDrive files, without
+  forwarding OAuth credentials to download links. Preserve working-copy version
+  checks and log opening failures without exposing signed download URLs.
+
+- Use CLI metadata checks for OneDrive to avoid rclone RC misclassifying folders
+  as files and rejecting local-to-cloud copies. Preserve file/missing-path checks,
+  cancellation and bounded metadata timeouts.
+
 ## v1.0.6 — 2026-10-10
 
 - Simplify undo backup settings and add recovery to the original location with

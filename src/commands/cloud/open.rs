@@ -17,7 +17,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::time::Instant;
-use tracing::debug;
+use tracing::{debug, warn};
 
 mod cache_store;
 mod inflight;
@@ -71,11 +71,19 @@ pub(super) async fn open_cloud_entry_impl(
             elapsed_ms,
             "cloud command timing"
         ),
-        Err(error) => debug!(
+        Err(error) if error.code() == CloudCommandErrorCode::Cancelled => debug!(
             op = "cloud_open_file",
             path = %path_for_log,
             elapsed_ms,
             error = %error,
+            "cloud command failed"
+        ),
+        Err(error) => warn!(
+            op = "cloud_open_file",
+            path = %path_for_log,
+            elapsed_ms,
+            error_code = ?error.code(),
+            error_message = %error.message(),
             "cloud command failed"
         ),
     }

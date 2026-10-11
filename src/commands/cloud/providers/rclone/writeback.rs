@@ -69,7 +69,10 @@ fn response(request: RequestBuilder, cancel: Option<&AtomicBool>) -> CloudComman
     if status.is_success() {
         return Ok(response);
     }
-    Err(match status {
+    Err(http_status_error(status))
+}
+fn http_status_error(status: StatusCode) -> CloudCommandError {
+    match status {
         StatusCode::PRECONDITION_FAILED
         | StatusCode::CONFLICT
         | StatusCode::NOT_FOUND
@@ -90,7 +93,104 @@ fn response(request: RequestBuilder, cancel: Option<&AtomicBool>) -> CloudComman
             CloudCommandErrorCode::TaskFailed,
             "Cloud saving was refused or could not be confirmed; your local edits are kept",
         ),
+    }
+}
+
+const MAX_DOWNLOAD_REDIRECTS: usize = 5;
+
+fn send_download_request(
+    request: RequestBuilder,
+    cancel: Option<&AtomicBool>,
+) -> CloudCommandResult<Response> {
+    cancelled(cancel)?;
+    let result = request.send().map_err(|error| {
+        let code = if error.is_timeout() {
+            CloudCommandErrorCode::Timeout
+        } else {
+            CloudCommandErrorCode::NetworkError
+        };
+        // Reqwest errors can include preauthenticated URLs. Never expose them.
+        fail(
+            code,
+            "Cloud download failed; check the connection and retry",
+        )
+    });
+    cancelled(cancel)?;
+    result
+}
+
+fn download_redirect_error(status: StatusCode, message: &str) -> CloudCommandError {
+    tracing::warn!(
+        op = "cloud_download",
+        http_status = status.as_u16(),
+        reason = message,
+        "cloud download redirect rejected"
+    );
+    fail(CloudCommandErrorCode::Unsupported, message)
+}
+
+fn download_redirect_url(base: &url::Url, location: &str) -> Option<url::Url> {
+    if location.trim().is_empty() {
+        return None;
+    }
+    base.join(location).ok().filter(|url| {
+        url.scheme() == "https"
+            && url.host_str().is_some()
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.fragment().is_none()
     })
+}
+
+fn follow_download_redirects(
+    mut response: Response,
+    cancel: Option<&AtomicBool>,
+    mut fetch: impl FnMut(RequestBuilder) -> CloudCommandResult<Response>,
+) -> CloudCommandResult<Response> {
+    let mut redirects = 0;
+    loop {
+        cancelled(cancel)?;
+        let status = response.status();
+        if status.is_success() {
+            return Ok(response);
+        }
+        if !matches!(
+            status,
+            StatusCode::MOVED_PERMANENTLY
+                | StatusCode::FOUND
+                | StatusCode::SEE_OTHER
+                | StatusCode::TEMPORARY_REDIRECT
+                | StatusCode::PERMANENT_REDIRECT
+        ) {
+            tracing::warn!(
+                op = "cloud_download",
+                http_status = status.as_u16(),
+                "cloud download request failed"
+            );
+            return Err(http_status_error(status));
+        }
+        if redirects == MAX_DOWNLOAD_REDIRECTS {
+            return Err(download_redirect_error(
+                status,
+                "Cloud download stopped after too many redirects. Try again later.",
+            ));
+        }
+        let next = response
+            .headers()
+            .get(reqwest::header::LOCATION)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|location| download_redirect_url(response.url(), location))
+            .ok_or_else(|| {
+                download_redirect_error(
+                    status,
+                    "Cloud download returned an invalid or unsafe redirect. No file was opened.",
+                )
+            })?;
+        redirects += 1;
+        drop(response);
+        // Each hop is a fresh unauthenticated request, including cross-host hops.
+        response = fetch(http()?.get(next))?;
+    }
 }
 fn json(response: Response) -> CloudCommandResult<Value> {
     let mut bytes = Vec::new();
@@ -513,39 +613,14 @@ impl RcloneCloudProvider {
             return self.download_file(&path, destination, cancel);
         }
         let (_, url, credentials) = self.version_request(&path, Some(version), cancel)?;
-        cancelled(cancel)?;
-        let first = credentials
-            .apply(http()?.get(format!("{url}/content")))
-            .send()
-            .map_err(|_| {
-                fail(
-                    CloudCommandErrorCode::NetworkError,
-                    "Cloud download failed; your local edits are kept",
-                )
-            })?;
-        let mut download = if first.status() == StatusCode::FOUND
-            || first.status() == StatusCode::TEMPORARY_REDIRECT
-        {
-            let location = first
-                .headers()
-                .get(reqwest::header::LOCATION)
-                .and_then(|v| v.to_str().ok())
-                .ok_or_else(unsupported)?;
-            let url = url::Url::parse(location).map_err(|_| unsupported())?;
-            if url.scheme() != "https"
-                || !url.username().is_empty()
-                || url.password().is_some()
-                || url.fragment().is_some()
-            {
-                return Err(unsupported());
-            }
+        let first = send_download_request(
+            credentials.apply(http()?.get(format!("{url}/content"))),
+            cancel,
+        )?;
+        let mut download = follow_download_redirects(first, cancel, |request| {
             // Download URLs are preauthenticated. Never forward the OAuth token.
-            response(http()?.get(url), cancel)?
-        } else if first.status().is_success() {
-            first
-        } else {
-            return Err(conflict());
-        };
+            send_download_request(request, cancel)
+        })?;
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)

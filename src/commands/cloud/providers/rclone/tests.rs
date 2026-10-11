@@ -606,6 +606,19 @@ impl FakeRcloneSandbox {
         RcloneCloudProvider { cli, rc }
     }
 
+    fn provider_with_incorrect_rc_stat(&self) -> RcloneCloudProvider {
+        let cli = RcloneCli::new(self.script_path.as_os_str());
+        let rc = RcloneRcClient::new(self.script_path.as_os_str())
+            .with_enabled_override_for_tests(true)
+            .with_stat_response_for_tests(serde_json::json!({
+                "item": {
+                    "Name": "video", "Path": "video", "IsDir": false,
+                    "Size": 0, "ModTime": "", "MimeType": "application/octet-stream"
+                }
+            }));
+        RcloneCloudProvider { cli, rc }
+    }
+
     fn provider_with_forced_rc_async_status_error_for_delete(&self) -> RcloneCloudProvider {
         crate::commands::cloud::rclone_rc::reset_state_for_tests();
         let cli = RcloneCli::new(self.script_path.as_os_str());
@@ -833,6 +846,143 @@ fn discovered_remote_names_are_preserved_through_cli_listing_and_stat() {
         assert_eq!(stat.path, files[0].path);
         assert_eq!(stat.size, Some("hello cloud".len() as u64));
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn onedrive_stat_uses_cli_when_rc_reports_a_directory_as_a_file() {
+    let sandbox = FakeRcloneSandbox::new();
+    let remote = "onedrive-stat-regression";
+    set_cloud_provider_kind_override_for_tests(remote, CloudProviderKind::Onedrive);
+    sandbox.mkdir_remote(remote, "video/nested");
+    sandbox.write_remote_file(remote, "video/report.txt", "payload");
+    sandbox.write_remote_file(remote, "video/empty.txt", "");
+    let provider = sandbox.provider_with_incorrect_rc_stat();
+    let folder = cloud_path(&format!("rclone://{remote}/video"));
+
+    let incorrect = provider
+        .stat_path_with_read_options(
+            &folder,
+            RcloneReadOptions {
+                backend: super::RcloneReadBackend::RcOnly,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(incorrect.kind, CloudEntryKind::File);
+
+    for rel in ["", "video", "video/nested"] {
+        let path = cloud_path(&format!("rclone://{remote}/{rel}"));
+        let entry = provider.stat_path(&path).unwrap().unwrap();
+        assert_eq!(entry.kind, CloudEntryKind::Dir);
+        assert_eq!(entry.path, path.to_string());
+        assert_eq!(entry.size, None);
+    }
+    for (rel, size) in [("video/report.txt", 7), ("video/empty.txt", 0)] {
+        let path = cloud_path(&format!("rclone://{remote}/{rel}"));
+        let entry = provider.stat_path(&path).unwrap().unwrap();
+        assert_eq!(entry.kind, CloudEntryKind::File);
+        assert_eq!(entry.size, Some(size));
+    }
+    assert!(provider
+        .stat_path(&cloud_path(&format!("rclone://{remote}/video/missing.txt")))
+        .unwrap()
+        .is_none());
+    clear_cloud_provider_kind_overrides_for_tests();
+}
+
+#[cfg(unix)]
+#[test]
+fn onedrive_upload_preflight_accepts_folders_and_keeps_destination_safeguards() {
+    let sandbox = FakeRcloneSandbox::new();
+    let remote = "onedrive-preflight-regression";
+    set_cloud_provider_kind_override_for_tests(remote, CloudProviderKind::Onedrive);
+    sandbox.mkdir_remote(remote, "video");
+    sandbox.write_remote_file(remote, "video/report.txt", "original");
+    let provider = sandbox.provider_with_incorrect_rc_stat();
+
+    provider
+        .ensure_new_file_destination(
+            &cloud_path(&format!("rclone://{remote}/video/new.txt")),
+            None,
+        )
+        .expect("valid OneDrive folder must accept a new upload");
+    let occupied = provider
+        .ensure_new_file_destination(
+            &cloud_path(&format!("rclone://{remote}/video/report.txt")),
+            None,
+        )
+        .unwrap_err();
+    assert_eq!(occupied.code(), CloudCommandErrorCode::DestinationExists);
+    for parent in ["video/report.txt", "missing"] {
+        let err = provider
+            .ensure_new_file_destination(
+                &cloud_path(&format!("rclone://{remote}/{parent}/new.txt")),
+                None,
+            )
+            .unwrap_err();
+        assert_eq!(err.code(), CloudCommandErrorCode::NotFound);
+    }
+    assert_eq!(
+        fs::read_to_string(sandbox.remote_path(remote, "video/report.txt")).unwrap(),
+        "original"
+    );
+    assert!(!sandbox.remote_path(remote, "video/new.txt").exists());
+    clear_cloud_provider_kind_overrides_for_tests();
+}
+
+#[cfg(unix)]
+#[test]
+fn onedrive_cli_stat_preserves_cancellation_and_timeout() {
+    use std::sync::atomic::AtomicBool;
+    let remote = "onedrive-stat-budget-regression";
+    set_cloud_provider_kind_override_for_tests(remote, CloudProviderKind::Onedrive);
+    for cancelled in [true, false] {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.mkdir_remote(remote, "video");
+        sandbox.configure_subcommand_delay("lsjson", 220, 1);
+        let provider = sandbox.provider_with_incorrect_rc_stat();
+        let cancel = AtomicBool::new(cancelled);
+        let started = Instant::now();
+        let err = provider
+            .stat_path_with_read_options(
+                &cloud_path(&format!("rclone://{remote}/video")),
+                RcloneReadOptions {
+                    cancel: Some(&cancel),
+                    cli_timeout: Some(Duration::from_millis(60)),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err();
+        assert_eq!(
+            err.code(),
+            if cancelled {
+                CloudCommandErrorCode::Cancelled
+            } else {
+                CloudCommandErrorCode::Timeout
+            }
+        );
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+    clear_cloud_provider_kind_overrides_for_tests();
+}
+
+#[cfg(unix)]
+#[test]
+fn non_onedrive_stat_keeps_the_rc_read_backend() {
+    let sandbox = FakeRcloneSandbox::new();
+    let remote = "nextcloud-stat-regression";
+    set_cloud_provider_kind_override_for_tests(remote, CloudProviderKind::Nextcloud);
+    sandbox.mkdir_remote(remote, "video");
+    let provider = sandbox.provider_with_incorrect_rc_stat();
+    let entry = provider
+        .stat_path(&cloud_path(&format!("rclone://{remote}/video")))
+        .unwrap()
+        .unwrap();
+    assert_eq!(entry.kind, CloudEntryKind::File);
+    assert!(!sandbox.read_log().contains("lsjson"));
+    clear_cloud_provider_kind_overrides_for_tests();
 }
 
 #[cfg(unix)]
