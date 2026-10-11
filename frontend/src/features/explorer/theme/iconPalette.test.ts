@@ -10,9 +10,14 @@ const ristretto: IconColors = {
   orange: '#fb9a77', green: '#adda78', blue: '#f38d70', magenta: '#a8a9eb',
 }
 const light: IconColors = { ...nord, foreground: '#1f232b' }
+const browseyLight: IconColors = {
+  accent: '#1e88e5', foreground: '#1f232b', red: '#d04444', yellow: '#dba92d',
+  orange: '#bc8051', green: '#63976a', blue: '#6c93bd', magenta: '#9973b4',
+}
 const cases = [
   { name: 'dark', colors: nord, surfaces: ['#101010', '#0d0d0d', '#181818', '#1f1f1f'] },
   { name: 'light', colors: light, surfaces: ['#f7f7f8', '#f0f1f3', '#e7e9ed', '#ffffff'] },
+  { name: 'Browsey light', colors: browseyLight, surfaces: ['#f7f7f8', '#f0f1f3', '#e7e9ed', '#ffffff'] },
   { name: 'Nord', colors: nord, surfaces: ['#191c23', '#222730', '#3b4252', '#2e3440'] },
   { name: 'Ristretto', colors: ristretto, surfaces: ['#181414', '#211b1b', '#3d2f2a', '#2c2525'] },
   { name: 'light selection', colors: light, surfaces: [composite('rgba(30, 136, 229, 0.14)', '#f7f7f8')] },
@@ -39,13 +44,14 @@ describe('icon contrast', () => {
     for (const role of ['paper', 'fold', 'blue', 'blue-mid', 'blue-strong', 'green', 'green-mid', 'green-strong', 'purple', 'purple-mid', 'orange', 'orange-mid', 'orange-strong'] as const) {
       expect(contrast(palette.ink, palette[role]), `document ink against ${role}`).toBeGreaterThanOrEqual(4.5)
     }
-    for (const [foreground, background] of [['folder-detail', 'folder'], ['on-red', 'red'], ['on-yellow', 'yellow'], ['neutral-detail', 'neutral'], ['disk-detail', 'disk']] as const) {
+    for (const [foreground, background] of [['folder-detail', 'folder'], ['folder-detail', 'folder-inset'], ['on-red', 'red'], ['on-yellow', 'yellow'], ['neutral-detail', 'neutral'], ['disk-detail', 'disk']] as const) {
       expect(contrast(palette[foreground], palette[background]), `${foreground} against ${background}`).toBeGreaterThanOrEqual(4.5)
     }
   })
 
   it.each(cases)('$name strengthens contrast without removing its palette in high contrast', ({ colors, surfaces }) => {
     const palette = createIconPalette(colors, surfaces, true)
+    expect(contrast(palette['folder-detail'], palette['folder-inset'])).toBeGreaterThanOrEqual(4.5)
     for (const surface of surfaces) {
       expect(contrast(palette.folder, surface)).toBeGreaterThanOrEqual(4.5)
       expect(contrast(palette.foreground, surface)).toBeGreaterThanOrEqual(4.5)

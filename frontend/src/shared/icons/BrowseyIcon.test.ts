@@ -7,7 +7,7 @@ import { iconNames, iconSprite, iconSymbol } from './iconSprite'
 it('includes every bundled Browsey/status icon and keeps definitions unique', () => {
   const document = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${iconSprite}</svg>`, 'image/svg+xml')
   expect(document.querySelector('parsererror')).toBeNull()
-  expect(iconNames).toHaveLength(43)
+  expect(iconNames).toHaveLength(53)
   expect(document.querySelectorAll('symbol')).toHaveLength(iconNames.length)
   const ids = [...document.querySelectorAll('[id]')].map(element => element.id)
   expect(new Set(ids).size).toBe(ids.length)
@@ -25,6 +25,28 @@ it('includes every bundled Browsey/status icon and keeps definitions unique', ()
     }
   }
   for (const match of iconSprite.matchAll(/url\(#([^)]+)\)/g)) expect(document.getElementById(match[1])).not.toBeNull()
+})
+
+it('uses identical symbol geometry and stroke widths in every file/folder pair', () => {
+  const document = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${iconSprite}</svg>`, 'image/svg+xml')
+  const geometry = (name: string, glyph: string) => {
+    const symbol = document.getElementById(iconSymbol(`icons/scalable/browsey/${name}.svg`))!
+    const group = symbol.querySelector(`[data-icon-glyph="${glyph}"]`)!
+    expect(group, `${name} must use shared ${glyph}`).not.toBeNull()
+    const clone = group.cloneNode(true) as Element
+    for (const element of clone.querySelectorAll('[fill], [stroke]')) {
+      element.removeAttribute('fill')
+      element.removeAttribute('stroke')
+    }
+    return clone.outerHTML
+  }
+  for (const [glyph, file, folder] of [
+    ['font', 'font_file', 'font_folder'], ['code', 'code_file', 'code_folder'],
+    ['document', 'document_file', 'document_folder'], ['music', 'audio_file', 'music_folder'],
+    ['picture', 'picture_file', 'pictures_folder'], ['video', 'video_file', 'video_folder'],
+    ['book', 'ebook_file', 'books_folder'], ['gear', 'config_file', 'config_folder'],
+    ['gear', 'executable_file', 'config_folder'], ['box', 'package_file', 'archive_folder'],
+  ]) expect(geometry(file, glyph)).toBe(geometry(folder, glyph))
 })
 
 it('references shared symbols, hides decorative icons and labels meaningful status icons', async () => {

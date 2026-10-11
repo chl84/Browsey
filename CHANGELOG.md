@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Recognize temp, backup, archive, development/source, configuration, cache,
+  fonts, books, games and screenshots folders, shared/share aliases and Norwegian
+  names for standard user folders. Generate paired file/folder glyphs from one
+  definition, including identical Aa geometry, placement and stroke widths.
+
 - Adapt all Browsey file, folder, sidebar and permission icons to the active
   theme using a shared SVG sprite and semantic palette. Adjust silhouettes and
   details for contrast on normal, selected and drop-target surfaces, including

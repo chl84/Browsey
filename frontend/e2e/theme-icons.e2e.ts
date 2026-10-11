@@ -13,7 +13,7 @@ test('all icon types share symbols, adapt to themes/selection and keep list/grid
   await page.addInitScript(systemTheme => {
     ;(window as unknown as { __BROWSEY_E2E__: unknown }).__BROWSEY_E2E__ = {
       calls: [], systemTheme,
-      listingEntries: Array.from({ length: 33 }, (_, iconId) => ({
+      listingEntries: Array.from({ length: 43 }, (_, iconId) => ({
         name: `Icon ${String(iconId).padStart(2, '0')}`, path: `/mock/icon-${iconId}`, kind: 'file', iconId,
       })),
     }
@@ -23,7 +23,7 @@ test('all icon types share symbols, adapt to themes/selection and keep list/grid
   await expect(folder).toBeVisible()
   await expect(folder).toHaveCSS('width', '18px')
   const symbolCount = await page.locator('.icon-sprite symbol').count()
-  expect(symbolCount).toBe(43)
+  expect(symbolCount).toBe(53)
   const colors: string[] = []
   for (const mode of ['dark', 'light', 'system', 'dark'] as const) {
     await page.evaluate(async mode => {
@@ -76,6 +76,41 @@ test('all icon types share symbols, adapt to themes/selection and keep list/grid
     await expect(card).toBeVisible()
   }
   expect(errors).toEqual([])
+})
+
+test('new standard folder icons render in grid and list with the shared font glyph', async ({ page }) => {
+  const folders = ['temp', 'backup', 'archive', 'code', 'config', 'cache', 'font', 'books', 'games', 'screenshots']
+  await page.addInitScript(folders => {
+    ;(window as unknown as { __BROWSEY_E2E__: unknown }).__BROWSEY_E2E__ = {
+      calls: [], defaultView: 'grid',
+      listingEntries: [
+        ...folders.map((name, index) => ({ name, path: `/mock/${name}`, kind: 'dir', iconId: 33 + index })),
+        { name: 'typeface.ttf', path: '/mock/typeface.ttf', kind: 'file', iconId: 28 },
+      ],
+    }
+  }, folders)
+  await page.goto('/')
+  for (const name of folders) {
+    const icon = page.locator(`.card[data-path="/mock/${name}"] svg.icon`)
+    await expect(icon.locator('use')).toHaveAttribute('href', `#browsey-icon-browsey-${name}_folder-svg`)
+    const bounds = await icon.evaluate(node => {
+      const box = (node as SVGSVGElement).getBBox()
+      return { width: box.width, height: box.height }
+    })
+    expect(bounds.width).toBeGreaterThan(0)
+    expect(bounds.height).toBeGreaterThan(0)
+  }
+  const fonts = await page.evaluate(() => {
+    const geometry = (name: string) => {
+      const glyph = document.querySelector(`#browsey-icon-browsey-${name}-svg [data-icon-glyph="font"]`)!
+      return [...glyph.querySelectorAll('path')].map(path => ({ d: path.getAttribute('d'), width: path.getAttribute('stroke-width') }))
+    }
+    return { file: geometry('font_file'), folder: geometry('font_folder') }
+  })
+  expect(fonts.folder).toEqual(fonts.file)
+  await page.keyboard.press('Control+g')
+  await expect(page.locator('.row[data-path="/mock/font"] svg.icon')).toHaveCSS('width', '18px')
+  await expect(page.locator('.row[data-path="/mock/font"] svg.icon use')).toHaveAttribute('href', '#browsey-icon-browsey-font_folder-svg')
 })
 
 test('a failed thumbnail switches to a themed icon without retrying or retaining a broken image', async ({ page }) => {

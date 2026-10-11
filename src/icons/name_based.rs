@@ -4,11 +4,13 @@ use mime::{APPLICATION, AUDIO, IMAGE, MODEL, TEXT, VIDEO};
 
 use super::{
     icon_ids::{
-        AUDIO_FILE, CODE_FILE, COMPRESSED, CONFIG_FILE, DATABASE_FILE, DESKTOP_FOLDER,
+        ARCHIVE_FOLDER, AUDIO_FILE, BACKUP_FOLDER, BOOKS_FOLDER, CACHE_FOLDER, CODE_FILE,
+        CODE_FOLDER, COMPRESSED, CONFIG_FILE, CONFIG_FOLDER, DATABASE_FILE, DESKTOP_FOLDER,
         DISK_IMAGE_FILE, DOCUMENT_FILE, DOCUMENT_FOLDER, DOWNLOAD_FOLDER, EBOOK_FILE,
-        EXECUTABLE_FILE, FILE, FONT_FILE, GENERIC_FOLDER, HOME_FOLDER, MODEL_3D_FILE, MUSIC_FOLDER,
-        PACKAGE_FILE, PDF_FILE, PICTURES_FOLDER, PICTURE_FILE, PRESENTATION_FILE, PUBLIC_FOLDER,
-        SPREADSHEET_FILE, TEMPLATES_FOLDER, TEXTFILE, VECTOR_FILE, VIDEO_FILE, VIDEO_FOLDER,
+        EXECUTABLE_FILE, FILE, FONT_FILE, FONT_FOLDER, GAMES_FOLDER, GENERIC_FOLDER, HOME_FOLDER,
+        MODEL_3D_FILE, MUSIC_FOLDER, PACKAGE_FILE, PDF_FILE, PICTURES_FOLDER, PICTURE_FILE,
+        PRESENTATION_FILE, PUBLIC_FOLDER, SCREENSHOTS_FOLDER, SPREADSHEET_FILE, TEMPLATES_FOLDER,
+        TEMP_FOLDER, TEXTFILE, VECTOR_FILE, VIDEO_FILE, VIDEO_FOLDER,
     },
     IconId,
 };
@@ -29,15 +31,25 @@ pub(super) fn icon_id_for_name(name: &str, is_dir: bool, mime: Option<&str>) -> 
 
 fn dir_icon_id(name_lc: &str) -> IconId {
     match name_lc {
-        "downloads" | "download" => DOWNLOAD_FOLDER,
-        "documents" | "document" | "docs" => DOCUMENT_FOLDER,
-        "pictures" | "photos" | "images" => PICTURES_FOLDER,
-        "videos" | "video" | "movies" => VIDEO_FOLDER,
-        "music" | "audio" | "songs" => MUSIC_FOLDER,
-        "templates" => TEMPLATES_FOLDER,
-        "public" | "publicshare" => PUBLIC_FOLDER,
-        "desktop" => DESKTOP_FOLDER,
+        "downloads" | "download" | "nedlastinger" => DOWNLOAD_FOLDER,
+        "documents" | "document" | "docs" | "dokumenter" => DOCUMENT_FOLDER,
+        "pictures" | "photos" | "images" | "bilder" => PICTURES_FOLDER,
+        "videos" | "video" | "movies" | "videoer" => VIDEO_FOLDER,
+        "music" | "audio" | "songs" | "musikk" => MUSIC_FOLDER,
+        "templates" | "maler" => TEMPLATES_FOLDER,
+        "public" | "publicshare" | "shared" | "share" => PUBLIC_FOLDER,
+        "desktop" | "skrivebord" => DESKTOP_FOLDER,
         "home" => HOME_FOLDER,
+        "temp" | "tmp" => TEMP_FOLDER,
+        "backup" | "backups" => BACKUP_FOLDER,
+        "archive" | "archives" => ARCHIVE_FOLDER,
+        "projects" | "development" | "dev" | "src" | "source" => CODE_FOLDER,
+        "config" | ".config" | "settings" => CONFIG_FOLDER,
+        "cache" | ".cache" => CACHE_FOLDER,
+        "fonts" | ".fonts" => FONT_FOLDER,
+        "books" | "ebooks" => BOOKS_FOLDER,
+        "games" => GAMES_FOLDER,
+        "screenshots" => SCREENSHOTS_FOLDER,
         _ => GENERIC_FOLDER,
     }
 }
@@ -158,6 +170,74 @@ mod tests {
     fn virtual_directory_uses_named_folder_mapping() {
         assert_eq!(icon_id_for_name("Pictures", true, None), PICTURES_FOLDER);
         assert_eq!(icon_id_for_name("foo.bar", true, None), GENERIC_FOLDER);
+    }
+
+    #[test]
+    fn standard_folder_aliases_are_exact_case_insensitive_and_shared_with_local_entries() {
+        use crate::icons::{icon_id_for, icon_id_for_virtual_entry, icon_ids::*};
+        use std::path::Path;
+
+        let metadata = std::fs::metadata(concat!(env!("CARGO_MANIFEST_DIR"), "/resources"))
+            .expect("project directory metadata");
+        let aliases: &[(crate::icons::IconId, &[&str])] = &[
+            (DOWNLOAD_FOLDER, &["downloads", "download", "nedlastinger"]),
+            (
+                DOCUMENT_FOLDER,
+                &["documents", "document", "docs", "dokumenter"],
+            ),
+            (PICTURES_FOLDER, &["pictures", "photos", "images", "bilder"]),
+            (VIDEO_FOLDER, &["videos", "video", "movies", "videoer"]),
+            (MUSIC_FOLDER, &["music", "audio", "songs", "musikk"]),
+            (TEMPLATES_FOLDER, &["templates", "maler"]),
+            (PUBLIC_FOLDER, &["public", "publicshare", "shared", "share"]),
+            (DESKTOP_FOLDER, &["desktop", "skrivebord"]),
+            (HOME_FOLDER, &["home"]),
+            (TEMP_FOLDER, &["temp", "tmp"]),
+            (BACKUP_FOLDER, &["backup", "backups"]),
+            (ARCHIVE_FOLDER, &["archive", "archives"]),
+            (
+                CODE_FOLDER,
+                &["projects", "development", "dev", "src", "source"],
+            ),
+            (CONFIG_FOLDER, &["config", ".config", "settings"]),
+            (CACHE_FOLDER, &["cache", ".cache"]),
+            (FONT_FOLDER, &["fonts", ".fonts"]),
+            (BOOKS_FOLDER, &["books", "ebooks"]),
+            (GAMES_FOLDER, &["games"]),
+            (SCREENSHOTS_FOLDER, &["screenshots"]),
+        ];
+        for &(expected, names) in aliases {
+            for &name in names {
+                for name in [name.to_string(), name.to_uppercase()] {
+                    assert_eq!(icon_id_for_virtual_entry(&name, true), expected, "{name}");
+                    assert_eq!(
+                        icon_id_for(Path::new(&name), &metadata, false),
+                        expected,
+                        "{name}"
+                    );
+                    assert_eq!(
+                        icon_id_for(Path::new(&name), &metadata, true),
+                        SHORTCUT,
+                        "link {name}"
+                    );
+                    assert_eq!(icon_id_for_virtual_entry(&name, false), FILE, "file {name}");
+                }
+            }
+        }
+        for name in [
+            "temp-files",
+            "old-backups",
+            "myfonts",
+            "source-code",
+            "archive.zip",
+            "games.json",
+        ] {
+            assert_eq!(
+                icon_id_for_virtual_entry(name, true),
+                GENERIC_FOLDER,
+                "{name}"
+            );
+        }
     }
 
     #[test]

@@ -11,7 +11,7 @@
   <rect x="70" y="28" width="10" height="6" rx="0" fill="#171717" data-icon-fill="folder-detail"></rect>
 
   <!-- Front panel -->
-  <rect x="44" y="54" width="40" height="30" rx="0" fill="#1c70b9" data-icon-fill="folder-inset"></rect>
+  <rect x="44" y="54" width="40" height="30" rx="0" fill="#3c84c3" data-icon-fill="folder-inset"></rect>
 
   <!-- Status-LED -->
   <circle cx="64" cy="92" r="4" fill="#171717" data-icon-fill="folder-detail"></circle>

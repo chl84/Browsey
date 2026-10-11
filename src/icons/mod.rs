@@ -44,6 +44,16 @@ pub mod icon_ids {
     pub const CONFIG_FILE: IconId = 30;
     pub const DATABASE_FILE: IconId = 31;
     pub const VECTOR_FILE: IconId = 32;
+    pub const TEMP_FOLDER: IconId = 33;
+    pub const BACKUP_FOLDER: IconId = 34;
+    pub const ARCHIVE_FOLDER: IconId = 35;
+    pub const CODE_FOLDER: IconId = 36;
+    pub const CONFIG_FOLDER: IconId = 37;
+    pub const CACHE_FOLDER: IconId = 38;
+    pub const FONT_FOLDER: IconId = 39;
+    pub const BOOKS_FOLDER: IconId = 40;
+    pub const GAMES_FOLDER: IconId = 41;
+    pub const SCREENSHOTS_FOLDER: IconId = 42;
 }
 
 use icon_ids::SHORTCUT;
@@ -111,7 +121,7 @@ mod tests {
                 assert!(svg.contains("M76 14v24h24"), "document fold in {path:?}");
             }
         }
-        assert_eq!(icons, 43);
+        assert_eq!(icons, 53);
         assert_eq!(documents, 21);
     }
 
@@ -128,6 +138,31 @@ mod tests {
             .filter(|line| line.trim().starts_with("'icons/scalable/browsey/"))
             .collect();
         assert!(paths[usize::from(icon_ids::MODEL_3D_FILE)].contains("model_3d_file.svg"));
+    }
+
+    #[test]
+    fn standard_folder_ids_match_frontend_assets() {
+        let paths: Vec<_> = include_str!("../../frontend/src/features/explorer/helpers/icons.ts")
+            .lines()
+            .filter(|line| line.trim().starts_with("'icons/scalable/browsey/"))
+            .collect();
+        for (id, name) in [
+            (icon_ids::TEMP_FOLDER, "temp_folder"),
+            (icon_ids::BACKUP_FOLDER, "backup_folder"),
+            (icon_ids::ARCHIVE_FOLDER, "archive_folder"),
+            (icon_ids::CODE_FOLDER, "code_folder"),
+            (icon_ids::CONFIG_FOLDER, "config_folder"),
+            (icon_ids::CACHE_FOLDER, "cache_folder"),
+            (icon_ids::FONT_FOLDER, "font_folder"),
+            (icon_ids::BOOKS_FOLDER, "books_folder"),
+            (icon_ids::GAMES_FOLDER, "games_folder"),
+            (icon_ids::SCREENSHOTS_FOLDER, "screenshots_folder"),
+        ] {
+            assert!(paths[usize::from(id)].contains(&format!("/{name}.svg'")));
+            assert!(Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join(format!("resources/icons/scalable/{name}.svg"))
+                .is_file());
+        }
     }
 
     #[test]

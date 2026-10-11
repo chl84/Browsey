@@ -6,7 +6,7 @@
   <path d="M12 52H116V108H12Z" fill="#1d83dc" data-icon-fill="folder"></path>
 
   <!-- Templates symbol: sheet 1 (back) -->
-  <path d="M46 56H78L86 64V94H46Z" fill="#1c70b9" data-icon-fill="folder-inset"></path>
+  <path d="M46 56H78L86 64V94H46Z" fill="#3c84c3" data-icon-fill="folder-inset"></path>
 
   <!-- Templates symbol: sheet 2 (middle) -->
   <path d="M42 60H74L82 68V98H42Z" fill="#1b5d97" data-icon-fill="folder-edge"></path>
@@ -15,7 +15,7 @@
   <path d="M38 64H70L78 72V102H38Z" fill="#171717" data-icon-fill="folder-detail"></path>
 
   <!-- Folded corner on front sheet -->
-  <path d="M70 64V72H78Z" fill="#1c70b9" data-icon-fill="folder-inset"></path>
+  <path d="M70 64V72H78Z" fill="#3c84c3" data-icon-fill="folder-inset"></path>
 
   <!-- Subtle outline -->
   <path d="M12 52H116" stroke="#1b5d97" data-icon-stroke="folder-edge" stroke-width="2"></path>

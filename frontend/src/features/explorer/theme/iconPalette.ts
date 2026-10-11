@@ -70,12 +70,15 @@ export const createIconPalette = (colors: IconColors, surfaces: string[], highCo
   const shade = (color: string) => body(mix(color, light ? '#000000' : '#ffffff', 0.16))
   const on = (color: string) => readable(light ? '#ffffff' : surfaces[0], [color], 4.5)
   const folder = body(colors.accent), home = body(colors.green), bookmark = body(colors.orange)
+  const folderDetail = on(folder)
+  // Shared glyphs place meaningful strokes on both the body and inset surfaces.
+  const folderInset = readable(mix(folder, folderDetail, 0.18), [folderDetail], 4.5)
   const neutral = body(mix(surfaces[0], colors.foreground, 0.78)), disk = body(colors.magenta)
   const red = readable(colors.red, [paper], minimum), yellow = body(colors.yellow)
   return {
     paper, fold, ink,
-    folder, 'folder-tab': shade(folder), 'folder-detail': on(folder),
-    'folder-inset': mix(folder, on(folder), 0.18), 'folder-edge': mix(folder, on(folder), 0.35),
+    folder, 'folder-tab': shade(folder), 'folder-detail': folderDetail,
+    'folder-inset': folderInset, 'folder-edge': mix(folder, folderDetail, 0.35),
     blue, 'blue-mid': blueMid, 'blue-strong': blueStrong,
     green, 'green-mid': greenMid, 'green-strong': greenStrong,
     purple, 'purple-mid': purpleMid, orange, 'orange-mid': orangeMid, 'orange-strong': orangeStrong,
