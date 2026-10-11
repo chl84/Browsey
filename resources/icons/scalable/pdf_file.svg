@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
   <g>
-    <path d="M28 14H76L100 38V114H28V14Z" fill="#F3E8D2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
-    <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
+    <path d="M28 14H76L100 38V114H28V14Z" fill="#ececee" data-icon-fill="paper" stroke="#1f232b" data-icon-stroke="ink" stroke-width="2" stroke-linejoin="miter" />
+    <path d="M76 14v24h24" fill="#d3d4d7" data-icon-fill="fold" stroke="#1f232b" data-icon-stroke="ink" stroke-width="2" stroke-linejoin="miter" />
 
     <!-- PDF badge -->
-    <rect x="28" y="78" width="72" height="24" rx="0" fill="#D63B3B" stroke="#2B2419" stroke-width="2" />
-    <text x="64" y="95" fill="#FFFFFF" font-family="Inter, 'Noto Sans', sans-serif" font-size="16" font-weight="700" text-anchor="middle">PDF</text>
+    <rect x="28" y="78" width="72" height="24" rx="0" fill="#d04444" data-icon-fill="red" stroke="#1f232b" data-icon-stroke="ink" stroke-width="2" />
+    <path d="M44 96V84H49A3 3 0 0 1 49 90H44M59 84V96H62A6 6 0 0 0 62 84H59M77 96V84H86M77 90H84" fill="none" stroke="#ffffff" data-icon-stroke="on-red" stroke-width="3" stroke-linecap="butt" stroke-linejoin="miter" />
   </g>
 </svg>

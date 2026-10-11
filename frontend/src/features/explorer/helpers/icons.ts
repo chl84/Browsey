@@ -1,3 +1,5 @@
+// Stable backend-ID lookup keys. BrowseyIcon resolves them to bundled symbols;
+// these strings are not fetched as image URLs.
 const ICON_PATHS = [
   'icons/scalable/browsey/shortcut.svg',
   'icons/scalable/browsey/download_folder.svg',

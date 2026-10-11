@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
   <g>
-    <path d="M28 14H76L100 38V114H28V14Z" fill="#F3E8D2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
-    <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
+    <path d="M28 14H76L100 38V114H28V14Z" fill="#ececee" data-icon-fill="paper" stroke="#1f232b" data-icon-stroke="ink" stroke-width="2" stroke-linejoin="miter" />
+    <path d="M76 14v24h24" fill="#d3d4d7" data-icon-fill="fold" stroke="#1f232b" data-icon-stroke="ink" stroke-width="2" stroke-linejoin="miter" />
 
     <!-- Video frame -->
-    <rect x="28" y="60" width="72" height="48" rx="0" fill="#E3DBF7" stroke="#2B2419" stroke-width="2" />
+    <rect x="28" y="60" width="72" height="48" rx="0" fill="#d8cfe0" data-icon-fill="purple" stroke="#1f232b" data-icon-stroke="ink" stroke-width="2" />
     <!-- Film holes top/bottom -->
-    <g fill="#C7B7F1">
+    <g fill="#c9b9d6" data-icon-fill="purple-mid">
       <rect x="36" y="62" width="8" height="8" rx="0" />
       <rect x="48" y="62" width="8" height="8" rx="0" />
       <rect x="60" y="62" width="8" height="8" rx="0" />
@@ -20,7 +20,7 @@
       <rect x="84" y="100" width="8" height="8" rx="0" />
     </g>
     <!-- Play button -->
-    <circle cx="64" cy="84" r="18" fill="#2B2419" fill-opacity="0.88" stroke="#2B2419" stroke-width="2" />
-    <path d="M58 74v20l16-10-16-10Z" fill="#F3E8D2" />
+    <circle cx="64" cy="84" r="18" fill="#1f232b" data-icon-fill="ink" stroke="#1f232b" data-icon-stroke="ink" stroke-width="2" />
+    <path d="M58 74v20l16-10-16-10Z" fill="#ececee" data-icon-fill="paper" />
   </g>
 </svg>

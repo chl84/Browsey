@@ -11,6 +11,7 @@ The docs web app lives in `../docs-site/` and is built/deployed separately.
 - [User guide](usage.md): shortcuts, drag/drop, cloud, archives, devices and recovery.
 - [Development](development.md): build prerequisites, pinned CLI, tests, architecture and release preparation.
 - [Native acceptance tests](testing-native.md): scoped real-WebKit/backend tests across approved storage targets.
+- [Themed icons](testing-themed-icons.md): shared SVG palette, contrast checks and visual acceptance.
 - [Release notes](releases/): version-specific artifacts, checksums and validation scope.
 
 ## Structure

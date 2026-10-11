@@ -15,14 +15,14 @@ test('3D model icons load in list and grid without replacing generic file icons'
   await page.goto('/')
   for (const selector of ['.row', '.card']) {
     const iconFor = (name: string) => page.locator(selector)
-      .filter({ hasText: name.split('.')[0] }).locator('img.icon')
+      .filter({ hasText: name.split('.')[0] }).locator('svg.icon use')
     for (const name of ['mesh.stl', 'scene.blend']) {
       const icon = iconFor(name)
-      await expect(icon).toHaveAttribute('src', 'icons/scalable/browsey/model_3d_file.svg')
-      await expect.poll(() => icon.evaluate(img => (img as HTMLImageElement).naturalWidth)).toBe(128)
+      await expect(icon).toHaveAttribute('href', '#browsey-icon-browsey-model_3d_file-svg')
+      await expect.poll(() => icon.evaluate(element => document.querySelector(element.getAttribute('href')!)?.tagName)).toBe('symbol')
     }
     await expect(iconFor('unknown.custom'))
-      .toHaveAttribute('src', 'icons/scalable/browsey/file.svg')
+      .toHaveAttribute('href', '#browsey-icon-browsey-file-svg')
     if (selector === '.row') await page.keyboard.press('Control+g')
   }
   expect(errors).toEqual([])

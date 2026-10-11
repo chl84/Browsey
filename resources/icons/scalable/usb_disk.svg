@@ -1,19 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
   <g transform="translate(64 64) scale(1.1) translate(-64 -64)">
   <!-- USB device body -->
-  <rect x="36" y="22" width="56" height="84" rx="0" fill="#5F7FD1"></rect>
+  <rect x="36" y="22" width="56" height="84" rx="0" fill="#1d83dc" data-icon-fill="folder"></rect>
 
   <!-- Metal top / connector -->
-  <rect x="40" y="22" width="48" height="22" rx="0" fill="#8FA6E8"></rect>
+  <rect x="40" y="22" width="48" height="22" rx="0" fill="#186eb9" data-icon-fill="folder-tab"></rect>
 
   <!-- Connector hole -->
-  <rect x="48" y="28" width="10" height="6" rx="0" fill="rgba(255,255,255,0.55)"></rect>
-  <rect x="70" y="28" width="10" height="6" rx="0" fill="rgba(255,255,255,0.55)"></rect>
+  <rect x="48" y="28" width="10" height="6" rx="0" fill="#171717" data-icon-fill="folder-detail"></rect>
+  <rect x="70" y="28" width="10" height="6" rx="0" fill="#171717" data-icon-fill="folder-detail"></rect>
 
   <!-- Front panel -->
-  <rect x="44" y="54" width="40" height="30" rx="0" fill="rgba(255,255,255,0.22)"></rect>
+  <rect x="44" y="54" width="40" height="30" rx="0" fill="#1c70b9" data-icon-fill="folder-inset"></rect>
 
   <!-- Status-LED -->
-  <circle cx="64" cy="92" r="4" fill="rgba(255,255,255,0.65)"></circle>
+  <circle cx="64" cy="92" r="4" fill="#171717" data-icon-fill="folder-detail"></circle>
   </g>
 </svg>

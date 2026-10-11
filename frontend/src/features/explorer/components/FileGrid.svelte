@@ -2,6 +2,7 @@
   import SelectionBox from '../../../shared/ui/SelectionBox.svelte'
   import { iconPath as assetIconPath, formatSize, formatItems } from '../utils'
   import { iconPath as iconPathById } from '../helpers/icons'
+  import BrowseyIcon from '@/shared/icons/BrowseyIcon.svelte'
   import type { Entry } from '../model/types'
   import { fullNameTooltip } from '../helpers/fullNameTooltip'
   import { createThumbnailLoader } from '../thumbnailLoader'
@@ -197,20 +198,14 @@
             >
               <div class="badges">
                 {#if entry.readDenied}
-                  <img
-                    class="badge-icon"
-                    src={lockIcon}
-                    alt="No read permission"
-                    use:fullNameTooltip={'No read permission'}
-                  />
+                  <span class="badge-icon" use:fullNameTooltip={'No read permission'}>
+                    <BrowseyIcon src={lockIcon} label="No read permission" />
+                  </span>
                 {/if}
                 {#if entry.readOnly}
-                  <img
-                    class="badge-icon"
-                    src={readOnlyIcon}
-                    alt="Read-only"
-                    use:fullNameTooltip={'Read-only'}
-                  />
+                  <span class="badge-icon" use:fullNameTooltip={'Read-only'}>
+                    <BrowseyIcon src={readOnlyIcon} label="Read-only" />
+                  </span>
                 {/if}
               </div>
               {#if thumbnailsEnabled && thumbMap.has(entry.path)}
@@ -219,13 +214,12 @@
                   src={convertFileSrc(thumbMap.get(entry.path) || '')}
                   alt=""
                   draggable="false"
-                  on:error={(e) => {
-                    e.currentTarget?.setAttribute('src', iconPathById(entry.iconId))
+                  on:error={() => {
                     thumbLoader.drop(entry.path)
                   }}
                 />
               {:else}
-                <img class="icon" src={iconPathById(entry.iconId)} alt="" draggable="false" />
+                <BrowseyIcon className="icon" src={iconPathById(entry.iconId)} />
               {/if}
               <div
                 class="name"
@@ -370,7 +364,7 @@
     outline: none;
   }
 
-  .icon {
+  .card :global(.icon) {
     width: var(--grid-thumb-size);
     height: var(--grid-thumb-size);
     object-fit: contain;
@@ -390,7 +384,7 @@
   .badge-icon {
     width: 16px;
     height: 16px;
-    opacity: 0.65;
+    display: inline-block;
     flex-shrink: 0;
   }
 

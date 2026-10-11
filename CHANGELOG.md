@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Adapt all Browsey file, folder, sidebar and permission icons to the active
+  theme using a shared SVG sprite and semantic palette. Adjust silhouettes and
+  details for contrast on normal, selected and drop-target surfaces, including
+  high-contrast mode. Use one canonical SVG set with common neutral document
+  bodies, angular folders and consistent opaque details. Preserve original
+  thumbnail colors; render standalone icon SVGs with the same default palette.
+
 - Restore file-list/grid focus after creating a folder and let Enter on the
   file-list collection open its selected item. Preserve individual row
   activation, modal focus and navigation during asynchronous creation.

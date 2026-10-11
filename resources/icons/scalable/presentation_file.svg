@@ -1,14 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
   <g>
-    <path d="M28 14H76L100 38V114H28V14Z" fill="#F3E8D2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
-    <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
+    <path d="M28 14H76L100 38V114H28V14Z" fill="#ececee" data-icon-fill="paper" stroke="#1f232b" data-icon-stroke="ink" stroke-width="2" stroke-linejoin="miter" />
+    <path d="M76 14v24h24" fill="#d3d4d7" data-icon-fill="fold" stroke="#1f232b" data-icon-stroke="ink" stroke-width="2" stroke-linejoin="miter" />
 
     <!-- Presentation -->
-    <rect x="28" y="60" width="72" height="48" rx="0" fill="#F9E5D8" stroke="#2B2419" stroke-width="2" />
-    <rect x="34" y="68" width="60" height="14" rx="0" fill="#F2D0BD" stroke="#2B2419" stroke-width="2" />
-    <rect x="35" y="88" width="10" height="18" rx="0" fill="#2B2419" fill-opacity="0.7" />
-    <rect x="51" y="84" width="10" height="22" rx="0" fill="#2B2419" fill-opacity="0.8" />
-    <rect x="67" y="90" width="10" height="16" rx="0" fill="#2B2419" fill-opacity="0.6" />
-    <rect x="83" y="82" width="10" height="24" rx="0" fill="#2B2419" fill-opacity="0.85" />
+    <rect x="28" y="60" width="72" height="48" rx="0" fill="#e0d2c8" data-icon-fill="orange" stroke="#1f232b" data-icon-stroke="ink" stroke-width="2" />
+    <rect x="34" y="68" width="60" height="14" rx="0" fill="#d8bfac" data-icon-fill="orange-mid" stroke="#1f232b" data-icon-stroke="ink" stroke-width="2" />
+    <rect x="35" y="88" width="10" height="18" rx="0" fill="#1f232b" data-icon-fill="ink" />
+    <rect x="51" y="84" width="10" height="22" rx="0" fill="#1f232b" data-icon-fill="ink" />
+    <rect x="67" y="90" width="10" height="16" rx="0" fill="#1f232b" data-icon-fill="ink" />
+    <rect x="83" y="82" width="10" height="24" rx="0" fill="#1f232b" data-icon-fill="ink" />
   </g>
 </svg>

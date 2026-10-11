@@ -2,6 +2,7 @@ import { cloudParentPath } from './cloudPaths'
 import type { Partition } from './model/types'
 import { formatSize } from '@/shared/lib/formatSize'
 
+// Path-shaped keys consumed by BrowseyIcon; SVG assets are bundled in the shared sprite.
 export const iconPath = (file: string) => `/icons/scalable/${file}`
 
 export const navIcon = (label: string) => {

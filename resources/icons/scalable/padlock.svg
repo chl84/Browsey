@@ -1,13 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" stroke="rgb(128,128,128)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" stroke="#1f232b" data-icon-stroke="foreground" stroke-width="8" stroke-linecap="butt" stroke-linejoin="miter">
   <g transform="translate(64 64) scale(1.1) translate(-64 -64)">
   <!-- Shackle (closed) -->
   <path d="M40 56V42c0-13.255 10.745-24 24-24s24 10.745 24 24v14"></path>
 
   <!-- Body -->
-  <rect x="28" y="56" width="72" height="56" rx="12" ry="12"></rect>
+  <rect x="28" y="56" width="72" height="56" rx="0"></rect>
 
   <!-- Keyhole -->
-  <circle cx="64" cy="82" r="6"></circle>
-  <path d="M64 88v14"></path>
+  <circle cx="64" cy="80" r="5" fill="#1f232b" data-icon-fill="foreground" stroke="none"></circle>
+  <path d="M64 84v15" stroke-width="4"></path>
   </g>
 </svg>

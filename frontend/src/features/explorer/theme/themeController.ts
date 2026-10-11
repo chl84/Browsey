@@ -5,6 +5,7 @@ import {
   storeThemeMode,
 } from '../services/settings.service'
 import type { SystemTheme, ThemeMode } from './types'
+import { applyIconPalette } from './iconPalette'
 
 const POLL_INTERVAL_MS = 2_000
 
@@ -161,6 +162,7 @@ const applyCurrentTheme = () => {
   } else {
     clearPalette()
   }
+  applyIconPalette(scheme, currentMode === 'system' && !highContrast ? currentPalette : null, highContrast)
 }
 
 const refreshSystemTheme = async () => {

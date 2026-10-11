@@ -7,7 +7,7 @@
          V112
          L64 96
          L36 112
-         Z" fill="#C8A874"></path>
+         Z" fill="#90613e" data-icon-fill="bookmark-shade"></path>
 
     <!-- Inner surface for depth -->
     <path d="M44 20
@@ -15,10 +15,10 @@
          V92
          L64 82
          L44 92
-         Z" fill="#B89563"></path>
+         Z" fill="#ab744a" data-icon-fill="bookmark"></path>
 
     <!-- Highlight area -->
-    <rect x="50" y="32" width="28" height="10" rx="0" fill="#9E7C4A"></rect>
+    <rect x="50" y="32" width="28" height="10" rx="0" fill="#171717" data-icon-fill="bookmark-edge"></rect>
   </g>
   </g>
 </svg>

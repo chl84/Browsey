@@ -2,6 +2,7 @@
   import { tick } from 'svelte'
   import { slide } from 'svelte/transition'
   import { iconPath } from '../utils'
+  import BrowseyIcon from '@/shared/icons/BrowseyIcon.svelte'
   import TextField from '../../../shared/ui/TextField.svelte'
 
   export let bookmarks: { label: string; path: string }[] = []
@@ -91,7 +92,7 @@
         }
       }}
     >
-      <img class="nav-icon" src={bookmarkIcon} alt="" />
+      <BrowseyIcon className="nav-icon" src={bookmarkIcon} />
       <span class="nav-label">{mark.label}</span>
       <span
         class="remove-bookmark"
@@ -218,7 +219,7 @@
     outline-offset: -1px;
   }
 
-  .nav-icon {
+  .nav :global(.nav-icon) {
     width: 18px;
     height: 18px;
     object-fit: contain;

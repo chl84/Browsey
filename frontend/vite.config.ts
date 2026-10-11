@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, searchForWorkspaceRoot } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { fileURLToPath, URL } from 'node:url'
 
@@ -25,6 +25,12 @@ export default defineConfig(({ mode }) => {
       host: '127.0.0.1',
       port: 5173,
       strictPort: true,
+      fs: {
+        allow: [
+          searchForWorkspaceRoot(fileURLToPath(new URL('.', import.meta.url))),
+          fileURLToPath(new URL('../resources/icons/scalable', import.meta.url)),
+        ],
+      },
     },
     preview: {
       port: 5173,

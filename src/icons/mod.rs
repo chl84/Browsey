@@ -74,10 +74,50 @@ mod tests {
     use super::*;
 
     #[test]
+    fn canonical_icons_render_natively_and_share_one_document_style() {
+        let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/icons/scalable");
+        let mut icons = 0;
+        let mut documents = 0;
+        for entry in std::fs::read_dir(directory).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|value| value.to_str()) != Some("svg") {
+                continue;
+            }
+            icons += 1;
+            let svg = std::fs::read_to_string(&path).unwrap();
+            let tree = resvg::usvg::Tree::from_str(
+                &svg,
+                &crate::svg_options::usvg_options_for_path(&path),
+            )
+            .unwrap();
+            let mut pixmap = resvg::tiny_skia::Pixmap::new(128, 128).unwrap();
+            resvg::render(
+                &tree,
+                resvg::tiny_skia::Transform::identity(),
+                &mut pixmap.as_mut(),
+            );
+            assert!(
+                pixmap.data().chunks_exact(4).any(|pixel| pixel[3] > 0),
+                "{path:?}"
+            );
+            if svg.contains("M28 14H76L100 38V114H28V14Z") {
+                documents += 1;
+                let pixel = pixmap.pixel(48, 26).unwrap();
+                assert_eq!(
+                    (pixel.red(), pixel.green(), pixel.blue(), pixel.alpha()),
+                    (236, 236, 238, 255),
+                    "document paper in {path:?}",
+                );
+                assert!(svg.contains("M76 14v24h24"), "document fold in {path:?}");
+            }
+        }
+        assert_eq!(icons, 43);
+        assert_eq!(documents, 21);
+    }
+
+    #[test]
     fn model_icon_assets_share_the_generic_document_and_match_the_frontend_id() {
         let resource = include_str!("../../resources/icons/scalable/model_3d_file.svg");
-        let public = include_str!("../../frontend/public/icons/scalable/browsey/model_3d_file.svg");
-        assert_eq!(resource, public);
         for shape in ["M28 14H76L100 38V114H28V14Z", "M76 14v24h24"] {
             assert!(include_str!("../../resources/icons/scalable/file.svg").contains(shape));
             assert!(resource.contains(shape));

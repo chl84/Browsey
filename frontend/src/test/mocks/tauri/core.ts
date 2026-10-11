@@ -33,6 +33,8 @@ type MockClipboardState = {
 
 type MockCloudCopy = { id: string; sourcePath: string; localPath: string; originalSize: number | null; originalModified: string | null; originalHash: string; createdAt: number; dirty: boolean; uploadedPath: string | null; saveStatus?: string; storageBytes?: number; cleanupBlockedReason?: string | null }
 type E2eMockControl = {
+  themeMode?: 'light' | 'dark' | 'system'
+  systemTheme?: Record<string, string> | null
   cloudFixture?: boolean
   cloudCopies?: MockCloudCopy[]
   cloudStatuses?: unknown[]
@@ -430,8 +432,9 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
     case 'load_density':
       return 'cozy' as T
     case 'load_theme_mode':
-      return 'dark' as T
+      return (control?.themeMode ?? 'dark') as T
     case 'load_system_theme':
+      if (control && 'systemTheme' in control) return control.systemTheme as T
       return {
         name: 'Nord',
         mode: 'dark',

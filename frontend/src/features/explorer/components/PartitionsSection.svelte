@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
   import { partitionIcon } from '../utils'
+  import BrowseyIcon from '@/shared/icons/BrowseyIcon.svelte'
   import { fullNameTooltip } from '../helpers/fullNameTooltip'
   import { partitionCapacity } from '../helpers/partitionCapacity'
   import type { Partition } from '../model/types'
@@ -50,7 +51,7 @@
             <path d="M8 5h4M9 15h2" />
           </svg>
         {:else}
-          <img class="nav-icon" src={partitionIcon(part)} alt="" />
+          <BrowseyIcon className="nav-icon" src={partitionIcon(part)} />
         {/if}
         <span class="nav-text">
           <span class="nav-label" use:fullNameTooltip={part.label}>
@@ -208,7 +209,7 @@
     box-shadow: none;
   }
 
-  .nav-icon {
+  .nav :global(.nav-icon) {
     width: 18px;
     height: 18px;
     object-fit: contain;

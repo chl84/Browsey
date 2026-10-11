@@ -2,29 +2,29 @@
   <g transform="translate(64 64) scale(1.1) translate(-64 -64)">
   <g transform="translate(0 -2)">
     <!-- Links (under nodes) -->
-    <path d="M38 46 L64 30 L90 46 L64 66 Z" fill="#94A3B8" opacity="0.55"></path>
-    <path d="M38 46 L38 86 L64 102 L64 66 Z" fill="#94A3B8" opacity="0.45"></path>
-    <path d="M90 46 L90 86 L64 102 L64 66 Z" fill="#94A3B8" opacity="0.45"></path>
+    <path d="M38 46 L64 30 L90 46 L64 66 Z" fill="#7e8085" data-icon-fill="neutral-link"></path>
+    <path d="M38 46 L38 86 L64 102 L64 66 Z" fill="#7e8085" data-icon-fill="neutral-link"></path>
+    <path d="M90 46 L90 86 L64 102 L64 66 Z" fill="#7e8085" data-icon-fill="neutral-link"></path>
 
     <!-- Center node -->
-    <circle cx="64" cy="66" r="16" fill="#9CA3AF"></circle>
-    <circle cx="64" cy="66" r="7" fill="#6B7280"></circle>
+    <circle cx="64" cy="66" r="16" fill="#4f5258" data-icon-fill="neutral"></circle>
+    <circle cx="64" cy="66" r="7" fill="#ffffff" data-icon-fill="neutral-detail"></circle>
 
     <!-- Top node -->
-    <circle cx="64" cy="30" r="14" fill="#9CA3AF"></circle>
-    <circle cx="64" cy="30" r="6" fill="#6B7280"></circle>
+    <circle cx="64" cy="30" r="14" fill="#4f5258" data-icon-fill="neutral"></circle>
+    <circle cx="64" cy="30" r="6" fill="#ffffff" data-icon-fill="neutral-detail"></circle>
 
     <!-- Left node -->
-    <circle cx="38" cy="46" r="14" fill="#9CA3AF"></circle>
-    <circle cx="38" cy="46" r="6" fill="#6B7280"></circle>
+    <circle cx="38" cy="46" r="14" fill="#4f5258" data-icon-fill="neutral"></circle>
+    <circle cx="38" cy="46" r="6" fill="#ffffff" data-icon-fill="neutral-detail"></circle>
 
     <!-- Right node -->
-    <circle cx="90" cy="46" r="14" fill="#9CA3AF"></circle>
-    <circle cx="90" cy="46" r="6" fill="#6B7280"></circle>
+    <circle cx="90" cy="46" r="14" fill="#4f5258" data-icon-fill="neutral"></circle>
+    <circle cx="90" cy="46" r="6" fill="#ffffff" data-icon-fill="neutral-detail"></circle>
 
     <!-- Bottom node -->
-    <circle cx="64" cy="102" r="14" fill="#9CA3AF"></circle>
-    <circle cx="64" cy="102" r="6" fill="#6B7280"></circle>
+    <circle cx="64" cy="102" r="14" fill="#4f5258" data-icon-fill="neutral"></circle>
+    <circle cx="64" cy="102" r="6" fill="#ffffff" data-icon-fill="neutral-detail"></circle>
   </g>
   </g>
 </svg>

@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { getHomeDirectory } from '../services/files.service'
   import { navIcon } from '../utils'
+  import BrowseyIcon from '@/shared/icons/BrowseyIcon.svelte'
   import ContextMenu from './ContextMenu.svelte'
 
   export let places: { label: string; path: string }[] = []
@@ -34,7 +35,7 @@
       <button class="nav" data-drop-path={place.path === '~' ? homeDropPath : place.path} type="button" on:click={() => onSelect(place.label, place.path)}
         on:contextmenu={(event) => openMenu(event, place.path)}
         on:keydown={(event) => openMenu(event, place.path)}>
-        <img class="nav-icon" src={navIcon(place.label)} alt="" />
+        <BrowseyIcon className="nav-icon" src={navIcon(place.label)} />
         <span class="nav-label">{place.label}</span>
       </button>
     {/each}
@@ -104,7 +105,7 @@
     box-shadow: none;
   }
 
-  .nav-icon {
+  .nav :global(.nav-icon) {
     width: 18px;
     height: 18px;
     object-fit: contain;

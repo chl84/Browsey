@@ -1,6 +1,7 @@
 <script lang="ts">
   import { iconPath as assetIconPath } from '../utils'
   import { iconPath as iconPathById } from '../helpers/icons'
+  import BrowseyIcon from '@/shared/icons/BrowseyIcon.svelte'
   import { fullNameTooltip } from '../helpers/fullNameTooltip'
   import type { Entry } from '../model/types'
 
@@ -68,19 +69,18 @@
   on:drop|preventDefault={onDropRow}
 >
   <div class="col-name">
-    <img class="icon" src={iconPathById(entry.iconId)} alt="" />
+    <BrowseyIcon className="icon" src={iconPathById(entry.iconId)} />
     <span class="name">
       {displayName(entry)}
       {#if entry.readDenied}
-        <img
-          class="ro-icon"
-          src={lockIcon}
-          alt="No read permission"
-          use:fullNameTooltip={'No read permission'}
-        />
+        <span class="ro-icon" use:fullNameTooltip={'No read permission'}>
+          <BrowseyIcon src={lockIcon} label="No read permission" />
+        </span>
       {/if}
       {#if entry.readOnly}
-        <img class="ro-icon" src={readOnlyIcon} alt="Read-only" use:fullNameTooltip={'Read-only'} />
+        <span class="ro-icon" use:fullNameTooltip={'Read-only'}>
+          <BrowseyIcon src={readOnlyIcon} label="Read-only" />
+        </span>
       {/if}
     </span>
   </div>
@@ -219,7 +219,7 @@
     min-width: 200px;
   }
 
-  .col-name .icon {
+  .col-name :global(.icon) {
     width: var(--list-icon-size, var(--icon-size));
     height: var(--list-icon-size, var(--icon-size));
     object-fit: contain;
@@ -237,7 +237,7 @@
   .ro-icon {
     width: 18px;
     height: 18px;
-    opacity: 0.5;
+    display: inline-block;
     flex-shrink: 0;
   }
 
@@ -332,10 +332,4 @@
     opacity: 1;
   }
 
-  .icon {
-    width: 20px;
-    height: 20px;
-    object-fit: contain;
-    display: inline-block;
-  }
 </style>
