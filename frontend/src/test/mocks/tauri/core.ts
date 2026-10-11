@@ -676,6 +676,17 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
     case 'open_entry':
     case 'open_cloud_entry':
       return undefined as T
+    case 'create_folder': {
+      const base = String(args?.path)
+      const name = String(args?.name)
+      const path = `${base}/${name}`
+      const entries = control?.listingSnapshot?.current === base
+        ? control.listingSnapshot.entries : FILE_TREE[base]
+      if (!entries || entries.some(entry => entry.path === path)) throw new Error('Cannot create folder')
+      entries.push({ name, path, kind: 'dir', iconId: 4 })
+      FILE_TREE[path] = []
+      return path as T
+    }
     default:
       return null as T
   }

@@ -372,7 +372,25 @@ export const useExplorerInputHandlers = (deps: Deps) => {
   }
 
   const handleRowsKeydownCombined = (event: KeyboardEvent) => {
+    if (deps.isBlockingModalOpen() || deps.isEditableTarget(event.target)) return
     if (deps.getViewMode() === 'list') {
+      // Individual rows own Enter. The collection needs its own activation
+      // when focus returns here after a dialog or a virtualized row disappears.
+      if (event.key.toLowerCase() === 'enter' && event.target === deps.getRowsEl()) {
+        if (event.defaultPrevented) return
+        const list = deps.getFilteredEntries()
+        const selected = deps.getSelected()
+        const index = deps.getCaretIndex() ?? deps.getAnchorIndex()
+        const currentEntry = index === null ? undefined : list[index]
+        const entry = currentEntry && selected.has(currentEntry.path)
+          ? currentEntry : list.find(item => selected.has(item.path))
+        if (entry) {
+          event.preventDefault()
+          event.stopPropagation()
+          void handleOpenEntry(entry)
+        }
+        return
+      }
       deps.getRowsKeydownHandler()?.(event)
     } else {
       handleGridKeydown(event)

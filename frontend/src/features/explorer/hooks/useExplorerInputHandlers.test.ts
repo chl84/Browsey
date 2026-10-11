@@ -1,8 +1,12 @@
 import { mount, tick, unmount } from 'svelte'
+import { get } from 'svelte/store'
 import { expect, it, vi } from 'vitest'
 import PropertiesModal from '../components/PropertiesModal.svelte'
+import FileRow from '../components/FileRow.svelte'
+import type { Entry } from '../model/types'
 import { useExplorerInputHandlers } from './useExplorerInputHandlers'
 import { createSelectionBox } from '../selection/createSelectionBox'
+import { createListState } from '../state/list.store'
 
 vi.mock('@/shared/lib/tauri', () => ({ invoke: vi.fn(), convertFileSrc: vi.fn() }))
 
@@ -72,6 +76,119 @@ const makeDeps = (onClose: () => void): Parameters<typeof useExplorerInputHandle
   closeContextMenu: vi.fn(),
   isBlankMenuOpen: () => false,
   closeBlankContextMenu: vi.fn(),
+})
+
+const listingHarness = (view: 'list' | 'grid' = 'list') => {
+  const rows = document.createElement('div')
+  rows.tabIndex = 0
+  document.body.append(rows)
+  const old: Entry = { name: 'old.txt', path: '/owned/old.txt', kind: 'file', iconId: 0 }
+  const created: Entry = { name: 'New folder', path: '/owned/New folder', kind: 'dir', iconId: 4 }
+  const list = [old, created]
+  const state = createListState()
+  state.selected.set(new Set([created.path]))
+  const deps = makeDeps(vi.fn())
+  Object.assign(deps, {
+    getViewMode: () => view,
+    getRowsEl: () => rows,
+    getFilteredEntries: () => list,
+    getSelected: () => get(state.selected),
+    getRowsKeydownHandler: () => state.handleRowsKeydown(list),
+    isBlockingModalOpen: () => false,
+    isEditableTarget: (target: EventTarget | null) => target instanceof HTMLInputElement,
+  })
+  const handlers = useExplorerInputHandlers(deps)
+  rows.addEventListener('keydown', handlers.handleRowsKeydownCombined)
+  document.addEventListener('keydown', handlers.handleDocumentKeydown, true)
+  const enter = () => {
+    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    document.activeElement!.dispatchEvent(event)
+    return event
+  }
+  const cleanup = () => {
+    document.removeEventListener('keydown', handlers.handleDocumentKeydown, true)
+    rows.remove()
+  }
+  return { rows, list, old, created, state, deps, handlers, enter, cleanup }
+}
+
+it.each(['list', 'grid'] as const)('Enter on the %s collection opens the newly selected folder through normal navigation', async view => {
+  const h = listingHarness(view)
+  try {
+    h.rows.focus()
+    expect(h.enter().defaultPrevented).toBe(true)
+    await Promise.resolve()
+    expect(h.deps.loadDir).toHaveBeenCalledExactlyOnceWith(h.created.path)
+    expect(h.deps.open).not.toHaveBeenCalled()
+  } finally { h.cleanup() }
+})
+
+it.each([{ paths: [] }, { paths: ['/owned/missing'] }])('Enter on the list never opens an unrelated item for an empty/stale selection ($paths)', ({ paths }) => {
+  const h = listingHarness()
+  try {
+    h.state.selected.set(new Set(paths))
+    h.deps.getCaretIndex = () => 0
+    h.rows.focus()
+    h.enter()
+    expect(h.deps.loadDir).not.toHaveBeenCalled()
+    expect(h.deps.open).not.toHaveBeenCalled()
+  } finally { h.cleanup() }
+})
+
+it('Enter on the list ignores a stale caret and opens the selected file through normal file opening', () => {
+  const h = listingHarness()
+  try {
+    h.state.selected.set(new Set([h.old.path]))
+    h.deps.getCaretIndex = () => 1
+    h.rows.focus()
+    h.enter()
+    expect(h.deps.open).toHaveBeenCalledExactlyOnceWith(h.old)
+    expect(h.deps.loadDir).not.toHaveBeenCalled()
+  } finally { h.cleanup() }
+})
+
+it('a focused row still owns Enter and opens exactly once, independently of collection selection', async () => {
+  const h = listingHarness()
+  const component = mount(FileRow, {
+    target: h.rows, props: { entry: h.old, onOpen: h.handlers.handleOpenEntry },
+  })
+  try {
+    await tick()
+    h.rows.querySelector<HTMLButtonElement>('.row')!.focus()
+    h.enter()
+    expect(h.deps.open).toHaveBeenCalledExactlyOnceWith(h.old)
+    expect(h.deps.loadDir).not.toHaveBeenCalled()
+  } finally { await unmount(component); h.cleanup() }
+})
+
+it('a modal or an editable child keeps Enter out of collection navigation', () => {
+  const h = listingHarness()
+  try {
+    h.deps.isBlockingModalOpen = () => true
+    h.rows.focus()
+    h.enter()
+    h.deps.isBlockingModalOpen = () => false
+    const input = document.createElement('input')
+    h.rows.append(input); input.focus()
+    h.enter()
+    expect(h.deps.loadDir).not.toHaveBeenCalled()
+    expect(h.deps.open).not.toHaveBeenCalled()
+  } finally { h.cleanup() }
+})
+
+it('ArrowUp from outside the list still transfers focus and navigates through the document handler', () => {
+  const h = listingHarness()
+  const button = document.createElement('button')
+  document.body.append(button)
+  try {
+    h.state.caretIndex.set(1)
+    h.state.anchorIndex.set(1)
+    button.focus()
+    button.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }))
+    expect(document.activeElement).toBe(h.rows)
+    expect(get(h.state.selected)).toEqual(new Set([h.old.path]))
+    expect(get(h.state.caretIndex)).toBe(0)
+  } finally { button.remove(); h.cleanup() }
 })
 
 it('a context gesture breaks the double-click sequence while preserving the next genuine double click', () => {

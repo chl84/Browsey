@@ -1459,8 +1459,16 @@
   }
 
   const confirmNewFolder = async () => {
+    const base = get(current)
     const created = await newFolderModal.confirm(newFolderName)
+    if (!created || get(current) !== base) return
     fileActions.selectCreated(created)
+    await tick()
+    // Focus the stable collection; the new row may still await cloud refresh
+    // or be outside the virtualized viewport. Enter opens the selected path.
+    if (get(current) === base && get(selected).has(created) && !get(anyModalOpenStore)) {
+      rowsElRef?.focus()
+    }
   }
 
   const confirmNewFile = async () => {

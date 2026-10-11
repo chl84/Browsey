@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Restore file-list/grid focus after creating a folder and let Enter on the
+  file-list collection open its selected item. Preserve individual row
+  activation, modal focus and navigation during asynchronous creation.
+
 - Use the picture icon for PSD files in local and cloud listings. Generate
   thumbnails from embedded JPEG/RGB previews through the existing thumbnail
   cache, scaling and cancellation flow. Read bounded preview data rather than
