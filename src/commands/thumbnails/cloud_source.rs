@@ -183,6 +183,7 @@ fn is_cloud_thumb_extension_allowed(ext: &str) -> bool {
             | "heif"
             | "svg"
             | "pdf"
+            | "psd"
     )
 }
 
@@ -269,6 +270,28 @@ mod tests {
         let err = validate_cloud_thumb_size(Some(MAX_FILE_BYTES + 1)).expect_err("should fail");
         assert_eq!(err.code_str(), "invalid_input");
         assert!(err.to_string().to_lowercase().contains("too large"));
+    }
+
+    #[test]
+    fn cloud_psd_previews_reuse_the_enabled_and_download_size_guards() {
+        let settings = ThumbnailRuntimeSettings {
+            cloud_thumbs: true,
+            ..ThumbnailRuntimeSettings::default()
+        };
+        validate_cloud_thumb_extension(&settings, "psd").unwrap();
+        validate_cloud_thumb_size(Some(MAX_FILE_BYTES)).unwrap();
+        assert_eq!(
+            validate_cloud_thumb_size(Some(MAX_FILE_BYTES + 1))
+                .unwrap_err()
+                .code(),
+            ThumbnailErrorCode::InvalidInput
+        );
+        assert_eq!(
+            validate_cloud_thumb_extension(&ThumbnailRuntimeSettings::default(), "psd")
+                .unwrap_err()
+                .code(),
+            ThumbnailErrorCode::InvalidInput
+        );
     }
 
     #[test]

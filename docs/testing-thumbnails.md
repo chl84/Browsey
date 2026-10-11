@@ -23,6 +23,19 @@ requests. They do not modify or delete phone files. Coverage includes:
 - metadata validation without opening original file contents, retaining symlink
   rejection.
 
+PSD fixtures cover embedded JPEG and raw RGB previews, legacy BGR channel order,
+resource padding and modern-preview precedence, malformed/truncated resources,
+preview allocation limits, cancellation/deadlines, skipping unrelated metadata,
+and shared PNG generation/cache dimensions for a large sparse local PSD.
+Composite fallback fixtures cover 8/16-bit RGB and grayscale, raw and PackBits
+RLE data, explicit transparency versus auxiliary masks, malformed/truncated
+rows, layer-section bounds and pixel-allocation limits. An optional read-only
+source check generates a PNG from an explicitly supplied real PSD:
+
+```sh
+BROWSEY_PSD_TEST_FILE=/path/to/owned.psd cargo test --locked supplied_psd_generates_a_real_thumbnail -- --ignored --nocapture
+```
+
 The synthetic JPEG test prints cold generation and warm cache-lookup timings.
 These are diagnostic samples, not a before/after benchmark or an MTP speed claim.
 
@@ -75,6 +88,23 @@ The cache is byte-budgeted (at least 4 KiB charged per entry), not capped at 2,0
 files. Cache-file mtime tracks use, coalesced to once per minute. Trimming runs in
 the background periodically; the budget is a soft limit during active generation.
 New images are published by rename only after generation has completed.
+
+PSD thumbnails use the embedded Photoshop preview (resource 1036, or legacy
+resource 1033 when the modern preview is absent). JPEG and raw RGB previews are
+supported. When embedded previews are absent, the saved composite bitmap is
+decoded for 8/16-bit RGB or grayscale PSDs with raw or RLE compression. Layers
+are skipped rather than rendered. The composite must fit within 64 MiB of RGBA
+pixels and the existing 20,000-pixel per-side limit. Extra mask channels are
+not interpreted as transparency; a negative primary layer count explicitly
+identifies a composite transparency channel. ZIP compression, other color
+modes and 32-bit composites remain unsupported. Missing, unsupported or invalid
+image data leave the picture icon visible. Embedded preview resolution depends
+on what the file contains. Local PSDs can exceed the normal
+50 MiB image-file limit because unrelated sections are skipped with seeks;
+encoded preview data and decoded row storage are each limited to 16 MiB, with
+preview dimensions capped at 4096 per side. Cloud PSDs use the existing full-file
+materialization flow and retain its known-size and 50 MiB download guards. The
+existing cloud-thumbnail setting also controls PSDs. PSB is not supported.
 
 Requests have a total budget of 10 s locally, 12 s on GVfs and 30 s for cloud
 sources, including preparation. Raster decoders also retain their shorter codec

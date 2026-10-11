@@ -72,6 +72,36 @@ describe('createThumbnailLoader cloud eligibility', () => {
   })
   afterEach(() => vi.useRealTimers())
 
+  it('loads local and enabled cloud PSD previews through the shared thumbnail command', async () => {
+    const { createThumbnailLoader } = await import('./thumbnailLoader')
+    const loader = createThumbnailLoader({ allowCloudThumbs: true })
+    for (const path of ['/mock/image.PSD', 'rclone://Onedrive/image.psd']) {
+      const node = createNode()
+      loader.observe(node, path)
+      observers[0].trigger(node)
+    }
+    await vi.waitFor(() => expect(get(loader).size).toBe(2))
+    expect(invokeMock).toHaveBeenCalledWith('get_thumbnail', expect.objectContaining({ path: '/mock/image.PSD' }))
+    expect(invokeMock).toHaveBeenCalledWith('get_thumbnail', expect.objectContaining({ path: 'rclone://Onedrive/image.psd' }))
+    loader.destroy()
+  })
+
+  it('keeps the fallback icon for missing PSD previews and respects disabled cloud thumbnails', async () => {
+    invokeMock.mockRejectedValue({ code: 'unsupported_format', message: 'PSD has no embedded preview' })
+    const { createThumbnailLoader } = await import('./thumbnailLoader')
+    const loader = createThumbnailLoader({ allowCloudThumbs: false })
+    for (const path of ['/mock/image.psd', 'rclone://Onedrive/image.psd']) {
+      const node = createNode()
+      loader.observe(node, path)
+      observers[0].trigger(node)
+    }
+    await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1))
+    await Promise.resolve()
+    expect(invokeMock).toHaveBeenCalledWith('get_thumbnail', expect.objectContaining({ path: '/mock/image.psd' }))
+    expect(get(loader).size).toBe(0)
+    loader.destroy()
+  })
+
   it('never queues unsupported local files or codecs not built into Browsey', async () => {
     const { createThumbnailLoader } = await import('./thumbnailLoader')
     const loader = createThumbnailLoader()

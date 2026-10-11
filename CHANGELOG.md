@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Use the picture icon for PSD files in local and cloud listings. Generate
+  thumbnails from embedded JPEG/RGB previews through the existing thumbnail
+  cache, scaling and cancellation flow. Read bounded preview data rather than
+  entire local PSDs. Fall back to the saved composite for 8/16-bit RGB/grayscale
+  files with raw/RLE compression, with bounded pixel allocation and no layer
+  rendering. Retain the cloud download size guard and the picture icon when
+  neither preview route is supported.
+
 - Follow bounded HTTPS redirect chains when opening OneDrive files, without
   forwarding OAuth credentials to download links. Preserve working-copy version
   checks and log opening failures without exposing signed download URLs.

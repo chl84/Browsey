@@ -16,10 +16,10 @@ type Observation = { path: string; near: boolean; visible: boolean }
 type Job = { id: string; epoch: number; video: boolean; dimension: number }
 const imageExtensions = new Set([
   'png', 'jpg', 'jpeg', 'jpe', 'jfif', 'gif', 'bmp', 'ico', 'pnm', 'pbm', 'pgm', 'ppm',
-  'pam', 'tga', 'webp', 'tif', 'tiff', 'hdr', 'exr', 'dds', 'svg', 'pdf',
+  'pam', 'tga', 'webp', 'tif', 'tiff', 'hdr', 'exr', 'dds', 'svg', 'pdf', 'psd',
 ])
 const videoExtensions = new Set(['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'])
-const cloudExtensions = new Set(['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'tif', 'tiff', 'svg', 'pdf'])
+const cloudExtensions = new Set(['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'tif', 'tiff', 'svg', 'pdf', 'psd'])
 
 export function createThumbnailLoader(opts: Options = {}) {
   const maxConcurrent = Math.max(1, opts.maxConcurrent ?? 4)

@@ -83,7 +83,9 @@ fn file_icon_id(name_lc: &str, ext: &str, mime: Option<&str>) -> IconId {
         "md" | "txt" | "lock" => TEXTFILE,
         // Media
         "svg" | "svgz" | "ai" | "eps" => VECTOR_FILE,
-        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "tiff" | "avif" | "heic" => PICTURE_FILE,
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "tiff" | "avif" | "heic" | "psd" => {
+            PICTURE_FILE
+        }
         "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "opus" => AUDIO_FILE,
         "mp4" | "mkv" | "mov" | "avi" | "wmv" | "webm" | "flv" | "m4v" => VIDEO_FILE,
         // Documents

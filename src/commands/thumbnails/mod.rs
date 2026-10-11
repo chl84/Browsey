@@ -33,6 +33,7 @@ mod control;
 mod error;
 #[cfg(all(test, target_os = "linux"))]
 mod measurements;
+mod thumbnails_psd;
 
 use crate::db;
 use crate::errors::api_error::ApiResult;
@@ -185,6 +186,7 @@ fn load_runtime_settings_from_db() -> ThumbnailRuntimeSettings {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(super) enum ThumbKind {
     Image,
+    Psd,
     Svg,
     Pdf,
     Video,
@@ -395,13 +397,7 @@ fn get_thumbnail_sync(
         (target, meta, kind, ffmpeg_override, key)
     };
     control.check()?;
-    // Video thumbnails seek to one frame; total file size does not bound decode cost.
-    if !matches!(kind, ThumbKind::Video) && meta.len() > MAX_FILE_BYTES {
-        return Err(ThumbnailError::from_external_message(format!(
-            "File too large for thumbnail (>{} MB)",
-            MAX_FILE_BYTES / 1024 / 1024
-        )));
-    }
+    validate_source_size(kind, meta.len())?;
     let cache_path = cache_dir.join(format!("{key}.png"));
     if let Some(response) = cached_response(&cache_path) {
         return Ok(response);
@@ -441,6 +437,20 @@ fn cached_response(path: &Path) -> Option<ThumbnailResponse> {
         height,
         cached: true,
     })
+}
+
+fn validate_source_size(kind: ThumbKind, size: u64) -> ThumbnailResult<()> {
+    // Videos seek to one frame; PSDs seek to a separately bounded preview.
+    if !matches!(kind, ThumbKind::Video | ThumbKind::Psd) && size > MAX_FILE_BYTES {
+        return Err(ThumbnailError::new(
+            ThumbnailErrorCode::InvalidInput,
+            format!(
+                "File too large for thumbnail (>{} MB)",
+                MAX_FILE_BYTES / 1024 / 1024
+            ),
+        ));
+    }
+    Ok(())
 }
 
 fn resolve_local_thumbnail_source(
@@ -605,62 +615,17 @@ fn generate_thumbnail(
         });
     }
 
-    let reader = ImageReader::open(path)
-        .map_err(|e| ThumbnailError::from_external_message(format!("Open failed: {e}")))?
-        .with_guessed_format()
-        .map_err(|e| {
-            ThumbnailError::from_external_message(format!("Failed to guess format: {e}"))
-        })?;
-
-    // format allowlist (image crate supported set)
-    let fmt = reader
-        .format()
-        .ok_or_else(|| ThumbnailError::from_external_message("Unsupported image format"))?;
-    match fmt {
-        ImageFormat::Png
-        | ImageFormat::Jpeg
-        | ImageFormat::Gif
-        | ImageFormat::Bmp
-        | ImageFormat::Ico
-        | ImageFormat::Pnm
-        | ImageFormat::Tiff
-        | ImageFormat::Tga
-        | ImageFormat::WebP
-        | ImageFormat::Hdr
-        | ImageFormat::OpenExr
-        | ImageFormat::Dds => {}
-        _ => {
-            return Err(ThumbnailError::from_external_message(
-                "Unsupported image format",
-            ))
-        }
-    }
-
-    let timeout = decode_timeout_for_path(path);
-    let (img, orientation) = if fmt == ImageFormat::Jpeg {
-        match decode_jpeg_scaled_with_timeout(reader.into_inner(), max_dim, timeout, control) {
-            Ok(img) => {
-                thumb_log(&format!("jpeg scaled decode used: {}", path.display()));
-                img
-            }
-            Err(err) => {
-                if err.code() != ThumbnailErrorCode::UnsupportedFormat {
-                    return Err(err);
-                }
-                control.check()?;
-                thumb_log(&format!(
-                    "jpeg scaled decode fallback: source={} reason={}",
-                    path.display(),
-                    err
-                ));
-                let reader = ImageReader::open(path).map_err(|e| {
-                    ThumbnailError::from_external_message(format!("Open failed: {e}"))
-                })?;
-                decode_with_timeout(reader, fmt, timeout, control)?
-            }
-        }
+    let (img, orientation) = if matches!(thumb_kind(path), ThumbKind::Psd) {
+        let decode_control = control::Control::new(
+            control.cancelled.clone(),
+            control.remaining(decode_timeout_for_path(path))?,
+        );
+        (
+            thumbnails_psd::decode_psd_preview(path, &decode_control)?,
+            None,
+        )
     } else {
-        decode_with_timeout(reader, fmt, timeout, control)?
+        decode_raster_thumbnail(path, max_dim, control)?
     };
 
     let (src_w, src_h) = img.dimensions();
@@ -703,6 +668,71 @@ fn generate_thumbnail(
         height: h,
         cached: false,
     })
+}
+
+fn decode_raster_thumbnail(
+    path: &Path,
+    max_dim: u32,
+    control: &control::Control,
+) -> ThumbnailResult<(DynamicImage, Option<Orientation>)> {
+    let reader = ImageReader::open(path)
+        .map_err(|e| ThumbnailError::from_external_message(format!("Open failed: {e}")))?
+        .with_guessed_format()
+        .map_err(|e| {
+            ThumbnailError::from_external_message(format!("Failed to guess format: {e}"))
+        })?;
+
+    // format allowlist (image crate supported set)
+    let fmt = reader
+        .format()
+        .ok_or_else(|| ThumbnailError::from_external_message("Unsupported image format"))?;
+    match fmt {
+        ImageFormat::Png
+        | ImageFormat::Jpeg
+        | ImageFormat::Gif
+        | ImageFormat::Bmp
+        | ImageFormat::Ico
+        | ImageFormat::Pnm
+        | ImageFormat::Tiff
+        | ImageFormat::Tga
+        | ImageFormat::WebP
+        | ImageFormat::Hdr
+        | ImageFormat::OpenExr
+        | ImageFormat::Dds => {}
+        _ => {
+            return Err(ThumbnailError::from_external_message(
+                "Unsupported image format",
+            ))
+        }
+    }
+
+    let timeout = decode_timeout_for_path(path);
+    let decoded = if fmt == ImageFormat::Jpeg {
+        match decode_jpeg_scaled_with_timeout(reader.into_inner(), max_dim, timeout, control) {
+            Ok(img) => {
+                thumb_log(&format!("jpeg scaled decode used: {}", path.display()));
+                img
+            }
+            Err(err) => {
+                if err.code() != ThumbnailErrorCode::UnsupportedFormat {
+                    return Err(err);
+                }
+                control.check()?;
+                thumb_log(&format!(
+                    "jpeg scaled decode fallback: source={} reason={}",
+                    path.display(),
+                    err
+                ));
+                let reader = ImageReader::open(path).map_err(|e| {
+                    ThumbnailError::from_external_message(format!("Open failed: {e}"))
+                })?;
+                decode_with_timeout(reader, fmt, timeout, control)?
+            }
+        }
+    } else {
+        decode_with_timeout(reader, fmt, timeout, control)?
+    };
+    Ok(decoded)
 }
 
 pub(super) fn thumb_log(msg: &str) {
@@ -934,6 +964,7 @@ fn thumb_kind(path: &Path) -> ThumbKind {
         .as_deref()
     {
         Some("pdf") => ThumbKind::Pdf,
+        Some("psd") => ThumbKind::Psd,
         Some("svg") => ThumbKind::Svg,
         Some("mp4") | Some("mov") | Some("m4v") | Some("webm") | Some("mkv") | Some("avi") => {
             ThumbKind::Video
