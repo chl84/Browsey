@@ -107,7 +107,12 @@ mod tests {
                 &mut pixmap.as_mut(),
             );
             assert!(
-                pixmap.data().chunks_exact(4).any(|pixel| pixel[3] > 0),
+                pixmap
+                    .data()
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .any(|pixel| pixel[3] > 0),
                 "{path:?}"
             );
             if svg.contains("M28 14H76L100 38V114H28V14Z") {
