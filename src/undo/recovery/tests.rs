@@ -519,6 +519,33 @@ fn recovery_holds_session_lock_through_streaming_and_verification() {
     fixture.restore(&row, None).unwrap();
 }
 
+#[cfg(unix)]
+#[test]
+fn dropping_session_lock_releases_it_even_with_a_duplicated_descriptor() {
+    let fixture = BackupFixture::new(false);
+    let lock = lock_session(&fixture.base, "session-fixture")
+        .unwrap()
+        .unwrap();
+    // Model the shared open-file description inherited by a concurrent fork.
+    // Closing just the parent's descriptor must not leave recovery blocked.
+    let inherited = lock.file.as_ref().unwrap().try_clone().unwrap();
+    assert!(lock_session(&fixture.base, "session-fixture")
+        .unwrap()
+        .is_none());
+    drop(lock);
+    let next = lock_session(&fixture.base, "session-fixture")
+        .unwrap()
+        .expect("the completed operation must release its session lock");
+    // Closing the old duplicate must not release a later operation's lock.
+    drop(inherited);
+    assert!(lock_session(&fixture.base, "session-fixture")
+        .unwrap()
+        .is_none());
+    drop(next);
+    let row = fixture.list().entries.remove(0);
+    fixture.restore(&row, None).unwrap();
+}
+
 #[test]
 fn rejects_invalid_references_stale_rows_and_destinations_inside_backup_storage() {
     let fixture = BackupFixture::new(false);
@@ -830,6 +857,11 @@ fn completed_current_session_image_can_be_recovered_without_releasing_the_lifeti
         "{}.lock",
         owner.directory.file_name().unwrap().to_str().unwrap()
     ));
+    let probe = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .unwrap();
     let _scope = Scope::new(move |_, _, phase, _| {
         if matches!(phase, Phase::Write | Phase::Readback) {
             let other = OpenOptions::new().read(true).write(true).open(&lock_path)?;
@@ -841,6 +873,10 @@ fn completed_current_session_image_can_be_recovered_without_releasing_the_lifeti
         Ok(())
     });
     let target = fixture.restore(row).unwrap();
+    assert!(
+        probe.try_lock().is_err(),
+        "the registry lock must survive the completed recovery guard"
+    );
     assert_eq!(fs::read(&target).unwrap(), [9; 32 * 1024]);
     assert_eq!(fs::read(&fixture.source).unwrap(), [9; 32 * 1024]);
 }
