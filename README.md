@@ -24,8 +24,10 @@ Downloads: [Browsey 1.0.6](https://github.com/chl84/Browsey/releases/tag/v1.0.6)
 
 ## Screenshots
 
-![Browsey showing a Fedora workspace](resources/01_screenshot_browsey_fedora.png)
-![Browsey in grid view with thumbnails](resources/02_screenshot_browsey_fedora.png)
+![Browsey in light mode with a detailed file list](resources/01_screenshot_browsey_fedora.png)
+![Browsey in dark mode with gallery thumbnails](resources/02_screenshot_browsey_fedora.png)
+
+Screenshots show generated demo files.
 
 ## Status
 
