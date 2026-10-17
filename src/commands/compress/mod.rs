@@ -97,8 +97,8 @@ fn current_millis() -> u64 {
 fn add_path_to_zip(
     zip: &mut ZipWriter<BufWriter<File>>,
     entry: &EntryMeta,
-    deflated_opts: &FileOptions<'_, ()>,
-    stored_opts: &FileOptions<'_, ()>,
+    deflated_opts: &FileOptions<'_, '_, ()>,
+    stored_opts: &FileOptions<'_, '_, ()>,
     progress: Option<&ProgressEmitter>,
     cancel: Option<&AtomicBool>,
     buf: &mut [u8],
@@ -156,7 +156,10 @@ fn open_regular_input(path: &Path) -> io::Result<File> {
     crate::fs_utils::open_regular_file_nofollow(path)
 }
 
-fn with_entry_metadata<'a>(base: FileOptions<'a, ()>, entry: &EntryMeta) -> FileOptions<'a, ()> {
+fn with_entry_metadata<'k, 'n>(
+    base: FileOptions<'k, 'n, ()>,
+    entry: &EntryMeta,
+) -> FileOptions<'k, 'n, ()> {
     let mut opts = base;
     if let Some(mode) = entry.mode {
         opts = opts.unix_permissions(mode);

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Update ZIP to 9.0.4 to resolve RUSTSEC-2026-0367, RUSTSEC-2026-0368 and
+  RUSTSEC-2026-0369 concerning extraction permissions and symbolic links.
+
 - Explicitly release temporary backup-session locks after inspection, recovery
   and deletion so inherited file descriptors cannot leave completed operations
   appearing busy. Preserve the lifetime locks protecting active sessions.
