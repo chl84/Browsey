@@ -73,6 +73,12 @@ checker above before using the helper. A compatible update can still change
 behaviour, add indirect dependencies or increase compiler requirements, so review
 the lockfile diff and run the full suite before merging/installing.
 
+## ZIP security update (2026-10-17)
+
+ZIP is now 9.0.4 to address RUSTSEC-2026-0367, RUSTSEC-2026-0368 and
+RUSTSEC-2026-0369. The writer options and fallible filename access use the ZIP 9
+API. Extraction continues through Browsey's guarded per-entry copy path.
+
 ## Verified upgrade baseline (2026-09-30)
 
 - Tauri core/API/CLI 2.12.0 and tauri-build 2.7.0; GTK3/GIO 0.18 retained.
