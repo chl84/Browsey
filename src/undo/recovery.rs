@@ -59,12 +59,23 @@ impl ScanBudget {
 // Keep the sibling lock open and locked through the whole copy. Startup cleanup
 // in any Browsey process must acquire this same lock before removing a session.
 pub(super) struct SessionLock {
-    _file: Option<File>,
+    file: Option<File>,
     pub(super) current: Option<super::backup::OwnedSession>,
     pub(super) directory: PathBuf,
     identity: FileIdentity,
     pub(super) lock_path: PathBuf,
     pub(super) lock_identity: FileIdentity,
+}
+impl Drop for SessionLock {
+    fn drop(&mut self) {
+        if let Some(file) = &self.file {
+            // Closing alone can leave flock held by a descriptor inherited by
+            // a concurrent fork. Release this operation's lock explicitly.
+            // Current-session guards have no file: their registry owns the
+            // lifetime lock, which must remain held.
+            let _ = file.unlock();
+        }
+    }
 }
 impl SessionLock {
     pub(super) fn verify(&self) -> UndoResult<()> {
@@ -124,7 +135,7 @@ pub(super) fn lock_session(base: &Path, name: &str) -> UndoResult<Option<Session
     match file.try_lock() {
         Ok(()) => {
             let lock = SessionLock {
-                _file: Some(file),
+                file: Some(file),
                 current: None,
                 directory,
                 identity,
@@ -144,7 +155,7 @@ pub(super) fn lock_session(base: &Path, name: &str) -> UndoResult<Option<Session
                 return Err(UndoError::snapshot_mismatch(&directory));
             }
             let lock = SessionLock {
-                _file: None,
+                file: None,
                 current: Some(current),
                 directory,
                 identity,

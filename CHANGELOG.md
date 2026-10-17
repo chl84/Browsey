@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Explicitly release temporary backup-session locks after inspection, recovery
+  and deletion so inherited file descriptors cannot leave completed operations
+  appearing busy. Preserve the lifetime locks protecting active sessions.
+
 - Recognize temp, backup, archive, development/source, configuration, cache,
   fonts, books, games and screenshots folders, shared/share aliases and Norwegian
   names for standard user folders. Generate paired file/folder glyphs from one
