@@ -69,7 +69,7 @@ fn aes_zip_roundtrip_protects_empty_and_nonempty_files() {
             entry.read_to_end(&mut bytes).unwrap();
             assert_eq!(
                 bytes,
-                match entry.name() {
+                match entry.name().unwrap().as_ref() {
                     "folder/empty" => b"".as_slice(),
                     "folder/link" => b"secret.txt".as_slice(),
                     _ => b"secret content".as_slice(),
