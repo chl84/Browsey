@@ -41,7 +41,7 @@ mime_guess = "2.0.5"
 mime = "0.3"
 shell-words = "1.1.1"
 walkdir = "2.5.0"
-zip = { version = "8.6.0", default-features = false, features = ["deflate", "aes-crypto"] }
+zip = { version = "9.0.4", default-features = false, features = ["deflate", "aes-crypto"] }
 zeroize = "1"
 # Decode rclone's existing WebDAV password format only for cloud edit writeback.
 aes = { version = "0.9.3", features = ["zeroize"] }

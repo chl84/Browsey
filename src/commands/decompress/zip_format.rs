@@ -49,7 +49,7 @@ pub(super) fn single_root_in_zip(
             )
             .into());
         }
-        let raw_name = entry.name().to_string();
+        let raw_name = entry.name().map_err(zip_error)?.into_owned();
         let enclosed = entry.enclosed_name().ok_or_else(|| {
             debug_log(&format!("Skipping zip entry with unsafe name: {raw_name}"));
             "skipped".to_string()
@@ -108,7 +108,7 @@ pub(super) fn extract_zip(
         budget
             .reserve_entry(1)
             .map_err(|e| map_copy_err("Extraction entry cap exceeded", e))?;
-        let raw_name = entry.name().to_string();
+        let raw_name = entry.name().map_err(zip_error)?.into_owned();
         let enclosed = entry.enclosed_name().ok_or_else(|| {
             stats.skip_unsupported(&raw_name, "path traversal");
             "skipped".to_string()
