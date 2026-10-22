@@ -277,6 +277,20 @@ describe('useExplorerNavigation cloud goToPath', () => {
     expect(deps.loadRaw).toHaveBeenCalledWith('/demo/new-phone', {})
   })
 
+  it.each(['local', 'cloud', 'cloud-unknown'])('queues an entered %s directory while another listing is busy', async kind => {
+    const deps = createDeps('/demo')
+    const nav = useExplorerNavigation(deps)
+    const path = kind === 'local' ? '/demo/next' : 'rclone://demo/next'
+    if (kind === 'local') entryKindMock.mockResolvedValueOnce('dir')
+    else statCloudEntryMock.mockResolvedValueOnce(kind === 'cloud' ? { path, kind: 'dir' } : null)
+    deps.loading.set(true)
+    await nav.goToPath(path)
+    expect(deps.loadRaw).not.toHaveBeenCalled()
+    deps.loading.set(false)
+    nav.flushPendingNavigation()
+    expect(deps.loadRaw).toHaveBeenCalledExactlyOnceWith(path, {})
+  })
+
   it.each(['loadRecent', 'loadStarred', 'loadNetwork', 'loadTrash', 'goBack', 'goForward'] as const)(
     '%s cancels a queued partition navigation', async action => {
       const deps = createDeps('/demo')

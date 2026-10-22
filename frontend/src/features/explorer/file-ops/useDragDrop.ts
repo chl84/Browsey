@@ -76,7 +76,7 @@ export const useDragDrop = (options: DragDropOptions = {}) => {
     event.dataTransfer.setDragImage(ghost, 0, 0)
 
     requestAnimationFrame(() => {
-      document.body.removeChild(ghost)
+      ghost.remove()
     })
   }
 

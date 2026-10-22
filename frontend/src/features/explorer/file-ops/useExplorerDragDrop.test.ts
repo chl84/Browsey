@@ -49,6 +49,7 @@ vi.mock('../services/clipboard.service', () => ({
 }))
 
 import { useExplorerDragDrop } from './useExplorerDragDrop'
+import { useDragDrop } from './useDragDrop'
 
 const createDataTransfer = () =>
   ({
@@ -72,6 +73,32 @@ const createDragEvent = (overrides: Partial<DragEvent> = {}) =>
     stopPropagation: vi.fn(),
     ...overrides,
   }) as unknown as DragEvent
+
+it('cleans up its drag image even when the image was already detached before the next frame', () => {
+  let frame!: FrameRequestCallback
+  const raf = vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => { frame = callback; return 1 })
+  const sentinel = document.createElement('div')
+  document.body.appendChild(sentinel)
+  const drag = useDragDrop()
+  try {
+    const first = createDragEvent()
+    drag.start(['/demo/first.txt'], first)
+    const image = vi.mocked(first.dataTransfer!.setDragImage).mock.calls[0][0]
+    expect(image.isConnected).toBe(true)
+    frame(0)
+    expect(image.isConnected).toBe(false)
+
+    const next = createDragEvent()
+    drag.start(['/demo/next.txt'], next)
+    vi.mocked(next.dataTransfer!.setDragImage).mock.calls[0][0].remove()
+    expect(() => frame(0)).not.toThrow()
+    expect(sentinel.isConnected).toBe(true)
+  } finally {
+    drag.end()
+    sentinel.remove()
+    raf.mockRestore()
+  }
+})
 
 describe('useExplorerDragDrop bookmark drop handlers', () => {
   beforeEach(() => {

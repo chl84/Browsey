@@ -334,8 +334,8 @@ export const useExplorerNavigation = (deps: Deps) => {
         const entry = await statCloudEntry(trimmed)
         if (generation !== navGeneration) return
         if (entry?.kind === 'dir') {
-          if (entry.path !== get(deps.current) && !get(deps.loading)) {
-            await loadDirForRequest(generation, entry.path)
+          if (entry.path !== get(deps.current)) {
+            await loadDirIfIdleForRequest(generation, entry.path)
           }
           return
         }
@@ -348,8 +348,8 @@ export const useExplorerNavigation = (deps: Deps) => {
         // Fall through to directory navigation fallback, matching local-path behavior.
       }
       if (generation !== navGeneration) return
-      if (trimmed !== get(deps.current) && !get(deps.loading)) {
-        await loadDirForRequest(generation, trimmed)
+      if (trimmed !== get(deps.current)) {
+        await loadDirIfIdleForRequest(generation, trimmed)
       }
       return
     }
@@ -365,8 +365,8 @@ export const useExplorerNavigation = (deps: Deps) => {
       const kind = await entryKind(trimmed)
       if (generation !== navGeneration) return
       if (kind === 'dir') {
-        if (trimmed !== get(deps.current) && !get(deps.loading)) {
-          await loadDirForRequest(generation, trimmed)
+        if (trimmed !== get(deps.current)) {
+          await loadDirIfIdleForRequest(generation, trimmed)
         }
         return
       }
@@ -375,8 +375,8 @@ export const useExplorerNavigation = (deps: Deps) => {
       deps.setPathInput(get(deps.current))
     } catch {
       if (generation !== navGeneration) return
-      if (trimmed !== get(deps.current) && !get(deps.loading)) {
-        await loadDirForRequest(generation, trimmed)
+      if (trimmed !== get(deps.current)) {
+        await loadDirIfIdleForRequest(generation, trimmed)
       }
     }
   }

@@ -8,6 +8,7 @@
 - Keep newer navigation and selections when an older path lookup, device
   connection or folder request completes. Cancel queued navigation when changing
   places or using Back/Forward, and reuse connections that are already pending.
+  Flush the latest queued bookmark or entered folder once a busy listing ends.
 
 - Preserve reopened creation and rename dialogs when earlier operations finish,
   suppress repeated batch-rename submission, and keep successful changes distinct
@@ -29,6 +30,7 @@
 - Release progress listeners that register after cleanup and ignore obsolete
   cancellation errors. Preserve manually chosen recovery destinations during
   delayed startup lookups, and remove temporary clipboard fields on failure.
+  Make deferred drag-image cleanup tolerate images that have already detached.
 
 - Explicitly release abandoned-session cleanup locks and released session locks
   even when a duplicate descriptor remains open. Keep active sessions protected.
