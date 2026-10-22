@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Update Vitest and its coordinated packages to 4.1.12 to resolve
+  GHSA-qxg6-89mg-rqv8 and GHSA-xp26-3454-mjgp in the development test tooling.
+
 - Keep newer navigation and selections when an older path lookup, device
   connection or folder request completes. Cancel queued navigation when changing
   places or using Back/Forward, and reuse connections that are already pending.
@@ -18,6 +21,10 @@
 - Measure extraction free space on the actual target filesystem on Unix,
   including mounts omitted from the disk inventory. Preserve the extraction
   reserve, byte and entry limits, and runtime capacity checks.
+
+- Parse additional file-watcher roots as a platform path list instead of
+  splitting directory names at path separators. Resolve existing directories
+  consistently with the watched path, including spaces and Unicode names.
 
 - Release progress listeners that register after cleanup and ignore obsolete
   cancellation errors. Preserve manually chosen recovery destinations during
