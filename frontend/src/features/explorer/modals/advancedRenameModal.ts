@@ -106,6 +106,8 @@ export const createAdvancedRenameModal = ({ reloadCurrent, showToast, activityAp
     previewLoading: false,
   })
   let previewToken = 0
+  let dialogGeneration = 0
+  let busy = false
 
   const updatePreviewState = (token: number, rows: AdvancedRenamePreviewRow[], previewError = '') => {
     if (token !== previewToken) return
@@ -157,6 +159,7 @@ export const createAdvancedRenameModal = ({ reloadCurrent, showToast, activityAp
   }
 
   const open = (entries: Entry[]) => {
+    ++dialogGeneration
     const payload = defaultPayload()
     state.set({
       open: true,
@@ -172,6 +175,7 @@ export const createAdvancedRenameModal = ({ reloadCurrent, showToast, activityAp
   }
 
   const close = () => {
+    ++dialogGeneration
     previewToken += 1
     state.update((s) => ({
       ...s,
@@ -186,7 +190,8 @@ export const createAdvancedRenameModal = ({ reloadCurrent, showToast, activityAp
 
   const confirm = async () => {
     const current = get(state)
-    if (!current.open || current.entries.length === 0) return false
+    if (!current.open || current.entries.length === 0 || busy) return false
+    const generation = dialogGeneration
 
     const normalized = normalizePayload(current)
     state.update((s) => ({ ...s, previewLoading: true, previewError: '', error: '' }))
@@ -206,10 +211,12 @@ export const createAdvancedRenameModal = ({ reloadCurrent, showToast, activityAp
 
     const cloud = entries.every(entry => entry.path.startsWith('rclone://'))
     const event = `cloud-rename-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    busy = true
     try {
       if (cloud) await activityApi?.start('Renaming cloud items…', event, () => void activityApi?.requestCancel(event), { completeOnReply: true })
+      if (generation !== dialogGeneration) return false
       const renamed = cloud ? await renameEntries(entries, event) : await renameEntries(entries)
-      close()
+      if (generation === dialogGeneration) close()
       if (renamed.length === 0) {
         showToast('No names changed')
       } else {
@@ -221,10 +228,15 @@ export const createAdvancedRenameModal = ({ reloadCurrent, showToast, activityAp
     } catch (err) {
       const msg = invokeErrorMessage(err)
       try { await reloadCurrent() } catch { /* Preserve partial-operation details. */ }
-      state.update((s) => ({ ...s, error: msg }))
+      if (generation === dialogGeneration) state.update((s) => ({ ...s, error: msg }))
+      else showToast(`Rename failed: ${msg}`)
       return false
     } finally {
-      if (cloud) { activityApi?.clearNow(); await activityApi?.cleanup() }
+      try {
+        if (cloud) { activityApi?.clearNow(); await activityApi?.cleanup() }
+      } finally {
+        busy = false
+      }
     }
   }
 

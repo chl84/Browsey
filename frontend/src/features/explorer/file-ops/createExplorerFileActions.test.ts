@@ -94,6 +94,12 @@ describe('Explorer file-action orchestration', () => {
     expect(empty.setSelection).not.toHaveBeenCalled()
   })
 
+  it('preserves the current selection when creation finishes in a folder that was left', () => {
+    const { actions, setSelection } = setup({ getCurrentPath: () => '/mock/elsewhere' })
+    actions.selectCreated('/mock/new-file.txt')
+    expect(setSelection).not.toHaveBeenCalled()
+  })
+
   it('opens local files and cloud directories without staging-file activity', async () => {
     const { actions, activityApi } = setup()
     await actions.open(a)

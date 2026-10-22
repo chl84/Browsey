@@ -4,6 +4,7 @@ import type { CurrentView } from '../context/createContextActions'
 import type { ActivityApi } from '../hooks/createActivity'
 import { openEntry } from '../services/files.service'
 import { openConsole } from '../services/console.service'
+import { parentPath } from '../utils'
 import type { SelectionActions } from './createSelectionActions'
 
 type Deps = {
@@ -98,7 +99,9 @@ export const createExplorerFileActions = (deps: Deps) => {
       return true
     },
     selectCreated: (path: string | null | undefined) => {
-      if (path) deps.setSelection(new Set([path]), null, null)
+      if (path && parentPath(path) === deps.getCurrentPath()) {
+        deps.setSelection(new Set([path]), null, null)
+      }
     },
   }
 }
