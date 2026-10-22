@@ -9,7 +9,15 @@
 - Preserve reopened creation and rename dialogs when earlier operations finish,
   suppress repeated batch-rename submission, and keep successful changes distinct
   from listing-refresh failures. Avoid returning to a folder or changing the
-  selection after the user has navigated elsewhere.
+  selection after the user has navigated elsewhere. Refresh Recent and Starred
+  in place after renaming.
+
+- Report listing-refresh errors after completed permanent deletion separately
+  from deletion failures, including when deleting items from Wastebasket.
+
+- Measure extraction free space on the actual target filesystem on Unix,
+  including mounts omitted from the disk inventory. Preserve the extraction
+  reserve, byte and entry limits, and runtime capacity checks.
 
 - Release progress listeners that register after cleanup and ignore obsolete
   cancellation errors. Preserve manually chosen recovery destinations during
