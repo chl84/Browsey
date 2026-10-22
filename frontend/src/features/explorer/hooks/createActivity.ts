@@ -44,14 +44,13 @@ export const createActivity = (opts: Options = {}) => {
   const cleanup = async (preserveTimer = false) => {
     activityGeneration += 1
     progressReporter = null
-    if (activityUnlisten) {
-      await activityUnlisten()
-      activityUnlisten = null
-    }
+    const unlisten = activityUnlisten
+    activityUnlisten = null
     if (!preserveTimer && activityHideTimer) {
       clearTimeout(activityHideTimer)
       activityHideTimer = null
     }
+    await unlisten?.()
   }
 
   const clearNow = () => {
@@ -64,14 +63,16 @@ export const createActivity = (opts: Options = {}) => {
 
   const start = async (label: string, eventName: string, onCancel?: () => void,
     options?: { completeOnReply?: boolean }) => {
-    await cleanup()
+    const cleaning = cleanup()
+    const generation = activityGeneration
+    await cleaning
+    if (generation !== activityGeneration) return
     if (activityHideTimer) {
       clearTimeout(activityHideTimer)
       activityHideTimer = null
     }
     activity.set({ label, detail: null, percent: null, cancel: onCancel ?? null, cancelling: false })
     let phaseLabel = label
-    const generation = activityGeneration
     const report = (payload: ProgressPayload) => {
       if (generation !== activityGeneration) return
       if (payload.phase) phaseLabel = payload.phase
@@ -104,7 +105,12 @@ export const createActivity = (opts: Options = {}) => {
       }
     }
     progressReporter = { eventName, report }
-    activityUnlisten = await listen<ProgressPayload>(eventName, (event) => report(event.payload))
+    const unlisten = await listen<ProgressPayload>(eventName, (event) => report(event.payload))
+    if (generation !== activityGeneration) {
+      await unlisten()
+      return
+    }
+    activityUnlisten = unlisten
   }
 
   const reportProgress = (eventName: string, payload: ProgressPayload) => {
@@ -114,10 +120,12 @@ export const createActivity = (opts: Options = {}) => {
   const requestCancel = async (eventName: string) => {
     const current = get(activity)
     if (!current || current.cancelling) return
+    const generation = activityGeneration
     activity.set({ ...current, label: 'Cancelling…', cancel: null, cancelling: true })
     try {
       await cancelTask(eventName)
     } catch (err) {
+      if (generation !== activityGeneration) return
       // The caller also records cancellation while preparing metadata or
       // between roots. A task may not exist yet, or its reply may be pending.
       // Keep the operation visible until that caller acknowledges completion.

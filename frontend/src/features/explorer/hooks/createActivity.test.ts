@@ -29,6 +29,53 @@ describe('createActivity', () => {
     })
   })
 
+  it('releases a listener that finishes registering after cleanup', async () => {
+    let register!: (unlisten: () => void) => void
+    listenMock.mockReturnValueOnce(new Promise<() => void>(resolve => { register = resolve }))
+    const api = createActivity()
+    const starting = api.start('Copying…', 'late-registration')
+    await vi.waitFor(() => expect(listenMock).toHaveBeenCalledOnce())
+    await api.cleanup()
+    api.clearNow()
+    const unlisten = vi.fn()
+    register(unlisten)
+    await starting
+    expect(unlisten).toHaveBeenCalledOnce()
+    expect(get(api.activity)).toBeNull()
+  })
+
+  it('retains the current listener when an older registration arrives last', async () => {
+    let register!: (unlisten: () => void) => void
+    listenMock.mockReturnValueOnce(new Promise<() => void>(resolve => { register = resolve }))
+    const api = createActivity()
+    const starting = api.start('Old task', 'old-registration')
+    await vi.waitFor(() => expect(listenMock).toHaveBeenCalledOnce())
+    await api.start('New task', 'new-registration')
+    const unlisten = vi.fn()
+    register(unlisten)
+    await starting
+    expect(unlisten).toHaveBeenCalledOnce()
+    expect(get(api.activity)).toMatchObject({ label: 'New task' })
+    await api.cleanup()
+    expect(eventHandlers.has('new-registration')).toBe(false)
+  })
+
+  it('does not clear a new activity when an old cancellation request fails late', async () => {
+    let reject!: (error: Error) => void
+    vi.mocked(cancelTask).mockReturnValueOnce(new Promise<void>((_resolve, fail) => { reject = fail }))
+    const onError = vi.fn()
+    const api = createActivity({ onError })
+    await api.start('Old task', 'old-cancel', () => {})
+    const cancelling = api.requestCancel('old-cancel')
+    await api.start('New task', 'new-task', () => {})
+    reject(new Error('Old request failed'))
+    await cancelling
+    expect(get(api.activity)).toMatchObject({ label: 'New task' })
+    expect(onError).not.toHaveBeenCalled()
+    expect(eventHandlers.has('new-task')).toBe(true)
+    await api.cleanup()
+  })
+
   it('formats byte progress details for active transfers', async () => {
     const activityApi = createActivity()
 

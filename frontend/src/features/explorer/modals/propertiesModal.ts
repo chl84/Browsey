@@ -126,10 +126,12 @@ const fallbackCopyToClipboard = (text: string): boolean => {
   textarea.style.left = '-9999px'
   textarea.style.top = '0'
   document.body.appendChild(textarea)
-  textarea.select()
-  const ok = document.execCommand('copy')
-  document.body.removeChild(textarea)
-  return ok
+  try {
+    textarea.select()
+    return document.execCommand('copy')
+  } finally {
+    textarea.remove()
+  }
 }
 
 const copyToClipboard = async (text: string): Promise<void> => {
