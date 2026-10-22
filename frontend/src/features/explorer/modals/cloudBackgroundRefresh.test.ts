@@ -128,7 +128,7 @@ describe('cloud modal background refresh', () => {
     expect(loadPath).not.toHaveBeenCalled()
     expect(showToast).not.toHaveBeenCalled()
     expect(activityApi.cleanup).toHaveBeenCalledTimes(1)
-    expect(activityApi.cleanup).toHaveBeenCalledWith(true)
+    expect(activityApi.cleanup).toHaveBeenCalledWith(true, expect.stringMatching(/^rename-progress-/))
     expect(activityApi.clearNow).toHaveBeenCalledTimes(1)
     expect(get(modal.state)).toEqual({
       open: true,
@@ -156,7 +156,7 @@ describe('cloud modal background refresh', () => {
     expect(loadPath).not.toHaveBeenCalled()
     expect(showToast).not.toHaveBeenCalled()
     expect(activityApi.cleanup).toHaveBeenCalledTimes(1)
-    expect(activityApi.cleanup).toHaveBeenCalledWith(true)
+    expect(activityApi.cleanup).toHaveBeenCalledWith(true, expect.stringMatching(/^mkdir-progress-/))
     expect(activityApi.clearNow).toHaveBeenCalledTimes(1)
     expect(get(modal.state)).toEqual({ open: true, error: 'Permission denied' })
   })

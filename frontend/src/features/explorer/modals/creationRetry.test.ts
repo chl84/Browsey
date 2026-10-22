@@ -23,7 +23,7 @@ describe('correcting a rejected creation draft', () => {
     finishSetup()
     expect(await pending).toBeNull()
     expect(services.createFolder).not.toHaveBeenCalled()
-    expect(activityApi.cleanup).toHaveBeenCalledExactlyOnceWith(true)
+    expect(activityApi.cleanup).toHaveBeenCalledExactlyOnceWith(true, expect.stringMatching(/^mkdir-progress-/))
   })
 
   it.each(['file', 'folder'] as const)('keeps a completed %s creation successful when refresh fails', async kind => {

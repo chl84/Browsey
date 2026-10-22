@@ -233,7 +233,7 @@ export const createAdvancedRenameModal = ({ reloadCurrent, showToast, activityAp
       return false
     } finally {
       try {
-        if (cloud) { activityApi?.clearNow(); await activityApi?.cleanup() }
+        if (cloud) { activityApi?.clearNow(event); await activityApi?.cleanup(false, event) }
       } finally {
         busy = false
       }

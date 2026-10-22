@@ -60,7 +60,7 @@ export const createNewFolderModal = (deps: Deps) => {
       if (generation !== dialogGeneration) return null
       const created: string = await createFolder(base, name)
       if (generation === dialogGeneration) close()
-      activityApi?.hideSoon()
+      activityApi?.hideSoon(progressEvent)
       const refresh = async () => {
         if (getCurrentPath() !== base) return
         try {
@@ -82,10 +82,10 @@ export const createNewFolderModal = (deps: Deps) => {
       return null
     } finally {
       if (activityApi) {
-        const hadTimer = activityApi.hasHideTimer()
-        await activityApi.cleanup(true)
+        const hadTimer = activityApi.hasHideTimer(progressEvent)
+        await activityApi.cleanup(true, progressEvent)
         if (!hadTimer) {
-          activityApi.clearNow()
+          activityApi.clearNow(progressEvent)
         }
       }
       busy = false

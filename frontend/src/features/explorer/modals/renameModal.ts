@@ -87,7 +87,7 @@ export const createRenameModal = (deps: Deps) => {
       if (cloud) await renameEntry(current.target.path, name, progressEvent)
       else await renameEntry(current.target.path, name)
       if (generation === dialogGeneration) close()
-      activityApi?.hideSoon()
+      activityApi?.hideSoon(progressEvent)
       const refresh = async () => {
         if (getCurrentPath && getCurrentPath() !== refreshPath) return
         try {
@@ -110,10 +110,10 @@ export const createRenameModal = (deps: Deps) => {
       return false
     } finally {
       if (activityApi) {
-        const hadTimer = activityApi.hasHideTimer()
-        await activityApi.cleanup(true)
+        const hadTimer = activityApi.hasHideTimer(progressEvent)
+        await activityApi.cleanup(true, progressEvent)
         if (!hadTimer) {
-          activityApi.clearNow()
+          activityApi.clearNow(progressEvent)
         }
       }
       busy = false

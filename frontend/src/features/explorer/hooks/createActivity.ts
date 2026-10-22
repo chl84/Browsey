@@ -27,21 +27,27 @@ export const createActivity = (opts: Options = {}) => {
   let activityHideTimer: ReturnType<typeof setTimeout> | null = null
   let activityUnlisten: UnlistenFn | null = null
   let activityGeneration = 0
+  let activityOwner: string | null = null
+  const ownsActivity = (eventName?: string) => eventName === undefined || eventName === activityOwner
   let progressReporter: { eventName: string; report: (payload: ProgressPayload) => void } | null = null
 
-  const queueActivityHide = () => {
+  const queueActivityHide = (eventName?: string) => {
+    if (!ownsActivity(eventName)) return
     if (activityHideTimer) {
       clearTimeout(activityHideTimer)
     }
+    const owner = activityOwner
     activityHideTimer = setTimeout(() => {
+      if (owner !== activityOwner) return
       activity.set(null)
       activityHideTimer = null
     }, 1200)
   }
 
-  const hasHideTimer = () => activityHideTimer !== null
+  const hasHideTimer = (eventName?: string) => ownsActivity(eventName) && activityHideTimer !== null
 
-  const cleanup = async (preserveTimer = false) => {
+  const cleanup = async (preserveTimer = false, eventName?: string) => {
+    if (!ownsActivity(eventName)) return
     activityGeneration += 1
     progressReporter = null
     const unlisten = activityUnlisten
@@ -53,7 +59,8 @@ export const createActivity = (opts: Options = {}) => {
     await unlisten?.()
   }
 
-  const clearNow = () => {
+  const clearNow = (eventName?: string) => {
+    if (!ownsActivity(eventName)) return
     activity.set(null)
     if (activityHideTimer) {
       clearTimeout(activityHideTimer)
@@ -63,6 +70,7 @@ export const createActivity = (opts: Options = {}) => {
 
   const start = async (label: string, eventName: string, onCancel?: () => void,
     options?: { completeOnReply?: boolean }) => {
+    activityOwner = eventName
     const cleaning = cleanup()
     const generation = activityGeneration
     await cleaning
@@ -119,13 +127,14 @@ export const createActivity = (opts: Options = {}) => {
 
   const requestCancel = async (eventName: string) => {
     const current = get(activity)
-    if (!current || current.cancelling) return
+    const owned = ownsActivity(eventName)
+    if (!current || (owned && current.cancelling)) return
     const generation = activityGeneration
-    activity.set({ ...current, label: 'Cancelling…', cancel: null, cancelling: true })
+    if (owned) activity.set({ ...current, label: 'Cancelling…', cancel: null, cancelling: true })
     try {
       await cancelTask(eventName)
     } catch (err) {
-      if (generation !== activityGeneration) return
+      if (!owned || generation !== activityGeneration) return
       // The caller also records cancellation while preparing metadata or
       // between roots. A task may not exist yet, or its reply may be pending.
       // Keep the operation visible until that caller acknowledges completion.

@@ -1,9 +1,40 @@
 import { get } from 'svelte/store'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { createRenameModal } from './renameModal'
+import { createActivity } from '../hooks/createActivity'
 const service = vi.hoisted(() => ({ renameEntry: vi.fn() }))
+const events = vi.hoisted(() => ({ listen: vi.fn(), unlisten: vi.fn() }))
 vi.mock('../services/files.service', () => service)
-beforeEach(() => service.renameEntry.mockReset())
+vi.mock('@tauri-apps/api/event', () => ({ listen: events.listen }))
+beforeEach(() => {
+  service.renameEntry.mockReset()
+  events.unlisten.mockReset()
+  events.listen.mockImplementation(async (name: string) => () => events.unlisten(name))
+})
+
+it.each([false, true])('keeps a newer operation visible after an earlier rename settles (failure=%s)', async failure => {
+  let finish!: () => void
+  service.renameEntry.mockReturnValueOnce(new Promise((resolve, reject) => {
+    finish = () => failure ? reject(new Error('Old rename failed')) : resolve('/owned/renamed.txt')
+  }))
+  const activityApi = createActivity()
+  const modal = createRenameModal({ loadPath: vi.fn(async () => {}), parentPath: () => '/owned', activityApi })
+  modal.open({ name: 'old.txt', path: '/owned/old.txt', kind: 'file', iconId: 0 })
+  const pending = modal.confirm('renamed.txt')
+  await vi.waitFor(() => expect(service.renameEntry).toHaveBeenCalledOnce())
+  modal.close()
+  await activityApi.start('Copying new file…', 'new-operation')
+  try {
+    finish()
+    await pending
+    expect(get(activityApi.activity)).toMatchObject({ label: 'Copying new file…' })
+    expect(activityApi.hasHideTimer()).toBe(false)
+    expect(events.unlisten).not.toHaveBeenCalledWith('new-operation')
+  } finally {
+    await activityApi.cleanup()
+    activityApi.clearNow()
+  }
+})
 
 it('does not start renaming after Cancel while progress setup is still pending', async () => {
   let finishSetup!: () => void
@@ -18,7 +49,7 @@ it('does not start renaming after Cancel while progress setup is still pending',
   finishSetup()
   expect(await pending).toBe(false)
   expect(service.renameEntry).not.toHaveBeenCalled()
-  expect(activityApi.cleanup).toHaveBeenCalledExactlyOnceWith(true)
+  expect(activityApi.cleanup).toHaveBeenCalledExactlyOnceWith(true, expect.stringMatching(/^rename-progress-/))
 })
 
 it('preserves significant leading and trailing whitespace in a rename', async () => {
