@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Keep newer navigation and selections when an older path lookup, device
+  connection or folder request completes. Cancel queued navigation when changing
+  places or using Back/Forward, and reuse connections that are already pending.
+
+- Preserve reopened creation and rename dialogs when earlier operations finish,
+  suppress repeated batch-rename submission, and keep successful changes distinct
+  from listing-refresh failures. Avoid returning to a folder or changing the
+  selection after the user has navigated elsewhere.
+
+- Release progress listeners that register after cleanup and ignore obsolete
+  cancellation errors. Preserve manually chosen recovery destinations during
+  delayed startup lookups, and remove temporary clipboard fields on failure.
+
+- Explicitly release abandoned-session cleanup locks and released session locks
+  even when a duplicate descriptor remains open. Keep active sessions protected.
+
 - Update ZIP to 9.0.4 to resolve RUSTSEC-2026-0367, RUSTSEC-2026-0368 and
   RUSTSEC-2026-0369 concerning extraction permissions and symbolic links.
 
