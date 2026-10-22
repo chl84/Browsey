@@ -18,6 +18,14 @@ fn watch_allow_all() -> bool {
     )
 }
 
+fn extra_watch_roots(extra: &std::ffi::OsStr) -> Vec<PathBuf> {
+    std::env::split_paths(extra)
+        .filter(|path| !path.as_os_str().is_empty())
+        .filter_map(|path| path.canonicalize().ok())
+        .filter(|path| path.is_dir())
+        .collect()
+}
+
 fn watch_allowed_roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Some(home) = dirs_next::home_dir() {
@@ -31,16 +39,8 @@ fn watch_allowed_roots() -> Vec<PathBuf> {
         }
         roots.push(mount_point);
     }
-    if let Ok(extra) = std::env::var("FILEY_WATCH_EXTRA_ROOTS") {
-        for part in extra.split(std::path::MAIN_SEPARATOR) {
-            if part.is_empty() {
-                continue;
-            }
-            let pb = PathBuf::from(part);
-            if pb.exists() {
-                roots.push(pb);
-            }
-        }
+    if let Some(extra) = std::env::var_os("FILEY_WATCH_EXTRA_ROOTS") {
+        roots.extend(extra_watch_roots(extra.as_ref()));
     }
     // Allow GVFS mounts (e.g., MTP) even if we don't get filesystem events; watcher will be best-effort.
     if let Some(gvfs_root) = dirs_next::runtime_dir().map(|p| p.join("gvfs")) {
@@ -116,4 +116,60 @@ pub(super) fn watch_dir_impl(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    fn fixture() -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "browsey-extra-watch-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+        ));
+        fs::create_dir(&path).unwrap();
+        path
+    }
+
+    #[test]
+    fn a_single_absolute_extra_root_is_preserved() {
+        let root = fixture();
+        let expected = fs::canonicalize(&root).unwrap();
+        let actual = extra_watch_roots(root.as_os_str());
+        fs::remove_dir_all(root).unwrap();
+        assert_eq!(actual, [expected]);
+    }
+
+    #[test]
+    fn extra_roots_use_the_platform_path_list_separator_and_canonical_directories() {
+        let root = fixture();
+        let first = root.join("first folder");
+        let second = root.join("andre_æøå");
+        let not_a_directory = root.join("file.txt");
+        fs::create_dir(&first).unwrap();
+        fs::create_dir(&second).unwrap();
+        fs::write(&not_a_directory, b"fixture").unwrap();
+        let paths = std::env::join_paths([
+            first.clone(),
+            second.clone(),
+            root.join("missing"),
+            not_a_directory,
+        ])
+        .unwrap();
+        let actual = extra_watch_roots(&paths);
+        let expected = [
+            fs::canonicalize(first).unwrap(),
+            fs::canonicalize(second).unwrap(),
+        ];
+        fs::remove_dir_all(root).unwrap();
+        assert_eq!(actual, expected);
+    }
 }

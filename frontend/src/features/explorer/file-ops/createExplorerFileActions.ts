@@ -4,6 +4,7 @@ import type { CurrentView } from '../context/createContextActions'
 import type { ActivityApi } from '../hooks/createActivity'
 import { openEntry } from '../services/files.service'
 import { openConsole } from '../services/console.service'
+import { parentPath } from '../utils'
 import type { SelectionActions } from './createSelectionActions'
 
 type Deps = {
@@ -41,15 +42,15 @@ export const createExplorerFileActions = (deps: Deps) => {
       await deps.activityApi.start('Opening cloud file…', event, () => void deps.activityApi.requestCancel(event), { completeOnReply: true })
       await openEntry(entry, { progressEvent: event })
       completed = true
-      deps.activityApi.hideSoon()
+      deps.activityApi.hideSoon(event)
       deps.showToast('Opened cloud file. Cloud saves shows upload status and any conflicts.')
     } catch (error) {
-      deps.activityApi.clearNow()
+      deps.activityApi.clearNow(event)
       deps.showToast(getErrorMessage(error))
     } finally {
       // Preserve successful feedback, but release the event listener on both
       // outcomes instead of retaining it until the next operation.
-      await deps.activityApi.cleanup(completed)
+      await deps.activityApi.cleanup(completed, event)
     }
   }
 
@@ -98,7 +99,9 @@ export const createExplorerFileActions = (deps: Deps) => {
       return true
     },
     selectCreated: (path: string | null | undefined) => {
-      if (path) deps.setSelection(new Set([path]), null, null)
+      if (path && parentPath(path) === deps.getCurrentPath()) {
+        deps.setSelection(new Set([path]), null, null)
+      }
     },
   }
 }

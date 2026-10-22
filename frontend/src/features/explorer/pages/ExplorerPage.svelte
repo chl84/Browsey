@@ -720,8 +720,14 @@
     handlePlace,
   } = navigation
   $: currentView = viewFromPath($current)
-  $: navigation.flushPendingNavigation()
-  $: navigation.dropPendingNavIfCurrent()
+  $: {
+    $loading
+    navigation.flushPendingNavigation()
+  }
+  $: {
+    $current
+    navigation.dropPendingNavIfCurrent()
+  }
 
   const searchSession = useExplorerSearchSession({
     getCurrentPath: () => get(current),
@@ -1290,11 +1296,13 @@
       ta.style.left = '-9999px'
       ta.style.top = '0'
       document.body.appendChild(ta)
-      ta.select()
-      const ok = document.execCommand('copy')
-      document.body.removeChild(ta)
-      if (!ok) {
-        throw new Error('copy command failed')
+      try {
+        ta.select()
+        if (!document.execCommand('copy')) {
+          throw new Error('copy command failed')
+        }
+      } finally {
+        ta.remove()
       }
       showToast('Duplicate list copied', 1500)
     } catch (err) {

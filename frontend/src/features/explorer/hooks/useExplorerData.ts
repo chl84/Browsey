@@ -89,13 +89,13 @@ export const useExplorerData = (options: Options = {}) => {
       showLoadingIndicator: false,
     })
     if (result?.ok) {
-      options.activityApi?.hideSoon()
+      options.activityApi?.hideSoon(progressEvent)
     } else if (result?.code === 'cancelled') {
-      options.activityApi?.clearNow()
-      await options.activityApi?.cleanup()
+      options.activityApi?.clearNow(progressEvent)
+      await options.activityApi?.cleanup(false, progressEvent)
     } else {
-      options.activityApi?.clearNow()
-      await options.activityApi?.cleanup()
+      options.activityApi?.clearNow(progressEvent)
+      await options.activityApi?.cleanup(false, progressEvent)
     }
     return result
   }

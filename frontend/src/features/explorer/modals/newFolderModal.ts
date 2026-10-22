@@ -21,16 +21,21 @@ export const createNewFolderModal = (deps: Deps) => {
   const { getCurrentPath, loadPath, showToast, activityApi } = deps
   const state = writable<NewFolderState>({ open: false, error: '' })
   let busy = false
+  let dialogGeneration = 0
   const isCloudPath = (path: string) => path.startsWith('rclone://')
 
   const defaultName = () => 'New folder'
 
   const open = () => {
+    ++dialogGeneration
     state.set({ open: true, error: '' })
     return defaultName()
   }
 
-  const close = () => state.set({ open: false, error: '' })
+  const close = () => {
+    ++dialogGeneration
+    state.set({ open: false, error: '' })
+  }
 
   const confirm = async (name: string): Promise<string | null> => {
     const trimmed = name.trim()
@@ -45,43 +50,42 @@ export const createNewFolderModal = (deps: Deps) => {
     }
     if (busy) return null
     busy = true
+    const generation = dialogGeneration
     state.update((s) => ({ ...s, error: '' }))
     const progressEvent = `mkdir-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
       if (activityApi) {
         await activityApi.start('Creating folder…', progressEvent)
       }
+      if (generation !== dialogGeneration) return null
       const created: string = await createFolder(base, name)
-      if (isCloudPath(base)) {
-        void (async () => {
-          if (getCurrentPath() !== base) {
-            return
-          }
-          try {
-            await loadPath(base)
-          } catch {
-            if (getCurrentPath() !== base) {
-              return
-            }
-            showToast('Folder created, but refresh took too long. Press F5 to refresh.')
-          }
-        })()
-      } else {
-        await loadPath(base)
+      if (generation === dialogGeneration) close()
+      activityApi?.hideSoon(progressEvent)
+      const refresh = async () => {
+        if (getCurrentPath() !== base) return
+        try {
+          await loadPath(base)
+        } catch {
+          if (getCurrentPath() !== base) return
+          showToast(isCloudPath(base)
+            ? 'Folder created, but refresh took too long. Press F5 to refresh.'
+            : 'Folder created, but refresh failed. Press F5 to refresh.')
+        }
       }
-      close()
-      activityApi?.hideSoon()
+      if (isCloudPath(base)) void refresh()
+      else await refresh()
       return created
     } catch (err) {
       const msg = getErrorMessage(err)
-      state.update((s) => ({ ...s, error: msg }))
+      if (generation === dialogGeneration) state.update((s) => ({ ...s, error: msg }))
+      else showToast(`Folder creation failed: ${msg}`)
       return null
     } finally {
       if (activityApi) {
-        const hadTimer = activityApi.hasHideTimer()
-        await activityApi.cleanup(true)
+        const hadTimer = activityApi.hasHideTimer(progressEvent)
+        await activityApi.cleanup(true, progressEvent)
         if (!hadTimer) {
-          activityApi.clearNow()
+          activityApi.clearNow(progressEvent)
         }
       }
       busy = false

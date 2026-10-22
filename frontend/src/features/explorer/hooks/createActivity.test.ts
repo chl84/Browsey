@@ -29,6 +29,82 @@ describe('createActivity', () => {
     })
   })
 
+  it('releases a listener that finishes registering after cleanup', async () => {
+    let register!: (unlisten: () => void) => void
+    listenMock.mockReturnValueOnce(new Promise<() => void>(resolve => { register = resolve }))
+    const api = createActivity()
+    const starting = api.start('Copying…', 'late-registration')
+    await vi.waitFor(() => expect(listenMock).toHaveBeenCalledOnce())
+    await api.cleanup()
+    api.clearNow()
+    const unlisten = vi.fn()
+    register(unlisten)
+    await starting
+    expect(unlisten).toHaveBeenCalledOnce()
+    expect(get(api.activity)).toBeNull()
+  })
+
+  it('ignores cleanup and feedback belonging to an older activity owner', async () => {
+    const api = createActivity()
+    await api.start('Old task', 'old-owner')
+    await api.start('New task', 'new-owner')
+    await api.cleanup(true, 'old-owner')
+    api.hideSoon('old-owner')
+    api.clearNow('old-owner')
+    expect(get(api.activity)).toMatchObject({ label: 'New task' })
+    expect(api.hasHideTimer()).toBe(false)
+    expect(eventHandlers.has('new-owner')).toBe(true)
+    eventHandlers.get('new-owner')?.({ payload: { bytes: 1, total: 2 } })
+    expect(get(api.activity)).toMatchObject({ label: 'New task', percent: 50 })
+    await api.cleanup()
+  })
+
+  it.each([false, true])('can cancel an older task without changing the newer activity (failure=%s)', async failure => {
+    const onError = vi.fn()
+    const api = createActivity({ onError })
+    await api.start('Old task', 'old-cancel-owner', () => {})
+    await api.start('New task', 'new-cancel-owner', () => {})
+    if (failure) vi.mocked(cancelTask).mockRejectedValueOnce(new Error('Old cancel failed'))
+    await api.requestCancel('old-cancel-owner')
+    expect(cancelTask).toHaveBeenCalledWith('old-cancel-owner')
+    expect(get(api.activity)).toMatchObject({ label: 'New task', cancelling: false })
+    expect(eventHandlers.has('new-cancel-owner')).toBe(true)
+    expect(onError).not.toHaveBeenCalled()
+    await api.cleanup()
+  })
+
+  it('retains the current listener when an older registration arrives last', async () => {
+    let register!: (unlisten: () => void) => void
+    listenMock.mockReturnValueOnce(new Promise<() => void>(resolve => { register = resolve }))
+    const api = createActivity()
+    const starting = api.start('Old task', 'old-registration')
+    await vi.waitFor(() => expect(listenMock).toHaveBeenCalledOnce())
+    await api.start('New task', 'new-registration')
+    const unlisten = vi.fn()
+    register(unlisten)
+    await starting
+    expect(unlisten).toHaveBeenCalledOnce()
+    expect(get(api.activity)).toMatchObject({ label: 'New task' })
+    await api.cleanup()
+    expect(eventHandlers.has('new-registration')).toBe(false)
+  })
+
+  it('does not clear a new activity when an old cancellation request fails late', async () => {
+    let reject!: (error: Error) => void
+    vi.mocked(cancelTask).mockReturnValueOnce(new Promise<void>((_resolve, fail) => { reject = fail }))
+    const onError = vi.fn()
+    const api = createActivity({ onError })
+    await api.start('Old task', 'old-cancel', () => {})
+    const cancelling = api.requestCancel('old-cancel')
+    await api.start('New task', 'new-task', () => {})
+    reject(new Error('Old request failed'))
+    await cancelling
+    expect(get(api.activity)).toMatchObject({ label: 'New task' })
+    expect(onError).not.toHaveBeenCalled()
+    expect(eventHandlers.has('new-task')).toBe(true)
+    await api.cleanup()
+  })
+
   it('formats byte progress details for active transfers', async () => {
     const activityApi = createActivity()
 

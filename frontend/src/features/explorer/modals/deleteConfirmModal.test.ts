@@ -56,4 +56,14 @@ describe('network deletion confirmation', () => {
     expect(deleteEntries).toHaveBeenCalledTimes(1)
     expect(get(modal.state).open).toBe(false)
   })
+
+  it.each(['default', 'trash'] as const)('does not misreport completed %s deletion as failed when listing refresh rejects', async mode => {
+    const { modal, reloadCurrent, showToast } = setup()
+    reloadCurrent.mockRejectedValueOnce(new Error('Listing unavailable'))
+    modal.open([{ ...entry, path: '/owned/report.txt', network: false }], mode)
+    await modal.confirm()
+    expect(showToast).toHaveBeenCalledExactlyOnceWith('Delete completed, but refresh failed. Press F5 to refresh.')
+    expect(mode === 'trash' ? purgeTrashItems : deleteEntries).toHaveBeenCalledOnce()
+    expect(get(modal.state).open).toBe(false)
+  })
 })

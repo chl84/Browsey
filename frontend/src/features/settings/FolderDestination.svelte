@@ -32,8 +32,8 @@
     finally { if (!disposed && id === request) busy = false }
   }
   onMount(() => {
-    void homeDir().then(home => { if (!disposed) return browse(home) })
-      .catch(err => { if (!disposed) error = getErrorMessage(err) })
+    void homeDir().then(home => { if (!disposed && request === 0) return browse(home) })
+      .catch(err => { if (!disposed && request === 0) error = getErrorMessage(err) })
   })
   onDestroy(() => { disposed = true; ++request })
 </script>
@@ -42,7 +42,7 @@
   <div class="path-row">
     <button type="button" class="secondary" aria-label="Parent folder" disabled={disabled || busy || !current || parentPath(current) === current} on:click={() => void browse(parentPath(current))}>↑</button>
     <TextField bind:value={path} aria-label="Destination folder" disabled={disabled || busy}
-      on:input={() => { value = '' }} on:keydown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void browse(path) } }} />
+      on:input={() => { ++request; value = '' }} on:keydown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void browse(path) } }} />
     <button type="button" class="secondary" disabled={disabled || busy || !path} on:click={() => void browse(path)}>Go</button>
   </div>
   {#if error}<div class="pill error" role="alert">{error}</div>{/if}

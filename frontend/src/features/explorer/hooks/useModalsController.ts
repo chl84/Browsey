@@ -52,6 +52,7 @@ export const useModalsController = ({
 
   const renameModal = createRenameModal({
     loadPath: (path: string) => loadPath(path, { recordHistory: false }),
+    reloadCurrent,
     parentPath,
     getCurrentPath,
     showToast,

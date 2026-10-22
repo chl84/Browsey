@@ -14,13 +14,15 @@ const fallbackCopyText = (value: string): CopyResult => {
     ta.style.left = '-9999px'
     ta.style.top = '0'
     document.body.appendChild(ta)
-    ta.select()
-    const ok = document.execCommand('copy')
-    document.body.removeChild(ta)
-    if (!ok) {
-      return { ok: false, error: 'Copy command failed' }
+    try {
+      ta.select()
+      if (!document.execCommand('copy')) {
+        return { ok: false, error: 'Copy command failed' }
+      }
+      return { ok: true }
+    } finally {
+      ta.remove()
     }
-    return { ok: true }
   } catch (err) {
     return { ok: false, error: getErrorMessage(err) }
   }

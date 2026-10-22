@@ -17,15 +17,20 @@ export const createNewFileModal = (deps: Deps) => {
   const { getCurrentPath, loadPath, showToast } = deps
   const state = writable<NewFileState>({ open: false, error: '' })
   let busy = false
+  let dialogGeneration = 0
 
   const defaultName = () => ''
 
   const open = () => {
+    ++dialogGeneration
     state.set({ open: true, error: '' })
     return defaultName()
   }
 
-  const close = () => state.set({ open: false, error: '' })
+  const close = () => {
+    ++dialogGeneration
+    state.set({ open: false, error: '' })
+  }
 
   const confirm = async (name: string): Promise<string | null> => {
     const trimmed = name.trim()
@@ -40,16 +45,22 @@ export const createNewFileModal = (deps: Deps) => {
     }
     if (busy) return null
     busy = true
+    const generation = dialogGeneration
     state.update((s) => ({ ...s, error: '' }))
     try {
       const created: string = await createFile(base, name)
-      close()
-      try { await loadPath(base) }
-      catch { showToast('File created, but refresh failed. Press F5 to refresh.') }
+      if (generation === dialogGeneration) close()
+      if (getCurrentPath() === base) {
+        try { await loadPath(base) }
+        catch {
+          if (getCurrentPath() === base) showToast('File created, but refresh failed. Press F5 to refresh.')
+        }
+      }
       return created
     } catch (err) {
       const msg = getErrorMessage(err)
-      state.update((s) => ({ ...s, error: msg }))
+      if (generation === dialogGeneration) state.update((s) => ({ ...s, error: msg }))
+      else showToast(`File creation failed: ${msg}`)
       return null
     } finally {
       busy = false

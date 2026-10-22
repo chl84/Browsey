@@ -82,6 +82,21 @@ test('locked phone reports useful error and allows retry', async ({ page }) => {
   await expect(page.getByLabel('Path breadcrumbs').getByRole('button', { name: 'Phone', exact: true })).toBeVisible()
 })
 
+for (const place of ['Recent', 'Starred']) {
+  test(`a delayed phone mount keeps the newer ${place} navigation`, async ({ page }) => {
+    await page.goto('/')
+    await plugIn(page)
+    await page.evaluate(() => { (window as unknown as { __BROWSEY_E2E__: Control }).__BROWSEY_E2E__.mtpHold = true })
+    await page.getByRole('button', { name: 'Android phone (not mounted)', exact: true }).click()
+    await page.getByRole('button', { name: place, exact: true }).click()
+    await expect(page.locator('input').first()).toHaveValue(`${place.toLowerCase()}://`)
+    await page.evaluate(() => { (window as unknown as { __BROWSEY_E2E__: Control }).__BROWSEY_E2E__.mtpHold = false })
+    await expect(page.getByRole('complementary').getByRole('button', { name: 'Android phone', exact: true })).toBeVisible()
+    await expect(page.locator('input').first()).toHaveValue(`${place.toLowerCase()}://`)
+    expect((await page.evaluate(control)).calls.some(({ cmd, args }) => cmd === 'list_dir' && args?.path === '/mock/Phone')).toBe(false)
+  })
+}
+
 test('unplug during mount does not open a stale phone path', async ({ page }) => {
   await page.goto('/')
   await plugIn(page)

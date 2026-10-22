@@ -29,6 +29,41 @@ describe('advanced rename modal', () => {
     renameEntriesMock.mockResolvedValue(['/tmp/report.txt'])
   })
 
+  it('does not submit a second batch while the first rename is running', async () => {
+    let finish!: (paths: string[]) => void
+    renameEntriesMock.mockReturnValueOnce(new Promise<string[]>(resolve => { finish = resolve }))
+    const modal = createAdvancedRenameModal({ reloadCurrent: vi.fn(async () => {}), showToast: vi.fn() })
+    modal.open([makeEntry('/tmp/report.txt')])
+    const pending = modal.confirm()
+    await vi.waitFor(() => expect(renameEntriesMock).toHaveBeenCalledOnce())
+    const duplicate = modal.confirm()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(renameEntriesMock).toHaveBeenCalledOnce()
+    finish(['/tmp/report.txt'])
+    expect(await pending).toBe(true)
+    expect(await duplicate).toBe(false)
+    expect(renameEntriesMock).toHaveBeenCalledOnce()
+  })
+
+  it.each([false, true])('preserves a reopened batch dialog when an older rename settles (failure=%s)', async failure => {
+    let finish!: () => void
+    renameEntriesMock.mockReturnValueOnce(new Promise<string[]>((resolve, reject) => {
+      finish = () => failure ? reject(new Error('Old batch failed')) : resolve(['/tmp/renamed.txt'])
+    }))
+    const showToast = vi.fn()
+    const modal = createAdvancedRenameModal({ reloadCurrent: vi.fn(async () => {}), showToast })
+    modal.open([makeEntry('/tmp/report.txt')])
+    const pending = modal.confirm()
+    await vi.waitFor(() => expect(renameEntriesMock).toHaveBeenCalledOnce())
+    modal.close()
+    modal.open([makeEntry('/tmp/next.txt')])
+    finish()
+    await pending
+    expect(get(modal.state)).toMatchObject({ open: true, error: '', entries: [makeEntry('/tmp/next.txt')] })
+    if (failure) expect(showToast).toHaveBeenCalledWith('Rename failed: Old batch failed')
+  })
+
   it('keeps the modal open with an error when the rename request fails', async () => {
     renameEntriesMock.mockRejectedValueOnce(new Error('Permission denied'))
     const reloadCurrent = vi.fn(async () => {})

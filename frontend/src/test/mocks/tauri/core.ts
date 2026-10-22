@@ -267,6 +267,13 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       return (control?.windowControlPolicy ?? { minimize: true, maximize: true }) as T
     case 'get_startup_path':
       return (control?.startupPath ?? null) as T
+    case 'entry_kind_cmd': {
+      const path = String(args?.path)
+      if (FILE_TREE[path]) return 'dir' as T
+      const entry = findEntry(path)
+      if (entry) return entry.kind as T
+      throw new Error('Path not found')
+    }
     case 'list_dir':
       while (control?.listingHold) await new Promise(resolve => setTimeout(resolve, 20))
       if (control?.listingSnapshot && control.listingSnapshot.current === args?.path) {

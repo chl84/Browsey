@@ -27,34 +27,40 @@ export const createActivity = (opts: Options = {}) => {
   let activityHideTimer: ReturnType<typeof setTimeout> | null = null
   let activityUnlisten: UnlistenFn | null = null
   let activityGeneration = 0
+  let activityOwner: string | null = null
+  const ownsActivity = (eventName?: string) => eventName === undefined || eventName === activityOwner
   let progressReporter: { eventName: string; report: (payload: ProgressPayload) => void } | null = null
 
-  const queueActivityHide = () => {
+  const queueActivityHide = (eventName?: string) => {
+    if (!ownsActivity(eventName)) return
     if (activityHideTimer) {
       clearTimeout(activityHideTimer)
     }
+    const owner = activityOwner
     activityHideTimer = setTimeout(() => {
+      if (owner !== activityOwner) return
       activity.set(null)
       activityHideTimer = null
     }, 1200)
   }
 
-  const hasHideTimer = () => activityHideTimer !== null
+  const hasHideTimer = (eventName?: string) => ownsActivity(eventName) && activityHideTimer !== null
 
-  const cleanup = async (preserveTimer = false) => {
+  const cleanup = async (preserveTimer = false, eventName?: string) => {
+    if (!ownsActivity(eventName)) return
     activityGeneration += 1
     progressReporter = null
-    if (activityUnlisten) {
-      await activityUnlisten()
-      activityUnlisten = null
-    }
+    const unlisten = activityUnlisten
+    activityUnlisten = null
     if (!preserveTimer && activityHideTimer) {
       clearTimeout(activityHideTimer)
       activityHideTimer = null
     }
+    await unlisten?.()
   }
 
-  const clearNow = () => {
+  const clearNow = (eventName?: string) => {
+    if (!ownsActivity(eventName)) return
     activity.set(null)
     if (activityHideTimer) {
       clearTimeout(activityHideTimer)
@@ -64,14 +70,17 @@ export const createActivity = (opts: Options = {}) => {
 
   const start = async (label: string, eventName: string, onCancel?: () => void,
     options?: { completeOnReply?: boolean }) => {
-    await cleanup()
+    activityOwner = eventName
+    const cleaning = cleanup()
+    const generation = activityGeneration
+    await cleaning
+    if (generation !== activityGeneration) return
     if (activityHideTimer) {
       clearTimeout(activityHideTimer)
       activityHideTimer = null
     }
     activity.set({ label, detail: null, percent: null, cancel: onCancel ?? null, cancelling: false })
     let phaseLabel = label
-    const generation = activityGeneration
     const report = (payload: ProgressPayload) => {
       if (generation !== activityGeneration) return
       if (payload.phase) phaseLabel = payload.phase
@@ -104,7 +113,12 @@ export const createActivity = (opts: Options = {}) => {
       }
     }
     progressReporter = { eventName, report }
-    activityUnlisten = await listen<ProgressPayload>(eventName, (event) => report(event.payload))
+    const unlisten = await listen<ProgressPayload>(eventName, (event) => report(event.payload))
+    if (generation !== activityGeneration) {
+      await unlisten()
+      return
+    }
+    activityUnlisten = unlisten
   }
 
   const reportProgress = (eventName: string, payload: ProgressPayload) => {
@@ -113,11 +127,14 @@ export const createActivity = (opts: Options = {}) => {
 
   const requestCancel = async (eventName: string) => {
     const current = get(activity)
-    if (!current || current.cancelling) return
-    activity.set({ ...current, label: 'Cancelling…', cancel: null, cancelling: true })
+    const owned = ownsActivity(eventName)
+    if (!current || (owned && current.cancelling)) return
+    const generation = activityGeneration
+    if (owned) activity.set({ ...current, label: 'Cancelling…', cancel: null, cancelling: true })
     try {
       await cancelTask(eventName)
     } catch (err) {
+      if (!owned || generation !== activityGeneration) return
       // The caller also records cancellation while preparing metadata or
       // between roots. A task may not exist yet, or its reply may be pending.
       // Keep the operation visible until that caller acknowledges completion.

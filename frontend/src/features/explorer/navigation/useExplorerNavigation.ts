@@ -22,6 +22,8 @@ type PendingNav = {
   gen: number
 }
 
+type PartitionTarget = { path: string | null; warning?: string | null; message?: string }
+
 type Deps = {
   current: Readable<string>
   loading: Readable<boolean>
@@ -58,6 +60,10 @@ export const useExplorerNavigation = (deps: Deps) => {
 
   let pendingNav: PendingNav | null = null
   let navGeneration = 0
+  const beginNavigation = () => {
+    pendingNav = null
+    return ++navGeneration
+  }
 
   const viewFromPath = (value: string): CurrentView =>
     value === 'Recent'
@@ -105,9 +111,10 @@ export const useExplorerNavigation = (deps: Deps) => {
     }
   }
 
-  const centerSelectionIfAny = async () => {
+  const centerSelectionIfAny = async (generation: number) => {
     const list = get(deps.filteredEntries)
     const sel = get(deps.selected)
+    const current = get(deps.current)
     if (sel.size === 0 || list.length === 0) return
     const idx =
       get(deps.caretIndex) ??
@@ -117,6 +124,7 @@ export const useExplorerNavigation = (deps: Deps) => {
 
     await tick()
     requestAnimationFrame(() => {
+      if (generation !== navGeneration || current !== get(deps.current) || sel !== get(deps.selected)) return
       if (deps.getViewMode() === 'list') {
         const rowsEl = deps.getRowsEl()
         if (!rowsEl) return
@@ -143,7 +151,14 @@ export const useExplorerNavigation = (deps: Deps) => {
     })
   }
 
-  const loadDir = async (
+  const finishNavigation = async (generation: number) => {
+    if (generation !== navGeneration) return
+    restoreSelectionForCurrent()
+    await centerSelectionIfAny(generation)
+  }
+
+  const loadDirForRequest = async (
+    generation: number,
     path?: string,
     opts: LoadOpts = {},
     navOpts: { resetScroll?: boolean } = {},
@@ -152,81 +167,83 @@ export const useExplorerNavigation = (deps: Deps) => {
     if (shouldResetScroll) {
       deps.resetScrollPosition()
     }
-    navGeneration += 1
-    pendingNav = null
     captureSelectionSnapshot()
     await deps.loadRaw(path, opts)
-    restoreSelectionForCurrent()
-    await centerSelectionIfAny()
+    await finishNavigation(generation)
   }
+
+  const loadDir = (path?: string, opts: LoadOpts = {}, navOpts: { resetScroll?: boolean } = {}) =>
+    loadDirForRequest(beginNavigation(), path, opts, navOpts)
 
   const loadRecent = async (
     recordHistory = true,
     applySort = false,
     navOpts: { resetScroll?: boolean } = {},
   ) => {
+    const generation = beginNavigation()
     if (navOpts.resetScroll ?? true) {
       deps.resetScrollPosition()
     }
     captureSelectionSnapshot()
     await deps.loadRecentRaw(recordHistory, applySort)
-    restoreSelectionForCurrent()
-    await centerSelectionIfAny()
+    await finishNavigation(generation)
   }
 
   const loadStarred = async (recordHistory = true, navOpts: { resetScroll?: boolean } = {}) => {
+    const generation = beginNavigation()
     if (navOpts.resetScroll ?? true) {
       deps.resetScrollPosition()
     }
     captureSelectionSnapshot()
     await deps.loadStarredRaw(recordHistory)
-    restoreSelectionForCurrent()
-    await centerSelectionIfAny()
+    await finishNavigation(generation)
   }
 
   const loadNetwork = async (
     recordHistory = true,
     navOpts: { resetScroll?: boolean; forceRefresh?: boolean } = {},
   ) => {
+    const generation = beginNavigation()
     if (navOpts.resetScroll ?? true) {
       deps.resetScrollPosition()
     }
     captureSelectionSnapshot()
     await deps.loadNetworkRaw(recordHistory, { forceRefresh: navOpts.forceRefresh === true })
-    restoreSelectionForCurrent()
-    await centerSelectionIfAny()
+    await finishNavigation(generation)
   }
 
   const loadTrash = async (recordHistory = true, navOpts: { resetScroll?: boolean } = {}) => {
+    const generation = beginNavigation()
     if (navOpts.resetScroll ?? true) {
       deps.resetScrollPosition()
     }
     captureSelectionSnapshot()
     await deps.loadTrashRaw(recordHistory)
-    restoreSelectionForCurrent()
-    await centerSelectionIfAny()
+    await finishNavigation(generation)
   }
 
   const goBack = async () => {
+    const generation = beginNavigation()
     captureSelectionSnapshot()
     const before = get(deps.current)
     await deps.goBackRaw()
+    if (generation !== navGeneration) return
     if (get(deps.current) !== before) {
       deps.resetScrollPosition()
     }
-    restoreSelectionForCurrent()
-    await centerSelectionIfAny()
+    await finishNavigation(generation)
   }
 
   const goForward = async () => {
+    const generation = beginNavigation()
     captureSelectionSnapshot()
     const before = get(deps.current)
     await deps.goForwardRaw()
+    if (generation !== navGeneration) return
     if (get(deps.current) !== before) {
       deps.resetScrollPosition()
     }
-    restoreSelectionForCurrent()
-    await centerSelectionIfAny()
+    await finishNavigation(generation)
   }
 
   const openPathAsFile = (path: string) => {
@@ -239,79 +256,86 @@ export const useExplorerNavigation = (deps: Deps) => {
     })
   }
 
-  const loadDirIfIdle = async (path: string, opts: LoadOpts = {}) => {
+  const loadDirIfIdleForRequest = async (generation: number, path: string, opts: LoadOpts = {}) => {
+    if (generation !== navGeneration) return
     if (get(deps.loading)) {
-      if (pendingNav && pendingNav.path === path) {
-        return
-      }
-      pendingNav = { path, opts, gen: navGeneration + 1 }
+      pendingNav = { path, opts, gen: generation }
       return
     }
-    await loadDir(path, opts)
+    await loadDirForRequest(generation, path, opts)
   }
 
-  const connectingPartitions = new Set<string>()
-  const openPartition = async (path: string) => {
-    if (connectingPartitions.has(path)) return
-    connectingPartitions.add(path)
-    try {
-      await openPartitionOnce(path)
-    } finally {
-      connectingPartitions.delete(path)
-    }
+  const loadDirIfIdle = (path: string, opts: LoadOpts = {}) => {
+    if (pendingNav?.path === path && pendingNav.gen === navGeneration) return Promise.resolve()
+    return loadDirIfIdleForRequest(beginNavigation(), path, opts)
   }
 
-  const openPartitionOnce = async (path: string) => {
+  const resolvePartition = async (path: string): Promise<PartitionTarget> => {
     if (isUnmountedUsb(path)) {
-      try {
-        const mountedPath = await mountUsbVolume(path)
-        await deps.loadPartitions()
-        await loadDirIfIdle(mountedPath)
-      } catch (err) {
-        deps.showToast(`Mount failed: ${getErrorMessage(err)}`)
-      }
-      return
+      const mountedPath = await mountUsbVolume(path)
+      await deps.loadPartitions()
+      return { path: mountedPath }
     }
-    if (isCloudPath(path)) {
-      await loadDirIfIdle(path)
-      return
-    }
-
+    if (isCloudPath(path)) return { path }
     if (isMtpUri(path) || await isMountUri(path)) {
-      try {
-        const result = await connectNetworkUri(path)
-        if (result.warning) deps.showToast(result.warning)
-        if (result.kind === 'unsupported') {
-          deps.showToast('Unsupported network protocol')
-          return
-        }
-        if (result.kind === 'mountable') {
-          await deps.loadPartitions({ forceNetworkRefresh: true })
-          if (result.mountedPath) {
-            await loadDirIfIdle(result.mountedPath)
-          } else {
-            deps.showToast('Mounted, but no mount path found')
-          }
-        }
-      } catch (err) {
-        deps.showToast(`${isMtpUri(path) ? 'Phone connection failed' : 'Connect failed'}: ${getErrorMessage(err)}`)
+      const result = await connectNetworkUri(path)
+      if (result.kind === 'unsupported') {
+        return { path: null, warning: result.warning, message: 'Unsupported network protocol' }
       }
-      return
+      if (result.kind === 'mountable') {
+        await deps.loadPartitions({ forceNetworkRefresh: true })
+        return { path: result.mountedPath, warning: result.warning,
+          message: result.mountedPath ? undefined : 'Mounted, but no mount path found' }
+      }
+      return { path: null, warning: result.warning }
     }
+    return { path }
+  }
 
-    await loadDirIfIdle(path)
+  const connectingPartitions = new Map<string, { generation: number; promise: Promise<PartitionTarget> }>()
+  const openPartition = async (path: string) => {
+    const existing = connectingPartitions.get(path)
+    if (existing?.generation === navGeneration) return
+    const generation = beginNavigation()
+    const connection = existing ?? { generation, promise: resolvePartition(path) }
+    connection.generation = generation
+    connectingPartitions.set(path, connection)
+    const navigate = async () => {
+      try {
+        const target = await connection.promise
+        if (generation !== navGeneration) return
+        if (target.warning) deps.showToast(target.warning)
+        if (target.message) deps.showToast(target.message)
+        if (target.path) await loadDirIfIdleForRequest(generation, target.path)
+      } catch (err) {
+        if (generation !== navGeneration) return
+        const label = isUnmountedUsb(path) ? 'Mount failed'
+          : isMtpUri(path) ? 'Phone connection failed' : 'Connect failed'
+        deps.showToast(`${label}: ${getErrorMessage(err)}`)
+      } finally {
+        if (connection.generation === generation && connectingPartitions.get(path) === connection) {
+          connectingPartitions.delete(path)
+        }
+      }
+    }
+    // A renewed click can claim the still-running connection after another
+    // navigation, while ordinary repeated clicks remain coalesced.
+    if (existing) { void navigate(); return }
+    await navigate()
   }
 
   const goToPath = async (path: string) => {
     const trimmed = path.trim()
     if (!trimmed) return
+    const generation = beginNavigation()
 
     if (isCloudPath(trimmed)) {
       try {
         const entry = await statCloudEntry(trimmed)
+        if (generation !== navGeneration) return
         if (entry?.kind === 'dir') {
-          if (entry.path !== get(deps.current) && !get(deps.loading)) {
-            await loadDir(entry.path)
+          if (entry.path !== get(deps.current)) {
+            await loadDirIfIdleForRequest(generation, entry.path)
           }
           return
         }
@@ -323,22 +347,26 @@ export const useExplorerNavigation = (deps: Deps) => {
       } catch {
         // Fall through to directory navigation fallback, matching local-path behavior.
       }
-      if (trimmed !== get(deps.current) && !get(deps.loading)) {
-        await loadDir(trimmed)
+      if (generation !== navGeneration) return
+      if (trimmed !== get(deps.current)) {
+        await loadDirIfIdleForRequest(generation, trimmed)
       }
       return
     }
 
-    if (await isMountUri(trimmed)) {
+    const mountUri = await isMountUri(trimmed)
+    if (generation !== navGeneration) return
+    if (mountUri) {
       await openPartition(trimmed)
       return
     }
 
     try {
       const kind = await entryKind(trimmed)
+      if (generation !== navGeneration) return
       if (kind === 'dir') {
-        if (trimmed !== get(deps.current) && !get(deps.loading)) {
-          await loadDir(trimmed)
+        if (trimmed !== get(deps.current)) {
+          await loadDirIfIdleForRequest(generation, trimmed)
         }
         return
       }
@@ -346,8 +374,9 @@ export const useExplorerNavigation = (deps: Deps) => {
       openPathAsFile(trimmed)
       deps.setPathInput(get(deps.current))
     } catch {
-      if (trimmed !== get(deps.current) && !get(deps.loading)) {
-        await loadDir(trimmed)
+      if (generation !== navGeneration) return
+      if (trimmed !== get(deps.current)) {
+        await loadDirIfIdleForRequest(generation, trimmed)
       }
     }
   }
@@ -379,11 +408,10 @@ export const useExplorerNavigation = (deps: Deps) => {
 
   const flushPendingNavigation = () => {
     if (get(deps.loading) || !pendingNav) return
-    if (pendingNav.gen > navGeneration) {
+    if (pendingNav.gen === navGeneration) {
       const next = pendingNav
       pendingNav = null
-      navGeneration = next.gen
-      void loadDir(next.path, next.opts ?? {})
+      void loadDirForRequest(next.gen, next.path, next.opts ?? {})
       return
     }
     pendingNav = null
