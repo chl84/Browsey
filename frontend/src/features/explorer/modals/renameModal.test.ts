@@ -90,3 +90,14 @@ it('does not return to an old folder after a rename completes during navigation'
   expect(await pending).toBe(true)
   expect(loadPath).not.toHaveBeenCalled()
 })
+
+it.each(['Recent', 'Starred'])('refreshes %s after renaming without leaving that view', async view => {
+  service.renameEntry.mockResolvedValueOnce('/owned/renamed.txt')
+  const loadPath = vi.fn(async () => {})
+  const reloadCurrent = vi.fn(async () => {})
+  const modal = createRenameModal({ loadPath, reloadCurrent, parentPath: () => '/owned', getCurrentPath: () => view })
+  modal.open({ name: 'old.txt', path: '/owned/old.txt', kind: 'file', iconId: 0 })
+  expect(await modal.confirm('renamed.txt')).toBe(true)
+  expect(reloadCurrent).toHaveBeenCalledOnce()
+  expect(loadPath).not.toHaveBeenCalled()
+})
