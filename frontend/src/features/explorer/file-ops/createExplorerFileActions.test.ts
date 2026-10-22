@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { get } from 'svelte/store'
 import type { Entry } from '../model/types'
 import type { CurrentView } from '../context/createContextActions'
 import { createExplorerFileActions } from './createExplorerFileActions'
+import { createActivity } from '../hooks/createActivity'
 
 const service = vi.hoisted(() => ({ openEntry: vi.fn(), openConsole: vi.fn() }))
+const events = vi.hoisted(() => ({ listen: vi.fn(), unlisten: vi.fn() }))
+vi.mock('@tauri-apps/api/event', () => ({ listen: events.listen }))
 vi.mock('../services/files.service', () => ({ openEntry: service.openEntry }))
 vi.mock('../services/console.service', () => ({ openConsole: service.openConsole }))
 const a: Entry = { path: '/mock/a', name: 'a', kind: 'file', iconId: 0 }
@@ -22,7 +26,32 @@ const setup = (overrides: Partial<Parameters<typeof createExplorerFileActions>[0
 }
 
 describe('Explorer file-action orchestration', () => {
-  beforeEach(() => vi.resetAllMocks())
+  beforeEach(() => {
+    vi.resetAllMocks()
+    events.listen.mockImplementation(async (name: string) => () => events.unlisten(name))
+  })
+
+  it.each([false, true])('keeps newer progress when an earlier cloud file open settles (failure=%s)', async failure => {
+    let finish!: () => void
+    service.openEntry.mockReturnValueOnce(new Promise<void>((resolve, reject) => {
+      finish = () => failure ? reject(new Error('Old download failed')) : resolve()
+    }))
+    const activityApi = createActivity()
+    const { actions } = setup({ activityApi })
+    const pending = actions.open({ ...a, path: 'rclone://remote/old.txt' })
+    await vi.waitFor(() => expect(service.openEntry).toHaveBeenCalledOnce())
+    await activityApi.start('New transfer…', 'new-transfer')
+    try {
+      finish()
+      await pending
+      expect(get(activityApi.activity)).toMatchObject({ label: 'New transfer…' })
+      expect(activityApi.hasHideTimer()).toBe(false)
+      expect(events.unlisten).not.toHaveBeenCalledWith('new-transfer')
+    } finally {
+      await activityApi.cleanup()
+      activityApi.clearNow()
+    }
+  })
 
   it('reads current selection for every copy/cut instead of capturing initial values', async () => {
     let selected = new Set([a.path])
@@ -122,7 +151,7 @@ describe('Explorer file-action orchestration', () => {
     cancel?.()
     expect(activityApi.requestCancel).toHaveBeenCalledWith(event)
     expect(activityApi.hideSoon).toHaveBeenCalledOnce()
-    expect(activityApi.cleanup).toHaveBeenCalledWith(true)
+    expect(activityApi.cleanup).toHaveBeenCalledWith(true, event)
     expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Cloud saves shows upload status'))
   })
 
@@ -132,7 +161,7 @@ describe('Explorer file-action orchestration', () => {
     else service.openEntry.mockRejectedValueOnce(new Error('download failed'))
     await actions.open({ ...a, path: 'rclone://remote/file' })
     expect(activityApi.clearNow).toHaveBeenCalledOnce()
-    expect(activityApi.cleanup).toHaveBeenCalledWith(false)
+    expect(activityApi.cleanup).toHaveBeenCalledWith(false, expect.stringMatching(/^cloud-open-/))
     expect(activityApi.hideSoon).not.toHaveBeenCalled()
     expect(showToast).toHaveBeenCalledWith(phase === 'start' ? 'listener unavailable' : 'download failed')
     expect(service.openEntry).toHaveBeenCalledTimes(phase === 'start' ? 0 : 1)

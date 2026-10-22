@@ -28,8 +28,9 @@
   consistently with the watched path, including spaces and Unicode names.
 
 - Release progress listeners that register after cleanup and ignore obsolete
-  cancellation errors. Keep rename/folder cleanup and delayed feedback tied to
-  their operation so an older completion cannot hide a newer task.
+  cancellation errors. Keep rename/folder and cloud-loading cleanup and delayed
+  feedback tied to their operation so an older completion cannot hide a newer
+  task, including when opening cloud files.
   Preserve manually chosen recovery destinations during
   delayed startup lookups, and remove temporary clipboard fields on failure.
   Make deferred drag-image cleanup tolerate images that have already detached.
