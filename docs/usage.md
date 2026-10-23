@@ -222,6 +222,14 @@ Local manual copies compare output against the written stream before accepting
 completion or deleting fallback move sources. The extra target-read pass is
 not a lock against later edits; GIO/cloud copy paths are different.
 
+Moving local items to Wastebasket uses system trash without first copying the
+entire contents into undo storage. Undo uses the retained trash entry while it
+is available. If the system trash catalog is delayed, retry Undo after refreshing
+Wastebasket. A failed or cancelled batch restores the actual trash payloads;
+if an original path has become occupied, Browsey keeps the trashed data for
+recovery and reports the blocked paths rather than overwriting the newer item.
+This is separate from retained-backup recovery and permanent deletion below.
+
 Settings > Stored data shows an undo-backup overview. **Show backups** lists
 stored files and folders. **Recover** creates a verified copy at the original
 location with progress and cancellation. If the location is occupied, missing,

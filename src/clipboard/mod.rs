@@ -180,15 +180,8 @@ fn rename_candidate(base: &Path, idx: usize) -> PathBuf {
         .and_then(|n| n.to_str())
         .unwrap_or("item")
         .to_string();
-    let (stem, ext) = original
-        .rsplit_once('.')
-        .map(|(s, e)| (s.to_string(), Some(e.to_string())))
-        .unwrap_or_else(|| (original.clone(), None));
-
-    let candidate_name = match &ext {
-        Some(ext) => format!("{stem}-{idx}.{ext}"),
-        None => format!("{stem}-{idx}"),
-    };
+    let (stem, ext) = crate::fs_utils::split_filename_extension(&original);
+    let candidate_name = format!("{stem}-{idx}{ext}");
     parent.join(candidate_name)
 }
 

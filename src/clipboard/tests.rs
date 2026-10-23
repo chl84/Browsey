@@ -3651,3 +3651,27 @@ fn batch_failure_counts_completed_roots_rolled_back_and_unattempted_sources() {
         fs::remove_dir_all(root).unwrap();
     }
 }
+
+#[test]
+fn conflict_names_preserve_hidden_status_and_archive_kind() {
+    let root = uniq_path("conflict-extensions");
+    for (name, expected) in [
+        (".bashrc", ".bashrc-1"),
+        ("archive.tar.gz", "archive-1.tar.gz"),
+        ("ARCHIVE.TAR.XZ", "ARCHIVE-1.TAR.XZ"),
+        ("a.tar.bz2", "a-1.tar.bz2"),
+        ("a.tar.zst", "a-1.tar.zst"),
+        ("a.tar.zstd", "a-1.tar.zstd"),
+        ("a.tar.lz4", "a-1.tar.lz4"),
+        (".config.json", ".config-1.json"),
+        ("blåbær.txt", "blåbær-1.txt"),
+        ("file.", "file.-1"),
+    ] {
+        let path = root.join(name);
+        assert_eq!(rename_candidate(&path, 1), root.join(expected));
+        write_file(&path, b"keep original");
+        assert_eq!(crate::fs_utils::unique_path(&path), root.join(expected));
+        assert_eq!(fs::read(&path).unwrap(), b"keep original");
+    }
+    fs::remove_dir_all(root).unwrap();
+}

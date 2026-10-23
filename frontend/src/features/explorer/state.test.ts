@@ -530,4 +530,86 @@ describe('createExplorerState sort refresh behavior', () => {
     expect(get(state.entries)).toHaveLength(1)
     expect(get(state.networkNotice)).toBe('')
   })
+  const specialViews = [
+    ['loadRecent', 'Recent', listRecentMock],
+    ['loadStarred', 'Starred', listStarredMock],
+    ['loadNetwork', 'Network', listNetworkEntriesMock],
+    ['loadTrash', 'Trash', listTrashMock],
+  ] as const
+  it.each(specialViews)('%s discards stale results and preserves newer history', async (method, view, service) => {
+    const old = deferred<unknown>()
+    service.mockReturnValueOnce(old.promise)
+    listDirMock.mockImplementation(async path => ({ current: path, entries: [] }))
+    const state = createExplorerState()
+    await state.load('/generated/before')
+    await state.load('/generated/newer')
+    const pending = state[method]()
+    await vi.waitFor(() => expect(service).toHaveBeenCalledOnce())
+    await state.goBack()
+    expect(get(state.current)).toBe('/generated/before')
+    old.resolve(method === 'loadNetwork' ? [] : { current: view, entries: [] })
+    await pending
+    expect(get(state.current)).toBe('/generated/before')
+    listDirMock.mockClear()
+    await state.goForward()
+    expect(listDirMock).toHaveBeenCalledOnce()
+    expect(get(state.current)).toBe('/generated/newer')
+  })
+  it.each(specialViews)('%s leaves newer directory loading active', async (method, view, service) => {
+    vi.useFakeTimers()
+    const old = deferred<unknown>(), next = deferred<Listing>()
+    service.mockReturnValueOnce(old.promise)
+    listDirMock.mockReturnValueOnce(next.promise)
+    const state = createExplorerState()
+    const pending = state[method]()
+    await vi.advanceTimersByTimeAsync(0)
+    const newer = state.load('/generated/newer')
+    await vi.advanceTimersByTimeAsync(200)
+    expect(get(state.loading)).toBe(true)
+    old.resolve(method === 'loadNetwork' ? [] : { current: view, entries: [] })
+    await pending
+    await vi.advanceTimersByTimeAsync(200)
+    expect(get(state.loading)).toBe(true)
+    next.resolve({ current: '/generated/newer', entries: [] })
+    await newer
+    await vi.advanceTimersByTimeAsync(200)
+    expect(get(state.loading)).toBe(false)
+  })
+  it.each(specialViews)('%s ignores an old failure after newer success', async (method, _view, service) => {
+    const old = deferred<unknown>()
+    service.mockReturnValueOnce(old.promise)
+    listDirMock.mockImplementation(async path => ({ current: path, entries: [] }))
+    const state = createExplorerState()
+    const pending = state[method]()
+    await vi.waitFor(() => expect(service).toHaveBeenCalledOnce())
+    await state.load('/generated/newer')
+    old.reject(new Error('old special-view failure'))
+    await pending
+    expect(get(state.error)).toBe('')
+  })
+  it('finishes network setup before location subscribers reset search state', async () => {
+    vi.useFakeTimers()
+    const status = deferred<unknown>()
+    loadCloudSetupStatusMock.mockReturnValueOnce(status.promise)
+    listDirMock.mockImplementation(async path => ({ current: path, entries: [] }))
+    const state = createExplorerState()
+    state.cloudEnabled.set(true)
+    await state.load('/before')
+    const unsubscribe = state.current.subscribe(where => {
+      if (where === 'Network') queueMicrotask(() => state.cancelSearch())
+    })
+    const loading = state.loadNetwork()
+    await vi.advanceTimersByTimeAsync(200)
+    expect(get(state.loading)).toBe(true)
+    expect(get(state.current)).toBe('/before')
+    status.resolve({ state: 'ready' })
+    await loading
+    await vi.advanceTimersByTimeAsync(200)
+    expect(get(state.loading)).toBe(false)
+    expect(get(state.current)).toBe('Network')
+    await state.goBack()
+    expect(get(state.current)).toBe('/before')
+    unsubscribe()
+  })
+
 })

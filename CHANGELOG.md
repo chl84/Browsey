@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- Move local items to system trash without copying their entire contents into
+  undo storage first. Preserve trees containing symlinks, unreadable children
+  and special files. Roll failed or cancelled batches back from the actual
+  trash payload, retain blocked restores for retry without overwriting newer
+  files, and resolve delayed trash catalogs without a second data copy.
+
+- Preserve progress and cancellation for overlapping operations. Restore the
+  older active task when a newer one ends, and scope completion, timers and
+  listener cleanup to the originating operation across file and cloud actions.
+
+- Discard stale Recent, Starred, Network and Wastebasket results, errors and
+  loading updates after newer navigation. Finish Network setup before publishing
+  the location so UI search resets cannot leave its loading indicator stuck.
+
+- Expand desktop Exec placeholders only once, preserving literal percent codes
+  in filenames and application names. Honor Linux Terminal=true entries through
+  GIO and reap console-launch children after they exit.
+
+- Keep dotfiles hidden and compound archive suffixes intact when generating
+  conflict names. Apply acyclic batch-rename chains in dependency order while
+  preserving reply order and undo/redo; reject cycles before changing files.
+
 - Update Vitest and its coordinated packages to 4.1.12 to resolve
   GHSA-qxg6-89mg-rqv8 and GHSA-xp26-3454-mjgp in the development test tooling.
 

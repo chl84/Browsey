@@ -105,6 +105,7 @@ pub fn preview_rename_entries(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::errors::domain::DomainError;
     use std::fs::{self, OpenOptions};
     use std::io::Write;
     #[cfg(unix)]
@@ -475,5 +476,68 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&dir);
+    }
+    #[test]
+    fn chained_batch_rename_is_order_independent_and_keeps_undo_redo_and_reply_order() {
+        for reverse in [false, true] {
+            let root = uniq_path("rename-chain");
+            let a = root.join("1.txt");
+            let b = root.join("2.txt");
+            let c = root.join("3.txt");
+            write_file(&a, b"a");
+            write_file(&b, b"b");
+            let request = |path: &Path, name: &str| RenameEntryRequest {
+                path: path.to_string_lossy().into_owned(),
+                new_name: name.into(),
+            };
+            let mut requests = vec![request(&a, "2.txt"), request(&b, "3.txt")];
+            let mut expected = vec![
+                b.to_string_lossy().into_owned(),
+                c.to_string_lossy().into_owned(),
+            ];
+            if reverse {
+                requests.reverse();
+                expected.reverse();
+            }
+            let undo = UndoState::default();
+            assert_eq!(rename_entries_impl(requests, &undo).unwrap(), expected);
+            assert!(!a.exists());
+            assert_eq!(fs::read(&b).unwrap(), b"a");
+            assert_eq!(fs::read(&c).unwrap(), b"b");
+            undo.undo().unwrap();
+            assert_eq!(fs::read(&a).unwrap(), b"a");
+            assert_eq!(fs::read(&b).unwrap(), b"b");
+            assert!(!c.exists());
+            undo.redo().unwrap();
+            assert_eq!(fs::read(&b).unwrap(), b"a");
+            assert_eq!(fs::read(&c).unwrap(), b"b");
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn chained_batch_refuses_cycles_before_mutation() {
+        let root = uniq_path("rename-cycle");
+        let a = root.join("a");
+        let b = root.join("b");
+        write_file(&a, b"a");
+        write_file(&b, b"b");
+        let result = rename_entries_impl(
+            vec![
+                RenameEntryRequest {
+                    path: a.to_string_lossy().into_owned(),
+                    new_name: "b".into(),
+                },
+                RenameEntryRequest {
+                    path: b.to_string_lossy().into_owned(),
+                    new_name: "a".into(),
+                },
+            ],
+            &UndoState::default(),
+        );
+        assert_eq!(result.unwrap_err().code_str(), "invalid_input");
+        assert_eq!(fs::read(a).unwrap(), b"a");
+        assert_eq!(fs::read(b).unwrap(), b"b");
+        fs::remove_dir_all(root).unwrap();
     }
 }

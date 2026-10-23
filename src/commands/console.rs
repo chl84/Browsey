@@ -1,3 +1,4 @@
+use super::open_with::spawn_detached;
 use std::path::Path;
 use std::process::Command;
 
@@ -90,34 +91,29 @@ fn open_console_impl(path: String) -> ConsoleResult<()> {
 fn launch_terminal(dir: &Path) -> ConsoleResult<()> {
     #[cfg(target_os = "windows")]
     {
-        Command::new("cmd")
-            .args(["/C", "start", "cmd"])
-            .current_dir(dir)
-            .spawn()
-            .map_err(|error| {
-                ConsoleError::from_io_error(
-                    ConsoleErrorCode::LaunchFailed,
-                    "Failed to launch cmd",
-                    error,
-                )
-            })?;
+        let mut command = Command::new("cmd");
+        command.args(["/C", "start", "cmd"]).current_dir(dir);
+        spawn_detached(command).map_err(|error| {
+            ConsoleError::from_io_error(
+                ConsoleErrorCode::LaunchFailed,
+                "Failed to launch cmd",
+                error,
+            )
+        })?;
         return Ok(());
     }
 
     #[cfg(target_os = "macos")]
     {
-        Command::new("open")
-            .arg("-a")
-            .arg("Terminal")
-            .arg(dir)
-            .spawn()
-            .map_err(|error| {
-                ConsoleError::from_io_error(
-                    ConsoleErrorCode::LaunchFailed,
-                    "Failed to launch Terminal",
-                    error,
-                )
-            })?;
+        let mut command = Command::new("open");
+        command.args(["-a", "Terminal"]).arg(dir);
+        spawn_detached(command).map_err(|error| {
+            ConsoleError::from_io_error(
+                ConsoleErrorCode::LaunchFailed,
+                "Failed to launch Terminal",
+                error,
+            )
+        })?;
         return Ok(());
     }
 
@@ -130,8 +126,8 @@ fn launch_terminal(dir: &Path) -> ConsoleResult<()> {
         for (bin, args) in linux_terminal_candidates(&dir_arg) {
             let mut cmdline = Command::new(bin);
             cmdline.current_dir(dir).args(&args);
-            match cmdline.spawn() {
-                Ok(_) => return Ok(()),
+            match spawn_detached(cmdline) {
+                Ok(()) => return Ok(()),
                 Err(error) => {
                     tried_bins.insert(bin.to_string());
                     if error.kind() != std::io::ErrorKind::NotFound && launch_error.is_none() {
@@ -232,5 +228,62 @@ mod tests {
             open_console_impl("relative/path".to_string()).expect_err("relative paths should fail");
         assert_eq!(error.code_str(), "path_not_absolute");
         assert_eq!(error.message(), "Path must be absolute");
+    }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn terminal_children_are_reaped_in_an_isolated_process() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = temp_path("reaper");
+        let bin = root.join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        let terminal = bin.join("gnome-terminal");
+        fs::write(&terminal, "#!/bin/sh\nprintf '%s' \"$$\" > terminal.pid\n").unwrap();
+        fs::set_permissions(&terminal, fs::Permissions::from_mode(0o700)).unwrap();
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "commands::console::tests::terminal_reaper_child",
+                "--nocapture",
+            ])
+            .env("BROWSEY_TERMINAL_REAPER_ROOT", &root)
+            .env("PATH", &bin)
+            .output()
+            .unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn terminal_reaper_child() {
+        let Some(root) = std::env::var_os("BROWSEY_TERMINAL_REAPER_ROOT") else {
+            return;
+        };
+        let root = std::path::PathBuf::from(root);
+        launch_terminal(&root).unwrap();
+        let mut pid = None;
+        for _ in 0..200 {
+            if let Ok(value) = fs::read_to_string(root.join("terminal.pid")) {
+                pid = value.trim().parse::<i32>().ok();
+                if let Some(pid) = pid {
+                    if !Path::new(&format!("/proc/{pid}")).exists() {
+                        return;
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        // Reap only this owned fixture if the regression leaves a zombie.
+        if let Some(pid) = pid {
+            unsafe {
+                libc::waitpid(pid, std::ptr::null_mut(), 0);
+            }
+        }
+        panic!("terminal child was not reaped");
     }
 }

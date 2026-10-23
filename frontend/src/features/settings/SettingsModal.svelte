@@ -179,26 +179,27 @@
     const progressEvent = cloudProbeProgressEventName()
     cloudProbeBusy = true
     cloudProbeError = ''
-    await activityApi?.start(
-      'Testing cloud connection…',
-      progressEvent,
-      () => activityApi?.requestCancel(progressEvent),
-    )
     try {
+      await activityApi?.start(
+        'Testing cloud connection…',
+        progressEvent,
+        () => activityApi?.requestCancel(progressEvent),
+      )
       const next = await probeCloudRemote(selectedProbeRemoteId, progressEvent)
       cloudProbeStatus = next
       const cancelled =
         next.rc.state === 'cancelled' || next.cli.state === 'cancelled'
       if (cancelled) {
-        activityApi?.clearNow()
-        await activityApi?.cleanup()
+        activityApi?.clearNow(progressEvent)
+        await activityApi?.cleanup(false, progressEvent)
       } else {
-        activityApi?.hideSoon()
+        activityApi?.hideSoon(progressEvent)
+        await activityApi?.cleanup(true, progressEvent)
       }
     } catch (err) {
       cloudProbeError = getErrorMessage(err)
-      activityApi?.clearNow()
-      await activityApi?.cleanup()
+      activityApi?.clearNow(progressEvent)
+      await activityApi?.cleanup(false, progressEvent)
     } finally {
       cloudProbeBusy = false
     }

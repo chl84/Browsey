@@ -482,3 +482,33 @@ fn tar_restores_modes_and_defers_read_only_directory_until_children_are_written(
     );
     fs::set_permissions(dest, fs::Permissions::from_mode(0o700)).unwrap();
 }
+
+#[test]
+fn conflict_rename_preserves_tar_gzip_detection_and_extraction() {
+    let root = Fixture::new();
+    let original = root.0.join("archive.tar.gz");
+    let file = fs::File::create(&original).unwrap();
+    let gzip = flate2::write::GzEncoder::new(file, flate2::Compression::fast());
+    let mut archive = tar::Builder::new(gzip);
+    let mut header = tar::Header::new_gnu();
+    header.set_size(9);
+    header.set_mode(0o600);
+    header.set_cksum();
+    archive
+        .append_data(&mut header, "demo.txt", &b"generated"[..])
+        .unwrap();
+    archive.into_inner().unwrap().finish().unwrap();
+    let renamed = crate::fs_utils::unique_path(&original);
+    assert_eq!(renamed.file_name().unwrap(), "archive-1.tar.gz");
+    fs::copy(&original, &renamed).unwrap();
+    assert!(matches!(
+        detect_archive(&renamed).unwrap(),
+        ArchiveKind::TarGz
+    ));
+    let result = extract_password(&renamed, None).unwrap();
+    assert_eq!(
+        fs::read(Path::new(&result.destination).join("demo.txt")).unwrap(),
+        b"generated"
+    );
+    assert!(original.exists());
+}

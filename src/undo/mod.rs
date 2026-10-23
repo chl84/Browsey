@@ -40,7 +40,9 @@ pub use types::{
 pub(crate) use engine::{finalize_action, run_actions, run_rollback_actions};
 pub(crate) use nofollow::rename_nofollow_io;
 pub(crate) use path_checks::{assert_path_snapshot, snapshot_existing_path};
-pub(crate) use path_ops::{copy_entry, delete_entry_path, is_destination_exists_error};
+pub(crate) use path_ops::is_destination_exists_error;
+#[cfg(test)]
+pub(crate) use path_ops::{copy_entry, delete_entry_path};
 
 #[cfg(test)]
 mod tests;

@@ -51,6 +51,7 @@ fn write_file(path: &Path, bytes: &[u8]) {
 #[derive(Default)]
 struct FakeTrashBackend {
     items: RefCell<Vec<TrashItem>>,
+    storage: RefCell<Option<PathBuf>>,
     list_script: RefCell<VecDeque<FsResult<Vec<TrashItem>>>>,
     delete_calls: RefCell<Vec<PathBuf>>,
     rewrite_calls: RefCell<Vec<(PathBuf, PathBuf)>>,
@@ -91,23 +92,31 @@ impl TrashBackend for FakeTrashBackend {
             ));
         }
 
-        if let Ok(meta) = fs::symlink_metadata(path) {
-            if meta.is_dir() {
-                fs::remove_dir_all(path).map_err(|e| {
-                    FsError::new(
-                        FsErrorCode::TrashFailed,
-                        format!("fake delete dir failed: {e}"),
-                    )
-                })?;
-            } else {
-                fs::remove_file(path).map_err(|e| {
-                    FsError::new(
-                        FsErrorCode::TrashFailed,
-                        format!("fake delete file failed: {e}"),
-                    )
-                })?;
-            }
-        }
+        let root = self
+            .storage
+            .borrow_mut()
+            .get_or_insert_with(|| {
+                let root = path
+                    .parent()
+                    .unwrap()
+                    .join(format!("fake-trash-{}", std::process::id()));
+                fs::create_dir_all(root.join("files")).unwrap();
+                fs::create_dir_all(root.join("info")).unwrap();
+                root
+            })
+            .clone();
+        fs::rename(path, root.join("files").join(format!("item-{next_call}"))).unwrap();
+        let info = root
+            .join("info")
+            .join(format!("item-{next_call}.trashinfo"));
+        fs::write(
+            &info,
+            format!(
+                "[Trash Info]\nPath={}\nDeletionDate=2026-10-23T00:00:00\n",
+                encode_trash_info_path(path)
+            ),
+        )
+        .unwrap();
 
         let name = path
             .file_name()
@@ -117,8 +126,7 @@ impl TrashBackend for FakeTrashBackend {
             .parent()
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| PathBuf::from("/"));
-        let id = PathBuf::from(format!("/tmp/fake-trash/info/item-{next_call}.trashinfo"))
-            .into_os_string();
+        let id = info.into_os_string();
         self.items.borrow_mut().push(TrashItem {
             id,
             name,
@@ -128,10 +136,26 @@ impl TrashBackend for FakeTrashBackend {
         Ok(())
     }
 
+    fn restore_item(&self, item: &TrashItem, original_path: &Path) -> FsResult<()> {
+        super::backend::restore_trashed_item(item, original_path)?;
+        self.items.borrow_mut().retain(|entry| entry.id != item.id);
+        Ok(())
+    }
+
     fn rewrite_original_path(&self, item: &TrashItem, original_path: &Path) -> FsResult<()> {
         self.rewrite_calls
             .borrow_mut()
             .push((PathBuf::from(&item.id), original_path.to_path_buf()));
+        super::staging::rewrite_trash_info_original_path(item, original_path)?;
+        if let Some(entry) = self
+            .items
+            .borrow_mut()
+            .iter_mut()
+            .find(|entry| entry.id == item.id)
+        {
+            entry.name = original_path.file_name().unwrap().to_os_string();
+            entry.original_parent = original_path.parent().unwrap().to_path_buf();
+        }
         Ok(())
     }
 }
@@ -295,7 +319,7 @@ fn move_single_to_trash_uses_backend_and_rewrites_original_path() {
 }
 
 #[test]
-fn move_single_to_trash_falls_back_to_delete_when_item_not_detected() {
+fn move_single_to_trash_defers_undo_when_item_not_detected() {
     let dir = uniq_path("single-trash-delete-fallback");
     let _ = fs::create_dir_all(&dir);
     let src = dir.join("file.txt");
@@ -308,8 +332,8 @@ fn move_single_to_trash_falls_back_to_delete_when_item_not_detected() {
     let action =
         move_single_to_trash_with_backend(&src.to_string_lossy(), &backend).expect("success");
     match action {
-        Action::Delete { path, .. } => assert_eq!(path, src),
-        other => panic!("expected delete action, got {other:?}"),
+        Action::PendingTrash { from, .. } => assert_eq!(from, src),
+        other => panic!("expected deferred trash action, got {other:?}"),
     }
     assert_eq!(
         backend.rewrite_calls.borrow().len(),
@@ -328,10 +352,7 @@ fn trash_batch_preserves_file_and_folder_contents_through_undo_redo() {
     write_file(&file, b"document contents");
     write_file(&folder.join("nested.txt"), b"nested contents");
     let backend = FakeTrashBackend::default();
-    // Simulate a platform where trash IDs cannot be discovered. The existing
-    // undo fallback must preserve both items, including the directory tree.
-    backend.queue_list_response(Ok(Vec::new()));
-    backend.queue_list_response(Ok(Vec::new()));
+    // Use the actual retained payloads rather than a second central backup copy.
     let undo = UndoState::default();
     move_to_trash_many_with_backend(
         vec![
@@ -396,6 +417,10 @@ fn move_to_trash_many_rolls_back_previous_on_later_failure() {
     assert!(
         src2.exists(),
         "second file should be rolled back by staging logic"
+    );
+    assert!(
+        backend.items.borrow().is_empty(),
+        "rollback must remove the actual trash items"
     );
 
     let _ = fs::remove_dir_all(&dir);
@@ -623,4 +648,320 @@ fn purge_with_ops_list_failure_does_not_emit_change() {
         "purge should not be attempted when list fails"
     );
     assert!(!emitted.get(), "list failure should not emit change event");
+}
+
+#[test]
+fn trash_preserves_symlink_descendants_unreadable_files_and_fifo_without_precopy() {
+    use std::os::unix::fs::{symlink, PermissionsExt};
+    let root = uniq_path("trash-types");
+    let folder = root.join("project");
+    write_file(&folder.join("secret"), b"owned data");
+    fs::set_permissions(folder.join("secret"), fs::Permissions::from_mode(0o000)).unwrap();
+    symlink("secret", folder.join("link")).unwrap();
+    let fifo = folder.join("pipe");
+    let cpath = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(cpath.as_ptr(), 0o600) }, 0);
+    // A sparse payload would require materializing 8 GiB in the old backup path.
+    OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(folder.join("large"))
+        .unwrap()
+        .set_len(8 * 1024 * 1024 * 1024)
+        .unwrap();
+    let backend = FakeTrashBackend::default();
+    let action = move_single_to_trash_with_backend(folder.to_str().unwrap(), &backend).unwrap();
+    let Action::Move { to, .. } = action else {
+        panic!("expected retained trash payload")
+    };
+    assert!(!folder.exists());
+    assert_eq!(
+        fs::read_link(to.join("link")).unwrap(),
+        PathBuf::from("secret")
+    );
+    use std::os::unix::fs::FileTypeExt;
+    assert!(fs::symlink_metadata(to.join("pipe"))
+        .unwrap()
+        .file_type()
+        .is_fifo());
+    let item = backend.items.borrow()[0].clone();
+    backend.restore_item(&item, &folder).unwrap();
+    fs::set_permissions(folder.join("secret"), fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(fs::read(folder.join("secret")).unwrap(), b"owned data");
+    assert!(backend.items.borrow().is_empty());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn cancelling_trash_restores_actual_payload_without_duplicates() {
+    let root = uniq_path("trash-cancel");
+    let first = root.join("first");
+    let second = root.join("second");
+    write_file(&first, b"first");
+    write_file(&second, b"second");
+    let backend = FakeTrashBackend::default();
+    let calls = Cell::new(0);
+    let result = move_to_trash_many_with_backend(
+        vec![
+            first.to_string_lossy().into_owned(),
+            second.to_string_lossy().into_owned(),
+        ],
+        UndoState::default(),
+        None,
+        &backend,
+        |_| {
+            let n = calls.get();
+            calls.set(n + 1);
+            n > 0
+        },
+        |_, _, _| {},
+        || {},
+    );
+    assert_eq!(result.unwrap_err().code(), FsErrorCode::Cancelled);
+    assert_eq!(fs::read(&first).unwrap(), b"first");
+    assert_eq!(fs::read(&second).unwrap(), b"second");
+    assert!(backend.items.borrow().is_empty());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn failed_trash_rollback_preserves_occupied_destination_and_original_payload_for_retry() {
+    let root = uniq_path("trash-occupied");
+    let first = root.join("first");
+    let second = root.join("second");
+    write_file(&first, b"original");
+    write_file(&second, b"second");
+    let backend = FakeTrashBackend::with_fail_on_delete_call(2);
+    let calls = Cell::new(0);
+    let undo = UndoState::default();
+    let result = move_to_trash_many_with_backend(
+        vec![
+            first.to_string_lossy().into_owned(),
+            second.to_string_lossy().into_owned(),
+        ],
+        undo.clone(),
+        None,
+        &backend,
+        |_| {
+            let n = calls.get();
+            calls.set(n + 1);
+            if n == 1 {
+                write_file(&first, b"new occupant");
+            }
+            false
+        },
+        |_, _, _| {},
+        || {},
+    );
+    assert!(result
+        .unwrap_err()
+        .message()
+        .contains("remain in Wastebasket"));
+    assert_eq!(fs::read(&first).unwrap(), b"new occupant");
+    let payload = super::listing::trash_item_path(&backend.items.borrow()[0]);
+    assert_eq!(fs::read(&payload).unwrap(), b"original");
+    assert!(undo.undo().is_err());
+    assert_eq!(fs::read(&first).unwrap(), b"new occupant");
+    fs::remove_file(&first).unwrap();
+    undo.undo().unwrap();
+    assert_eq!(fs::read(&first).unwrap(), b"original");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn delayed_trash_catalog_is_resolved_without_a_backup_copy() {
+    let root = uniq_path("trash-delayed");
+    let source = root.join("file");
+    write_file(&source, b"original");
+    let backend = FakeTrashBackend::default();
+    backend.queue_list_response(Ok(vec![]));
+    backend.queue_list_response(Ok(vec![]));
+    let action = move_single_to_trash_with_backend(source.to_str().unwrap(), &backend).unwrap();
+    let Action::PendingTrash { from, staged, .. } = action else {
+        panic!("expected deferred catalog")
+    };
+    backend.queue_list_response(Ok(vec![]));
+    assert!(
+        super::move_ops::resolve_pending_trash_with_backend(&from, &staged, &backend, &[]).is_err()
+    );
+    let payload =
+        super::move_ops::resolve_pending_trash_with_backend(&from, &staged, &backend, &[]).unwrap();
+    let undo = UndoState::default();
+    undo.record_applied(Action::Move {
+        from: from.clone(),
+        to: payload,
+    })
+    .unwrap();
+    undo.undo().unwrap();
+    assert_eq!(fs::read(&source).unwrap(), b"original");
+    undo.redo().unwrap();
+    assert!(!source.exists());
+    undo.undo().unwrap();
+    assert_eq!(fs::read(&source).unwrap(), b"original");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn startup_rewrites_delayed_trash_metadata_using_retained_journal() {
+    let root = uniq_path("trash-journal");
+    let source = root.join("original");
+    write_file(&source, b"original");
+    let backend = FakeTrashBackend::default();
+    backend.queue_list_response(Ok(vec![]));
+    backend.queue_list_response(Ok(vec![]));
+    let Action::PendingTrash { from, staged, .. } =
+        move_single_to_trash_with_backend(source.to_str().unwrap(), &backend).unwrap()
+    else {
+        panic!("expected delayed entry")
+    };
+    let journal = root.join("journal");
+    store_trash_stage_journal_entries_at(
+        &journal,
+        &[TrashStageJournalEntry {
+            staged,
+            original: from.clone(),
+        }],
+    )
+    .unwrap();
+    super::staging::cleanup_stale_trash_staging_with_backend_at(&journal, &backend);
+    assert!(load_trash_stage_journal_entries_at(&journal)
+        .unwrap()
+        .is_empty());
+    assert_eq!(backend.items.borrow()[0].original_path(), from);
+    assert!(!source.exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn real_trash_regressions_use_a_private_profile() {
+    let root = uniq_path("real-trash");
+    fs::create_dir_all(root.join("home")).unwrap();
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "commands::fs::trash::tests::real_trash_isolated_child",
+            "--nocapture",
+        ])
+        .env("BROWSEY_PRIVATE_TRASH_TEST", &root)
+        .env("HOME", root.join("home"))
+        .env("XDG_DATA_HOME", root.join("data"))
+        .env("XDG_CONFIG_HOME", root.join("config"))
+        .env("XDG_CACHE_HOME", root.join("cache"))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn real_trash_isolated_child() {
+    use super::backend::SystemTrashBackend;
+    use std::os::unix::fs::{symlink, PermissionsExt};
+    let Some(root) = std::env::var_os("BROWSEY_PRIVATE_TRASH_TEST").map(PathBuf::from) else {
+        return;
+    };
+    let real = SystemTrashBackend;
+    assert!(
+        real.list_items().unwrap().is_empty(),
+        "private profile must begin empty"
+    );
+    let source = root.join("home/project");
+    write_file(&source.join("secret"), b"original");
+    symlink("secret", source.join("link")).unwrap();
+    fs::set_permissions(source.join("secret"), fs::Permissions::from_mode(0o000)).unwrap();
+    let fifo = std::ffi::CString::new(source.join("pipe").to_str().unwrap()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+    let action = move_single_to_trash_with_backend(source.to_str().unwrap(), &real).unwrap();
+    assert!(!source.exists());
+    let item = real.list_items().unwrap().pop().unwrap();
+    assert_eq!(item.original_path(), source);
+    real.restore_item(&item, &source).unwrap();
+    assert_eq!(
+        fs::read_link(source.join("link")).unwrap(),
+        PathBuf::from("secret")
+    );
+    fs::set_permissions(source.join("secret"), fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(fs::read(source.join("secret")).unwrap(), b"original");
+    drop(action);
+    assert!(real.list_items().unwrap().is_empty());
+
+    struct DelayedCatalog {
+        calls: Cell<u32>,
+    }
+    impl TrashBackend for DelayedCatalog {
+        fn list_items(&self) -> FsResult<Vec<TrashItem>> {
+            let n = self.calls.get();
+            self.calls.set(n + 1);
+            if n == 1 {
+                Ok(vec![])
+            } else {
+                SystemTrashBackend.list_items()
+            }
+        }
+        fn delete_path(&self, path: &Path) -> FsResult<()> {
+            SystemTrashBackend.delete_path(path)
+        }
+        fn restore_item(&self, item: &TrashItem, path: &Path) -> FsResult<()> {
+            SystemTrashBackend.restore_item(item, path)
+        }
+        fn rewrite_original_path(&self, item: &TrashItem, path: &Path) -> FsResult<()> {
+            SystemTrashBackend.rewrite_original_path(item, path)
+        }
+    }
+    let source = root.join("home/literal%i.txt");
+    write_file(&source, b"original");
+    let action = move_single_to_trash_with_backend(
+        source.to_str().unwrap(),
+        &DelayedCatalog {
+            calls: Cell::new(0),
+        },
+    )
+    .unwrap();
+    assert!(matches!(&action, Action::PendingTrash { .. }));
+    let undo = UndoState::default();
+    undo.record_applied(action).unwrap();
+    write_file(&source, b"new occupant");
+    assert!(undo.undo().is_err());
+    assert_eq!(fs::read(&source).unwrap(), b"new occupant");
+    fs::remove_file(&source).unwrap();
+    undo.undo().unwrap();
+    assert_eq!(fs::read(&source).unwrap(), b"original");
+    undo.redo().unwrap();
+    assert!(!source.exists());
+    undo.undo().unwrap();
+    assert_eq!(fs::read(&source).unwrap(), b"original");
+}
+
+#[test]
+fn deferred_trash_never_resolves_an_older_item_with_the_same_original_path() {
+    let root = uniq_path("trash-older-id");
+    let source = root.join("same.txt");
+    let backend = FakeTrashBackend::default();
+    write_file(&source, b"older");
+    backend.delete_path(&source).unwrap();
+    let older = backend.items.borrow()[0].clone();
+    write_file(&source, b"newer");
+    backend.delete_path(&source).unwrap();
+    assert!(
+        super::move_ops::resolve_pending_trash_with_backend(&source, &source, &backend, &[])
+            .is_err()
+    );
+    let newer = super::move_ops::resolve_pending_trash_with_backend(
+        &source,
+        &source,
+        &backend,
+        std::slice::from_ref(&older.id),
+    )
+    .unwrap();
+    assert_eq!(fs::read(newer).unwrap(), b"newer");
+    assert_eq!(
+        fs::read(super::listing::trash_item_path(&older)).unwrap(),
+        b"older"
+    );
+    fs::remove_dir_all(root).unwrap();
 }

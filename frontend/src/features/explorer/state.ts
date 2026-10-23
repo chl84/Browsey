@@ -135,7 +135,8 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
-  const refreshNetworkNotice = async (networkEntries: Entry[]) => {
+  const refreshNetworkNotice = async (networkEntries: Entry[], isCurrent: () => boolean = () => true) => {
+    if (!isCurrent()) return
     networkNotice.set('')
     if (!get(cloudEnabled)) {
       return
@@ -146,9 +147,10 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
     try {
       const status = await loadCloudSetupStatus()
+      if (!isCurrent()) return
       networkNotice.set(networkNoticeForCloudSetup(status))
     } catch {
-      networkNotice.set('')
+      if (isCurrent()) networkNotice.set('')
     }
   }
 
@@ -290,10 +292,12 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     error.set('')
     networkNotice.set('')
     invalidateSearchRun()
+    const request = searchRunId
     searchRunning.set(false)
     try {
       const sortArg = applySort ? sortPayload() : null
       const result = await listRecent(sortArg)
+      if (request !== searchRunId) return
       current.set(result.current)
       entries.set(mapNameLower(result.entries))
       callbacks.onEntriesChanged?.()
@@ -302,9 +306,10 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
         pushHistory({ type: 'recent' })
       }
     } catch (err) {
+      if (request !== searchRunId) return
       error.set(getErrorMessage(err))
     } finally {
-      loading.set(false)
+      if (request === searchRunId) loading.set(false)
     }
   }
 
@@ -314,9 +319,11 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     error.set('')
     networkNotice.set('')
     invalidateSearchRun()
+    const request = searchRunId
     searchRunning.set(false)
     try {
       const result = await listStarred(sortPayload())
+      if (request !== searchRunId) return
       current.set(result.current)
       entries.set(mapNameLower(result.entries))
       callbacks.onEntriesChanged?.()
@@ -325,9 +332,10 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
         pushHistory({ type: 'starred' })
       }
     } catch (err) {
+      if (request !== searchRunId) return
       error.set(getErrorMessage(err))
     } finally {
-      loading.set(false)
+      if (request === searchRunId) loading.set(false)
     }
   }
 
@@ -340,26 +348,33 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     error.set('')
     networkNotice.set('')
     invalidateSearchRun()
+    const request = searchRunId
     searchRunning.set(false)
     try {
       const mounts = await listMounts()
+      if (request !== searchRunId) return
       partitions.set(mounts)
       const listedNetworkEntries = await listNetworkEntries(options.forceRefresh === true)
+      if (request !== searchRunId) return
       const networkEntries = get(cloudEnabled)
         ? listedNetworkEntries
         : listedNetworkEntries.filter((entry) => !isCloudDirectoryPath(entry.path))
+      // Finish asynchronous setup before publishing the location. Its UI
+      // subscribers reset search state and can invalidate this request.
+      await refreshNetworkNotice(networkEntries, () => request === searchRunId)
+      if (request !== searchRunId) return
       current.set('Network')
       entries.set(sortExplorerEntriesInMemory(networkEntries, sortPayload()))
-      await refreshNetworkNotice(networkEntries)
       callbacks.onEntriesChanged?.()
       callbacks.onCurrentChange?.('Network')
       if (recordHistory) {
         pushHistory({ type: 'network' })
       }
     } catch (err) {
+      if (request !== searchRunId) return
       error.set(getErrorMessage(err))
     } finally {
-      loading.set(false)
+      if (request === searchRunId) loading.set(false)
     }
   }
 
@@ -369,9 +384,11 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     error.set('')
     networkNotice.set('')
     invalidateSearchRun()
+    const request = searchRunId
     searchRunning.set(false)
     try {
       const result = await listTrash(sortPayload())
+      if (request !== searchRunId) return
       current.set('Trash')
       entries.set(mapNameLower(result.entries))
       callbacks.onEntriesChanged?.()
@@ -380,9 +397,10 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
         pushHistory({ type: 'trash' })
       }
     } catch (err) {
+      if (request !== searchRunId) return
       error.set(getErrorMessage(err))
     } finally {
-      loading.set(false)
+      if (request === searchRunId) loading.set(false)
     }
   }
 

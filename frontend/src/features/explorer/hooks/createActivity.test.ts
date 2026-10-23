@@ -73,7 +73,7 @@ describe('createActivity', () => {
     await api.cleanup()
   })
 
-  it('retains the current listener when an older registration arrives last', async () => {
+  it('retains both active listeners when an older registration arrives last', async () => {
     let register!: (unlisten: () => void) => void
     listenMock.mockReturnValueOnce(new Promise<() => void>(resolve => { register = resolve }))
     const api = createActivity()
@@ -83,10 +83,11 @@ describe('createActivity', () => {
     const unlisten = vi.fn()
     register(unlisten)
     await starting
-    expect(unlisten).toHaveBeenCalledOnce()
+    expect(unlisten).not.toHaveBeenCalled()
     expect(get(api.activity)).toMatchObject({ label: 'New task' })
-    await api.cleanup()
+    await api.cleanupAll()
     expect(eventHandlers.has('new-registration')).toBe(false)
+    expect(unlisten).toHaveBeenCalledOnce()
   })
 
   it('does not clear a new activity when an old cancellation request fails late', async () => {
@@ -282,4 +283,57 @@ describe('createActivity', () => {
     expect(api.hasHideTimer()).toBe(false)
     await api.cleanup()
   })
+  it('restores an older transfer with updated progress and cancellation after a newer task finishes', async () => {
+    vi.useFakeTimers()
+    try {
+      const api = createActivity()
+      const cancel = () => void api.requestCancel('copy')
+      await api.start('Copying…', 'copy', cancel)
+      await api.start('Trashing…', 'trash')
+      api.reportProgress('copy', { bytes: 3, total: 4 })
+      expect(get(api.activity)?.label).toBe('Trashing…')
+      expect(eventHandlers.has('copy')).toBe(true)
+      api.hideSoon('trash')
+      await api.cleanup(true, 'trash')
+      await vi.advanceTimersByTimeAsync(1200)
+      expect(get(api.activity)).toMatchObject({ label: 'Copying…', percent: 75, cancel })
+      get(api.activity)?.cancel?.()
+      await Promise.resolve()
+      expect(cancelTask).toHaveBeenCalledWith('copy')
+      expect(get(api.activity)?.cancelling).toBe(true)
+      await api.cleanupAll()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('keeps an older completion timer from hiding newer work and releases every listener on destroy', async () => {
+    vi.useFakeTimers()
+    try {
+      const api = createActivity()
+      await api.start('Old', 'old')
+      api.hideSoon('old')
+      await api.cleanup(true, 'old')
+      await api.start('New', 'new')
+      await vi.advanceTimersByTimeAsync(1200)
+      expect(get(api.activity)?.label).toBe('New')
+      expect(eventHandlers.has('new')).toBe(true)
+      await api.cleanupAll()
+      expect(eventHandlers.size).toBe(0)
+      expect(get(api.activity)).toBeNull()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('keeps the newest restart when old listener cleanup finishes last', async () => {
+    const api = createActivity()
+    let release!: () => void
+    listenMock.mockResolvedValueOnce(() => new Promise<void>(resolve => { release = resolve }))
+    await api.start('First', 'same')
+    const older = api.start('Second', 'same')
+    await api.start('Third', 'same')
+    release()
+    await older
+    api.reportProgress('same', { bytes: 1, total: 2 })
+    expect(get(api.activity)).toMatchObject({ label: 'Third', percent: 50 })
+    await api.cleanupAll()
+  })
+
 })

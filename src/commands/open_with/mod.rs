@@ -164,19 +164,12 @@ fn open_with_impl(path: String, choice: OpenWithChoice) -> OpenWithResult<()> {
     Err(OpenWithError::invalid_input("No application selected"))
 }
 
-fn spawn_detached(mut cmd: Command) -> OpenWithResult<()> {
-    match cmd.spawn() {
-        Ok(mut child) => {
-            thread::spawn(move || {
-                let _ = child.wait();
-            });
-            Ok(())
-        }
-        Err(e) => Err(OpenWithError::new(
-            OpenWithErrorCode::LaunchFailed,
-            format!("Failed to launch process: {e}"),
-        )),
-    }
+pub(crate) fn spawn_detached(mut cmd: Command) -> std::io::Result<()> {
+    let mut child = cmd.spawn()?;
+    thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
 }
 
 #[cfg(test)]
