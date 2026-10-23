@@ -223,7 +223,7 @@ describe('cloud modal background refresh', () => {
     expect(deleteEntriesMock).toHaveBeenCalledTimes(1)
     expect(reloadCurrent).not.toHaveBeenCalled()
     expect(showToast).toHaveBeenCalledWith('Delete failed: Permission denied')
-    expect(activityApi.cleanup).toHaveBeenCalledWith(true)
+    expect(activityApi.cleanup).toHaveBeenCalledWith(true, expect.any(String))
     expect(activityApi.clearNow).toHaveBeenCalledTimes(1)
     expect(get(modal.state)).toEqual({ open: false, targets: [], mode: 'default' })
     consoleError.mockRestore()

@@ -25,6 +25,7 @@ const setup = (overrides: Partial<Parameters<typeof createSelectionActions>[0]> 
   const deps = {
     clipboard,
     activityApi: { start: vi.fn(), cleanup: vi.fn(), clearNow: vi.fn(),
+      cleanupAll: vi.fn(async () => {}),
       requestCancel: vi.fn(), hideSoon: vi.fn(), reportProgress: vi.fn(), hasHideTimer: () => false },
     currentView: () => 'dir' as const,
     getCurrentPath: () => '/tmp', confirmDeleteEnabled: () => true,
@@ -79,7 +80,7 @@ describe('shared selection actions', () => {
     expect(services.moveToTrashMany).toHaveBeenCalledWith([entry.path], event)
     cancel?.()
     expect(activityApi.requestCancel).toHaveBeenCalledWith(event)
-    expect(activityApi.cleanup).toHaveBeenCalledWith(true)
+    expect(activityApi.cleanup).toHaveBeenCalledWith(true, expect.any(String))
   })
 
   it('uses the existing undo-recording trash command for Wastebasket drops', async () => {
@@ -98,7 +99,7 @@ describe('shared selection actions', () => {
     expect(await actions.trashDropped([entry.path])).toBe(false)
     expect(confirmDelete).not.toHaveBeenCalled()
     expect(services.deleteEntries).not.toHaveBeenCalled()
-    expect(activityApi.cleanup).toHaveBeenCalledWith(true)
+    expect(activityApi.cleanup).toHaveBeenCalledWith(true, expect.any(String))
     expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Move to trash failed'))
   })
 
@@ -217,7 +218,7 @@ describe('shared selection actions', () => {
     const { actions, reloadCurrent, activityApi } = setup({ confirmDeleteEnabled: () => false })
     vi.mocked(reloadCurrent).mockImplementationOnce(() => new Promise<void>(() => {}))
     await actions.deletePermanently([{ ...entry, path: 'rclone://remote/file' }])
-    expect(activityApi.cleanup).toHaveBeenCalledWith(true)
+    expect(activityApi.cleanup).toHaveBeenCalledWith(true, expect.any(String))
     expect(activityApi.hideSoon).toHaveBeenCalled()
   })
 
@@ -227,7 +228,7 @@ describe('shared selection actions', () => {
     vi.mocked(reloadCurrent).mockImplementationOnce(() => new Promise<void>(() => {}))
     expect(await actions.deletePermanently([{ ...entry, path: 'rclone://remote/file' }])).toBe(false)
     expect(showToast).toHaveBeenCalledWith('Delete failed: network disconnected')
-    expect(activityApi.cleanup).toHaveBeenCalledWith(true)
+    expect(activityApi.cleanup).toHaveBeenCalledWith(true, expect.any(String))
     expect(services.deleteEntries).toHaveBeenCalledTimes(1)
   })
 })

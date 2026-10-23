@@ -28,7 +28,7 @@
       await activityApi.start('Downloading for external copy…', event, () => void activityApi.requestCancel(event), { completeOnReply: true })
       prepared = await invoke<string[]>('prepare_cloud_external_copy', { paths, progressEvent: event })
     } catch (err) { error = getErrorMessage(err) }
-    finally { busy = false; activityApi.clearNow(); await activityApi.cleanup() }
+    finally { busy = false; activityApi.clearNow(event); await activityApi.cleanup(false, event) }
   }
 
   const start = (event: DragEvent) => {

@@ -80,8 +80,10 @@ const cloudRenameCandidate = (base: string, idx: number) => {
   const slash = base.lastIndexOf('/')
   const parent = isCloudPath(base) ? cloudParentPath(base) : slash >= 0 ? base.slice(0, slash) : ''
   const original = cloudLeafName(base)
-  const dot = original.lastIndexOf('.')
-  const hasExt = dot > 0
+  const compound = ['.tar.gz', '.tar.bz2', '.tar.xz', '.tar.zst', '.tar.zstd', '.tar.lz4']
+    .find(ext => original.length > ext.length && original.toLowerCase().endsWith(ext))
+  const dot = compound ? original.length - compound.length : original.lastIndexOf('.')
+  const hasExt = dot > 0 && dot < original.length - 1
   const stem = hasExt ? original.slice(0, dot) : original
   const ext = hasExt ? original.slice(dot + 1) : ''
   const name = hasExt ? `${stem}-${idx}.${ext}` : `${stem}-${idx}`
@@ -169,9 +171,9 @@ export const useExplorerFileOps = (deps: Deps) => {
     }
   }
 
-  const reconcilePasteFailure = async (operation: PasteOperation, error: unknown, completedSources?: string[], attemptedSources = 0) => {
-    try { deps.activityApi.clearNow() } catch { /* Preserve the transfer error. */ }
-    try { await deps.activityApi.cleanup() } catch { /* Preserve the transfer error. */ }
+  const reconcilePasteFailure = async (operation: PasteOperation, error: unknown, progressEvent: string, completedSources?: string[], attemptedSources = 0) => {
+    try { deps.activityApi.clearNow(progressEvent) } catch { /* Preserve the transfer error. */ }
+    try { await deps.activityApi.cleanup(false, progressEvent) } catch { /* Preserve the transfer error. */ }
     if (completedSources?.length) {
       await clearCutClipboardAfterMoveSuccess({ ...operation,
         input: { mode: operation.input.mode, paths: completedSources } })
@@ -198,9 +200,9 @@ export const useExplorerFileOps = (deps: Deps) => {
     return false
   }
 
-  const releasePasteActivity = async () => {
+  const releasePasteActivity = async (progressEvent: string) => {
     try {
-      await deps.activityApi.cleanup(true)
+      await deps.activityApi.cleanup(true, progressEvent)
     } catch {
       // Keep the completion timer and the actual transfer result even when
       // releasing the progress listener fails.
@@ -378,13 +380,13 @@ export const useExplorerFileOps = (deps: Deps) => {
         completedSources.push(src)
       }
 
-      deps.activityApi.hideSoon()
+      deps.activityApi.hideSoon(progressEvent)
       await clearCutClipboardAfterMoveSuccess(operation)
-      await releasePasteActivity()
+      await releasePasteActivity(progressEvent)
       refreshCloudViewAfterWrite('Paste')
       return true
     } catch (err) {
-      return reconcilePasteFailure(operation, err, completedSources, attemptedSources)
+      return reconcilePasteFailure(operation, err, progressEvent, completedSources, attemptedSources)
     }
   }
 
@@ -517,9 +519,9 @@ export const useExplorerFileOps = (deps: Deps) => {
         }
 
         if (route === 'local_to_cloud') {
-          deps.activityApi.hideSoon()
+          deps.activityApi.hideSoon(progressEvent)
           await clearCutClipboardAfterMoveSuccess(operation)
-          await releasePasteActivity()
+          await releasePasteActivity(progressEvent)
           refreshCloudViewAfterWrite('Paste')
           return true
         }
@@ -529,12 +531,12 @@ export const useExplorerFileOps = (deps: Deps) => {
         } catch {
           deps.showToast('Paste completed, but refresh failed. Press F5 to refresh.', 3500)
         }
-        deps.activityApi.hideSoon()
+        deps.activityApi.hideSoon(progressEvent)
         await clearCutClipboardAfterMoveSuccess(operation)
-        await releasePasteActivity()
+        await releasePasteActivity(progressEvent)
         return true
       } catch (err) {
-        return reconcilePasteFailure(operation, err, completedSources, attemptedSources)
+        return reconcilePasteFailure(operation, err, progressEvent, completedSources, attemptedSources)
       }
     }
     if (route === 'unsupported') {
@@ -556,13 +558,13 @@ export const useExplorerFileOps = (deps: Deps) => {
       } catch {
         deps.showToast('Paste completed, but refresh failed. Press F5 to refresh.', 3500)
       }
-      deps.activityApi.hideSoon()
+      deps.activityApi.hideSoon(progressEvent)
       await clearCutClipboardAfterMoveSuccess(operation)
       return true
     } catch (err) {
-      return reconcilePasteFailure(operation, err)
+      return reconcilePasteFailure(operation, err, progressEvent)
     } finally {
-      await releasePasteActivity()
+      await releasePasteActivity(progressEvent)
     }
   }
 
@@ -862,8 +864,8 @@ export const useExplorerFileOps = (deps: Deps) => {
       extracting = false
       activeExtractionEvent = null
       archivePasswordModal.cancel()
-      deps.activityApi.clearNow()
-      await deps.activityApi.cleanup()
+      deps.activityApi.clearNow(progressEvent)
+      await deps.activityApi.cleanup(false, progressEvent)
     }
   }
 

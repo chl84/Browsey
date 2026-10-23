@@ -6,13 +6,16 @@ use crate::fs_utils::{FileIdentity, FileState, TreeSnapshot};
 use crate::undo::error::UndoErrorCode;
 use crate::undo::{UndoError, UndoResult};
 
-use super::nofollow::{delete_entry_nofollow_io, rename_nofollow_io};
+#[cfg(test)]
+use super::nofollow::delete_entry_nofollow_io;
+use super::nofollow::rename_nofollow_io;
 use super::path_checks::{
     assert_path_snapshot, ensure_existing_dir_nonsymlink, ensure_existing_path_nonsymlink,
     snapshot_existing_path,
 };
 use super::types::{self, PathSnapshot};
 
+#[cfg(test)]
 pub(crate) fn copy_entry(src: &Path, dest: &Path) -> UndoResult<()> {
     copy_entry_recorded(src, dest).map(|_| ())
 }
@@ -218,6 +221,7 @@ fn copy_dir(src: &Path, dest: &Path, root: &Path, outputs: &mut TreeSnapshot) ->
         .map_err(|e| UndoError::from_io_error("Failed to set directory permissions", e))
 }
 
+#[cfg(test)]
 pub(crate) fn delete_entry_path(path: &Path) -> UndoResult<()> {
     let _backup_use = super::write_backups(&[path])?;
     let snapshot = snapshot_existing_path(path)?;

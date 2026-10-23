@@ -97,6 +97,19 @@ pub(super) fn launch_desktop_entry_by_id(target: &Path, app_id: &str) -> OpenWit
 }
 
 fn launch_desktop_entry(target: &Path, entry: &DesktopEntry) -> OpenWithResult<()> {
+    if entry.terminal {
+        let app = gio::DesktopAppInfo::from_filename(&entry.path).ok_or_else(|| {
+            OpenWithError::app_not_found("Terminal application entry is unavailable")
+        })?;
+        return app
+            .launch(&[gio::File::for_path(target)], gio::AppLaunchContext::NONE)
+            .map_err(|error| {
+                OpenWithError::launch_failed(format!(
+                    "Failed to launch {} in a terminal: {error}",
+                    entry.name
+                ))
+            });
+    }
     let (program, args) = command_from_exec(entry, target)?;
     if !command_exists(&program) {
         return Err(OpenWithError::app_not_found(format!(
@@ -471,41 +484,40 @@ fn command_from_exec(entry: &DesktopEntry, target: &Path) -> OpenWithResult<(Str
 
     let mut used_placeholder = false;
     for token in &mut tokens {
-        if token.contains("%f")
-            || token.contains("%F")
-            || token.contains("%u")
-            || token.contains("%U")
-        {
-            *token = token
-                .replace("%f", &target_str)
-                .replace("%F", &target_str)
-                .replace("%u", &target_str)
-                .replace("%U", &target_str);
-            used_placeholder = true;
+        // Only scan the original Exec token. Substituted names and paths are
+        // opaque arguments, even when they contain percent sequences.
+        let mut expanded = String::with_capacity(token.len());
+        let mut chars = token.chars();
+        while let Some(ch) = chars.next() {
+            if ch != '%' {
+                expanded.push(ch);
+                continue;
+            }
+            match chars.next() {
+                Some('f' | 'F' | 'u' | 'U') => {
+                    expanded.push_str(&target_str);
+                    used_placeholder = true;
+                }
+                Some('d' | 'D') => {
+                    expanded.push_str(&parent);
+                    used_placeholder = true;
+                }
+                Some('n' | 'N') => {
+                    expanded.push_str(&file_name);
+                    used_placeholder = true;
+                }
+                Some('k') => expanded.push_str(&desktop_str),
+                Some('c') => expanded.push_str(&entry.name),
+                Some('i' | 'm') => {}
+                Some('%') => expanded.push('%'),
+                Some(code) => {
+                    expanded.push('%');
+                    expanded.push(code);
+                }
+                None => expanded.push('%'),
+            }
         }
-        if token.contains("%d") || token.contains("%D") {
-            *token = token.replace("%d", &parent).replace("%D", &parent);
-            used_placeholder = true;
-        }
-        if token.contains("%n") || token.contains("%N") {
-            *token = token.replace("%n", &file_name).replace("%N", &file_name);
-            used_placeholder = true;
-        }
-        if token.contains("%k") {
-            *token = token.replace("%k", &desktop_str);
-        }
-        if token.contains("%c") {
-            *token = token.replace("%c", &entry.name);
-        }
-        if token.contains("%i") {
-            *token = token.replace("%i", "");
-        }
-        if token.contains("%m") {
-            *token = token.replace("%m", "");
-        }
-        if token.contains("%%") {
-            *token = token.replace("%%", "%");
-        }
+        *token = expanded;
     }
 
     let mut args: Vec<String> = tokens.into_iter().filter(|s| !s.is_empty()).collect();
@@ -673,6 +685,31 @@ mod tests {
         let error = command_from_exec(&entry, &target).expect_err("empty exec should fail");
         assert_eq!(error.code_str(), "invalid_input");
         assert_eq!(error.message(), "Exec is empty");
+    }
+
+    #[test]
+    fn substituted_paths_and_metadata_are_not_expanded_again() {
+        let entry = DesktopEntry {
+            name: "Viewer %i".into(),
+            comment: None,
+            exec: "viewer %f %c %%f".into(),
+            mime_types: vec![],
+            icon: None,
+            terminal: false,
+            path: PathBuf::from("/demo/viewer.desktop"),
+        };
+        for name in [
+            "report%i.pdf",
+            "50%discount.pdf",
+            "a%%b.txt",
+            "x%nz.txt",
+            "%F%u%k spaced.txt",
+        ] {
+            let target = Path::new("/generated").join(name);
+            let (program, args) = command_from_exec(&entry, &target).unwrap();
+            assert_eq!(program, "viewer");
+            assert_eq!(args, [target.to_string_lossy().as_ref(), "Viewer %i", "%f"]);
+        }
     }
     // GIO caches XDG paths globally. Exercise real persistence in a fresh child,
     // never mutate the test runner's environment or the user's mimeapps.list.
@@ -954,5 +991,88 @@ mod tests {
         assert_eq!(error.code, "open_failed");
         assert!(error.message.contains("Failed to open:"));
         assert!(!record.exists());
+    }
+    #[test]
+    fn terminal_desktop_entries_use_an_isolated_terminal_wrapper() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = uniq_dir("terminal-wrapper");
+        let bin = root.join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        for name in ["xdg-terminal-exec", "gnome-terminal", "xterm"] {
+            let terminal = bin.join(name);
+            fs::write(&terminal, "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$BROWSEY_TERMINAL_ENTRY_ROOT/terminal.args\"\n").unwrap();
+            fs::set_permissions(&terminal, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        for missing in [false, true] {
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "commands::open_with::linux::tests::terminal_entry_child",
+                    "--nocapture",
+                ])
+                .env("BROWSEY_TERMINAL_ENTRY_ROOT", &root)
+                .env("BROWSEY_TERMINAL_MISSING", if missing { "1" } else { "0" })
+                .env(
+                    "PATH",
+                    if missing {
+                        root.join("empty-bin")
+                    } else {
+                        bin.clone()
+                    },
+                )
+                .env("XDG_CONFIG_HOME", root.join("config"))
+                .env("XDG_DATA_HOME", root.join("data"))
+                .env("XDG_DATA_DIRS", root.join("data-dirs"))
+                .env("XDG_CONFIG_DIRS", root.join("config-dirs"))
+                .env("XDG_CURRENT_DESKTOP", "BrowseyTest")
+                .env("GTK_USE_PORTAL", "0")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn terminal_entry_child() {
+        use std::os::unix::fs::PermissionsExt;
+        let Some(root) = std::env::var_os("BROWSEY_TERMINAL_ENTRY_ROOT") else {
+            return;
+        };
+        let root = PathBuf::from(root);
+        let viewer = root.join("viewer");
+        fs::write(&viewer, "#!/bin/sh\nexit 0\n").unwrap();
+        fs::set_permissions(&viewer, fs::Permissions::from_mode(0o700)).unwrap();
+        let desktop = root.join("viewer.desktop");
+        fs::write(&desktop,format!("[Desktop Entry]\nType=Application\nName=Terminal test\nTerminal=true\nExec={} %f\n",viewer.display())).unwrap();
+        let entry = parse_desktop_entry(&desktop).unwrap();
+        let target = root.join("report%i spaced.txt");
+        fs::write(&target, b"generated").unwrap();
+        let result = launch_desktop_entry(&target, &entry);
+        if std::env::var("BROWSEY_TERMINAL_MISSING").as_deref() == Ok("1") {
+            assert_eq!(result.unwrap_err().code_str(), "launch_failed");
+            return;
+        }
+        result.unwrap();
+        for _ in 0..200 {
+            if let Ok(args) = fs::read_to_string(root.join("terminal.args")) {
+                assert!(
+                    args.lines().any(|arg| arg == viewer.to_str().unwrap()),
+                    "{args}"
+                );
+                assert!(
+                    args.lines().any(|arg| arg == target.to_str().unwrap()),
+                    "{args}"
+                );
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        panic!("Terminal=true did not use the terminal wrapper");
     }
 }

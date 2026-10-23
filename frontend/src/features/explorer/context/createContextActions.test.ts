@@ -55,6 +55,7 @@ const createDeps = (entries: Entry[], selectedPaths: string[], view: CurrentView
   clipboard: makeClipboard(),
   activityApi: {
     start: vi.fn(async () => {}), cleanup: vi.fn(async () => {}),
+    cleanupAll: vi.fn(async () => {}),
     requestCancel: vi.fn(async () => {}), clearNow: vi.fn(),
     hideSoon: vi.fn(), reportProgress: vi.fn(), hasHideTimer: () => false,
   },

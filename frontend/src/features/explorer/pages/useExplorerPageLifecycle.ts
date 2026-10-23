@@ -1,3 +1,4 @@
+import type { ActivityApi } from '../hooks/createActivity'
 import { createAppLifecycle } from '../hooks/createAppLifecycle'
 
 type Params = {
@@ -9,11 +10,7 @@ type Params = {
   startNativeDrop: () => Promise<void>
   stopNativeDrop: () => Promise<void>
   fsLabel: (fs?: string) => string
-  activityApi: {
-    clearNow: () => void
-    hideSoon: () => void
-    cleanup: (...args: any[]) => Promise<void> | void
-  }
+  activityApi: Pick<ActivityApi, 'start' | 'reportProgress' | 'hideSoon' | 'cleanup' | 'cleanupAll'>
   activity: { set: (value: any) => void }
   showToast: (message: string, ms?: number) => void
   abortDirStats: () => void
@@ -35,13 +32,8 @@ export const useExplorerPageLifecycle = (params: Params) => {
     startNativeDrop: params.startNativeDrop,
     stopNativeDrop: params.stopNativeDrop,
     onMountStarted: (fs) => {
-      params.activityApi.clearNow()
-      params.activity.set({
-        label: `Connecting to ${params.fsLabel(fs)}…`,
-        percent: null,
-        cancel: null,
-        cancelling: false,
-      })
+      void params.activityApi.start(`Connecting to ${params.fsLabel(fs)}…`, `mount-${fs ?? 'network'}`)
+        .catch(() => {})
     },
     onMountDone: (fs, ok, outcome) => {
       const label =
@@ -54,8 +46,10 @@ export const useExplorerPageLifecycle = (params: Params) => {
               : ok
                 ? `Connected to ${params.fsLabel(fs)}`
                 : `Failed to connect to ${params.fsLabel(fs)}`
-      params.activity.set({ label, percent: null, cancel: null, cancelling: false })
-      params.activityApi.hideSoon()
+      const event = `mount-${fs ?? 'network'}`
+      params.activityApi.reportProgress(event, { bytes: 0, total: 0, phase: label })
+      params.activityApi.hideSoon(event)
+      void params.activityApi.cleanup(true, event).catch(() => {})
       if (outcome === 'already_connected') {
         params.showToast('Already connected', 1400)
       }
@@ -72,8 +66,7 @@ export const useExplorerPageLifecycle = (params: Params) => {
     params.cancelToggleViewModeRaf()
     params.resetNewFileTypeHint()
     params.cancelSearch()
-    params.activityApi.clearNow()
-    void params.activityApi.cleanup()
+    void params.activityApi.cleanupAll()
     void params.stopDuplicateScan(true)
   }
 

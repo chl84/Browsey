@@ -93,7 +93,7 @@ export const createSelectionActions = (deps: Deps) => {
       // Cloud refresh must not hold the operation's progress UI indefinitely.
       if (cloud && permanent) void refresh()
       else await refresh()
-      activityApi.hideSoon()
+      activityApi.hideSoon(event)
       return true
     } catch (error) {
       if (!trashOnly && !inTrash && needsNetworkDeleteConfirmation(error)) {
@@ -112,8 +112,8 @@ export const createSelectionActions = (deps: Deps) => {
       return false
     } finally {
       try {
-        await activityApi.cleanup(true)
-        if (!completed && !activityApi.hasHideTimer()) activityApi.clearNow()
+        await activityApi.cleanup(true, event)
+        if (!completed && !activityApi.hasHideTimer(event)) activityApi.clearNow(event)
       } finally {
         deleting = false
       }
