@@ -75,7 +75,8 @@ export const createDeleteConfirmModal = (deps: Deps) => {
           }
         })()
       } else {
-        await reloadCurrent()
+        try { await reloadCurrent() }
+        catch { showToast('Delete completed, but refresh failed. Press F5 to refresh.') }
       }
     } catch (err) {
       const msg = getErrorMessage(err)
@@ -83,10 +84,10 @@ export const createDeleteConfirmModal = (deps: Deps) => {
       showToast(`Delete failed: ${msg}`)
     } finally {
       deleting = false
-      const hadTimer = activityApi.hasHideTimer()
-      await activityApi.cleanup(true)
+      const hadTimer = activityApi.hasHideTimer(progressEvent)
+      await activityApi.cleanup(true, progressEvent)
       if (!hadTimer) {
-        activityApi.clearNow()
+        activityApi.clearNow(progressEvent)
       }
       close()
     }

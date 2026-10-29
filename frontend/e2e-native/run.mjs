@@ -9,6 +9,7 @@ import os from 'node:os'
 import { validateConfig, makePlan, candidateEnvironment, child, noLinks } from './scope.mjs'
 import { createLocalSession, Fixtures } from './fixtures.mjs'
 import { NativeUi } from './ui.mjs'
+import {focusOwnedWindow} from './drag.mjs'
 import {selectTier, suiteTier} from './tiers.mjs'
 import {measurementProbes} from './measurements.mjs'
 import {networkProbes} from './providers.mjs'
@@ -301,6 +302,7 @@ async function main() {
       const status = await ui.handshake(plan.runId)
       candidateOwner = await captureCandidate(status.pid, { executable: candidate, dataHome: `${profile}/data`, runId: plan.runId })
       report.identity = { pid: status.pid, startTime: candidateOwner.start, runId: status.runId, scope: status.scope, watcher: status.watcher }
+      if (desktop) report.windowFocus = await focusOwnedWindow(ui)
       return status
     }
     let status = await setup(shared('candidate-identity'), captureIdentity)

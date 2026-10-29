@@ -67,7 +67,7 @@ export const createOpenWithModal = (deps: Deps) => {
       if (cloud) await progressApi.start('Downloading cloud file…', event, cancel, { completeOnReply: true })
       if (requestId !== loadId) return
       const target = cloud ? (await prepareCloudWorkingCopy(path, event)).localPath : path
-      progressApi.clearNow()
+      progressApi.clearNow(event)
       if (requestId !== loadId) return
       localPath = target
       const list = await fetchOpenWithApps(target)
@@ -84,7 +84,7 @@ export const createOpenWithModal = (deps: Deps) => {
       }))
     } finally {
       unsubscribe()
-      await progressApi.cleanup()
+      await progressApi.cleanupAll()
       if (cancelPreparation === cancel) cancelPreparation = null
       if (requestId === loadId) {
         state.update((s) => ({ ...s, loading: false, progress: null }))

@@ -184,17 +184,14 @@ pub fn unique_path(dest: &Path) -> PathBuf {
         return dest.to_path_buf();
     }
     let mut idx = 1;
-    let stem = dest
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| "item".to_string());
-    let ext = dest.extension().map(|e| e.to_string_lossy().to_string());
+    let name = dest
+        .file_name()
+        .map(|n| n.to_string_lossy())
+        .unwrap_or_else(|| "item".into());
+    let (stem, ext) = split_filename_extension(&name);
     let parent = dest.parent().unwrap_or_else(|| Path::new("."));
     loop {
-        let mut candidate = parent.join(format!("{}-{}", stem, idx));
-        if let Some(ext) = &ext {
-            candidate.set_extension(ext);
-        }
+        let candidate = parent.join(format!("{stem}-{idx}{ext}"));
         match OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -220,6 +217,27 @@ pub fn unique_path(dest: &Path) -> PathBuf {
             }
             Err(_) => return candidate,
         }
+    }
+}
+
+/// Keep hidden-file names and supported compound archive suffixes intact.
+pub(crate) fn split_filename_extension(name: &str) -> (&str, &str) {
+    let lower = name.to_ascii_lowercase();
+    for suffix in [
+        ".tar.gz",
+        ".tar.bz2",
+        ".tar.xz",
+        ".tar.zst",
+        ".tar.zstd",
+        ".tar.lz4",
+    ] {
+        if lower.ends_with(suffix) && name.len() > suffix.len() {
+            return name.split_at(name.len() - suffix.len());
+        }
+    }
+    match name.rfind('.') {
+        Some(index) if index > 0 && index + 1 < name.len() => name.split_at(index),
+        _ => (name, ""),
     }
 }
 

@@ -91,8 +91,8 @@ export const createCompressModal = (deps: Deps) => {
       password = undefined
       busy = false
       activeEvent = null
-      activityApi.clearNow()
-      await activityApi.cleanup()
+      activityApi.clearNow(progressEvent)
+      await activityApi.cleanup(false, progressEvent)
     }
   }
 

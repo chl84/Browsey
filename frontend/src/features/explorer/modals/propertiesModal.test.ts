@@ -236,6 +236,28 @@ describe('properties modal copyParentFolder', () => {
     expect(showToastMock).toHaveBeenCalledWith('Copy failed: permission denied')
   })
 
+  it('removes the temporary copy field when the legacy clipboard command throws', async () => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined })
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: vi.fn(() => { throw new Error('clipboard command unavailable') }),
+    })
+    const modal = createPropertiesModal({
+      computeDirStats: computeDirStatsMock,
+      showToast: showToastMock,
+    })
+    modal.state.set(makeOpenState(makeEntry('/demo/documents/report.txt')))
+
+    try {
+      await modal.copyParentFolder()
+
+      expect(showToastMock).toHaveBeenCalledWith('Copy failed: clipboard command unavailable')
+      expect(document.querySelectorAll('textarea')).toHaveLength(0)
+    } finally {
+      document.querySelectorAll('textarea').forEach(element => element.remove())
+    }
+  })
+
   it('is a no-op for multi-selection state', async () => {
     const writeText = vi.fn(async () => {})
     Object.defineProperty(navigator, 'clipboard', {

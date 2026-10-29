@@ -11,15 +11,12 @@ use crate::{
     errors::api_error::ApiResult,
     fs_utils::{check_no_symlink_components, sanitize_path_nofollow},
     runtime_lifecycle,
-    undo::{
-        assert_path_snapshot, copy_entry as undo_copy_entry, delete_entry_path as undo_delete_path,
-        run_actions, snapshot_existing_path, temp_backup_path, Action, Direction, PathSnapshot,
-    },
+    undo::{snapshot_existing_path, Action, PathSnapshot},
 };
 use ::trash::TrashItem;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 use tracing::warn;
@@ -79,21 +76,9 @@ fn emit_trash_progress(
 
 struct PreparedTrashMove {
     src: PathBuf,
-    backup: PathBuf,
     src_snapshot: PathSnapshot,
     staged_src: Option<PathBuf>,
-}
-
-fn rollback_prepared_trash(prepared: &[PreparedTrashMove]) {
-    let mut rollback: Vec<Action> = prepared
-        .iter()
-        .map(|p| Action::Delete {
-            path: p.src.clone(),
-            backup: p.backup.clone(),
-            protection: None,
-        })
-        .collect();
-    let _ = run_actions(&mut rollback, Direction::Backward);
+    excluded_ids: Vec<OsString>,
 }
 
 fn prepare_trash_move(raw: &str) -> FsResult<PreparedTrashMove> {
@@ -101,30 +86,131 @@ fn prepare_trash_move(raw: &str) -> FsResult<PreparedTrashMove> {
     let src = sanitize_path_nofollow(raw, true).map_err(FsError::from)?;
     map_external_result(check_no_symlink_components(&src))?;
     let src_snapshot = map_external_result(snapshot_existing_path(&src))?;
-
-    // Backup into the central undo directory in case we cannot locate the trash item path later.
-    let backup = temp_backup_path(&src).map_err(FsError::from)?;
-    if let Some(parent) = backup.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| {
-            FsError::from_io_error(
-                FsErrorCode::CreateFailed,
-                &format!("Failed to create backup dir {}", parent.display()),
-                error,
-            )
-        })?;
-    }
-    map_external_result(undo_copy_entry(&src, &backup))?;
-    if let Err(err) = map_external_result(assert_path_snapshot(&src, &src_snapshot)) {
-        let _ = undo_delete_path(&backup);
-        return Err(err);
-    }
-
     Ok(PreparedTrashMove {
         src,
-        backup,
         src_snapshot,
         staged_src: None,
+        excluded_ids: Vec::new(),
     })
+}
+
+type TrashCatalog = HashMap<PathBuf, Vec<TrashItem>>;
+
+fn catalog(items: Vec<TrashItem>) -> TrashCatalog {
+    let mut by_path = TrashCatalog::new();
+    for item in items {
+        by_path.entry(item.original_path()).or_default().push(item);
+    }
+    by_path
+}
+
+fn previous_ids(items: &TrashCatalog, original: &Path) -> Vec<OsString> {
+    items
+        .get(original)
+        .into_iter()
+        .flatten()
+        .map(|item| item.id.clone())
+        .collect()
+}
+
+fn find_item<'a>(
+    items: &'a TrashCatalog,
+    staged: &Path,
+    excluded_ids: &[OsString],
+) -> Option<&'a TrashItem> {
+    let mut found = items
+        .get(staged)?
+        .iter()
+        .filter(|item| !excluded_ids.contains(&item.id));
+    let item = found.next()?;
+    found.next().is_none().then_some(item)
+}
+
+fn finish_stage(staged: &std::path::Path, original: &std::path::Path) {
+    #[cfg(not(target_os = "windows"))]
+    if let Err(error) = super::staging::remove_trash_stage_journal_entry(staged, original) {
+        warn!(%error, "Trash stage journal cleanup deferred");
+    }
+    #[cfg(target_os = "windows")]
+    let _ = (staged, original);
+}
+
+fn history_action<B: TrashBackend>(
+    prep: &PreparedTrashMove,
+    items: &TrashCatalog,
+    backend: &B,
+) -> Action {
+    let staged = prep.staged_src.as_ref().unwrap_or(&prep.src);
+    if let Some(item) = find_item(items, staged, &prep.excluded_ids) {
+        if let Err(error) = backend.rewrite_original_path(item, &prep.src) {
+            warn!(%error, source = %prep.src.display(), "Trash metadata rewrite deferred");
+        } else {
+            finish_stage(staged, &prep.src);
+        }
+        Action::Move {
+            from: prep.src.clone(),
+            to: trash_item_path(item),
+        }
+    } else {
+        Action::PendingTrash {
+            from: prep.src.clone(),
+            staged: staged.clone(),
+            excluded_ids: prep.excluded_ids.clone(),
+        }
+    }
+}
+
+pub(crate) fn resolve_pending_trash(
+    from: &std::path::Path,
+    staged: &std::path::Path,
+    excluded_ids: &[OsString],
+) -> crate::undo::UndoResult<PathBuf> {
+    resolve_pending_trash_with_backend(from, staged, &SystemTrashBackend, excluded_ids)
+}
+
+pub(super) fn resolve_pending_trash_with_backend<B: TrashBackend>(
+    from: &std::path::Path,
+    staged: &std::path::Path,
+    backend: &B,
+    excluded_ids: &[OsString],
+) -> crate::undo::UndoResult<PathBuf> {
+    let items = catalog(backend.list_items().map_err(|error| {
+        crate::undo::UndoError::new(crate::undo::UndoErrorCode::IoError, error.message())
+    })?);
+    let item = find_item(&items, staged, excluded_ids).ok_or_else(|| crate::undo::UndoError::not_found(
+        format!("Trash entry for {} is unavailable. Refresh Wastebasket before retrying Undo; no source was overwritten", from.display())))?;
+    backend.rewrite_original_path(item, from).map_err(|error| {
+        crate::undo::UndoError::new(crate::undo::UndoErrorCode::IoError, error.message())
+    })?;
+    finish_stage(staged, from);
+    Ok(trash_item_path(item))
+}
+
+fn rollback_prepared_trash<B: TrashBackend>(
+    prepared: &[PreparedTrashMove],
+    backend: &B,
+    undo: &UndoState,
+) -> Vec<String> {
+    let items = catalog(backend.list_items().unwrap_or_default());
+    let mut failures = Vec::new();
+    for prep in prepared.iter().rev() {
+        let staged = prep.staged_src.as_ref().unwrap_or(&prep.src);
+        let restored = find_item(&items, staged, &prep.excluded_ids)
+            .ok_or_else(|| {
+                FsError::new(
+                    FsErrorCode::TrashFailed,
+                    "Trash catalog entry is not available yet",
+                )
+            })
+            .and_then(|item| backend.restore_item(item, &prep.src));
+        if let Err(error) = restored {
+            failures.push(format!("{}: {error}", prep.src.display()));
+            let _ = undo.record_applied(history_action(prep, &items, backend));
+        } else {
+            finish_stage(staged, &prep.src);
+        }
+    }
+    failures
 }
 
 pub(super) fn move_to_trash_many_with_backend<B, FShouldAbort, FEmitProgress, FEmitChanged>(
@@ -148,92 +234,58 @@ where
         emit_progress(0, 0, true);
         return Ok(());
     }
-    // Capture current trash contents once to avoid O(n^2) directory scans.
     for raw in &paths {
         super::super::network_delete::require_local_backup_path(std::path::Path::new(raw))?;
     }
-    let before_ids: HashSet<OsString> = backend
-        .list_items()?
-        .into_iter()
-        .map(|item| item.id)
-        .collect();
-
-    let mut prepared: Vec<PreparedTrashMove> = Vec::with_capacity(paths.len());
-    let mut done: u64 = 0;
+    // Refuse before changing sources if the native catalog is unavailable.
+    let before = catalog(backend.list_items()?);
+    let mut prepared = Vec::with_capacity(paths.len());
     for path in paths {
-        if should_abort(cancel) {
-            rollback_prepared_trash(&prepared);
-            emit_progress(done, total, true);
-            return Err(FsError::new(
+        let result = if should_abort(cancel) {
+            Err(FsError::new(
                 FsErrorCode::Cancelled,
                 "Move to trash cancelled",
-            ));
-        }
-        match prepare_trash_move(&path) {
-            Ok(mut prep) => {
-                match trash_delete_via_staged_rename(&prep.src, &prep.src_snapshot, backend) {
-                    Ok(staged_src) => {
-                        prep.staged_src = Some(staged_src);
-                        done = done.saturating_add(1);
-                        emit_progress(done, total, done == total);
-                        prepared.push(prep);
-                    }
-                    Err(err) => {
-                        rollback_prepared_trash(&prepared);
-                        let _ = undo_delete_path(&prep.backup);
-                        emit_progress(done, total, true);
-                        return Err(err);
-                    }
-                }
-            }
-            Err(err) => {
-                // Nothing was moved for this entry; roll back previous ones.
-                rollback_prepared_trash(&prepared);
-                emit_progress(done, total, true);
-                return Err(err);
-            }
-        }
-    }
-
-    // Identify new trash items with a single post-scan.
-    let mut new_items: HashMap<PathBuf, TrashItem> = HashMap::new();
-    if let Ok(after) = backend.list_items() {
-        for item in after.into_iter().filter(|i| !before_ids.contains(&i.id)) {
-            new_items.insert(item.original_path(), item);
-        }
-    }
-
-    let mut actions = Vec::with_capacity(prepared.len());
-    for prep in prepared {
-        let lookup = prep.staged_src.as_ref().unwrap_or(&prep.src);
-        if let Some(item) = new_items.remove(lookup) {
-            if let Err(err) = backend.rewrite_original_path(&item, &prep.src) {
-                warn!(
-                    "Failed to rewrite trash info for {}: {}",
-                    prep.src.display(),
-                    err
-                );
-            }
-            let _ = undo_delete_path(&prep.backup);
-            actions.push(Action::Move {
-                from: prep.src,
-                to: trash_item_path(&item),
-            });
+            ))
         } else {
-            actions.push(Action::Delete {
-                path: prep.src,
-                backup: prep.backup,
-                protection: None,
-            });
+            prepare_trash_move(&path).and_then(|mut prep| {
+                prep.excluded_ids = previous_ids(&before, &prep.src);
+                let staged =
+                    trash_delete_via_staged_rename(&prep.src, &prep.src_snapshot, backend)?;
+                prep.staged_src = Some(staged);
+                Ok(prep)
+            })
+        };
+        match result {
+            Ok(prep) => {
+                prepared.push(prep);
+                emit_progress(prepared.len() as u64, total, false);
+            }
+            Err(error) => {
+                let failures = rollback_prepared_trash(&prepared, backend, &undo);
+                emit_progress(prepared.len() as u64, total, true);
+                if !prepared.is_empty() {
+                    emit_changed();
+                }
+                return Err(if failures.is_empty() {
+                    error
+                } else {
+                    FsError::new(FsErrorCode::TrashFailed,format!("{error}; some items remain in Wastebasket and could not be restored: {}. Refresh Wastebasket or retry Undo; existing source paths were not overwritten",failures.join("; ")))
+                });
+            }
         }
     }
-
-    let recorded = if actions.len() == 1 {
+    let items = catalog(backend.list_items().unwrap_or_default());
+    let mut actions: Vec<_> = prepared
+        .iter()
+        .map(|prep| history_action(prep, &items, backend))
+        .collect();
+    let action = if actions.len() == 1 {
         actions.pop().unwrap()
     } else {
         Action::Batch(actions)
     };
-    let _ = undo.record_applied(recorded);
+    let _ = undo.record_applied(action);
+    emit_progress(total, total, true);
     emit_changed();
     Ok(())
 }
@@ -323,66 +375,15 @@ pub(super) fn move_single_to_trash_with_backend<B: TrashBackend>(
     path: &str,
     backend: &B,
 ) -> FsResult<Action> {
-    super::super::network_delete::require_local_backup_path(std::path::Path::new(path))?;
-    let src = sanitize_path_nofollow(path, true).map_err(FsError::from)?;
-    map_external_result(check_no_symlink_components(&src))?;
-    let src_snapshot = map_external_result(snapshot_existing_path(&src))?;
-
-    // Backup into the central undo directory in case the OS trash item can't be found.
-    let backup = temp_backup_path(&src).map_err(FsError::from)?;
-    if let Some(parent) = backup.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| {
-            FsError::from_io_error(
-                FsErrorCode::CreateFailed,
-                &format!("Failed to create backup dir {}", parent.display()),
-                error,
-            )
-        })?;
-    }
-    map_external_result(undo_copy_entry(&src, &backup))?;
-
-    let before: HashSet<OsString> = backend
-        .list_items()?
-        .into_iter()
-        .map(|item| item.id)
-        .collect();
-
-    let staged_src = match trash_delete_via_staged_rename(&src, &src_snapshot, backend) {
-        Ok(staged) => staged,
-        Err(err) => {
-            let _ = undo_delete_path(&backup);
-            return Err(err);
-        }
-    };
-
-    let trashed_item = backend.list_items().ok().and_then(|after| {
-        after
-            .into_iter()
-            .find(|item| !before.contains(&item.id) && item.original_path() == staged_src)
-    });
-
-    match trashed_item {
-        Some(item) => {
-            if let Err(err) = backend.rewrite_original_path(&item, &src) {
-                warn!(
-                    "Failed to rewrite trash info for {}: {}",
-                    src.display(),
-                    err
-                );
-            }
-            // Remove the backup once we know the trash location.
-            let _ = undo_delete_path(&backup);
-            Ok(Action::Move {
-                from: src,
-                to: trash_item_path(&item),
-            })
-        }
-        None => Ok(Action::Delete {
-            path: src,
-            backup,
-            protection: None,
-        }),
-    }
+    let mut prep = prepare_trash_move(path)?;
+    prep.excluded_ids = previous_ids(&catalog(backend.list_items()?), &prep.src);
+    prep.staged_src = Some(trash_delete_via_staged_rename(
+        &prep.src,
+        &prep.src_snapshot,
+        backend,
+    )?);
+    let items = catalog(backend.list_items().unwrap_or_default());
+    Ok(history_action(&prep, &items, backend))
 }
 
 fn move_single_to_trash(path: &str, app: &tauri::AppHandle, emit_event: bool) -> FsResult<Action> {

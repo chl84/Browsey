@@ -27,6 +27,14 @@ pub(super) struct TrashStageJournalEntry {
 
 #[cfg(not(target_os = "windows"))]
 fn trash_stage_journal_path() -> PathBuf {
+    #[cfg(test)]
+    return std::env::temp_dir()
+        .join(format!(
+            "browsey-trash-journal-tests-{}",
+            std::process::id()
+        ))
+        .join("journal.tsv");
+    #[cfg(not(test))]
     dirs_next::data_dir()
         .unwrap_or_else(std::env::temp_dir)
         .join("browsey")
@@ -99,10 +107,7 @@ pub(super) fn trash_delete_via_staged_rename<B: TrashBackend>(
             ));
         }
         match backend.delete_path(&staged) {
-            Ok(_) => {
-                let _ = remove_trash_stage_journal_entry(&staged, src);
-                Ok(staged)
-            }
+            Ok(_) => Ok(staged),
             Err(err) => {
                 let rollback_result = move_with_fallback(&staged, src);
                 if rollback_result.is_ok() {
@@ -376,7 +381,7 @@ fn add_trash_stage_journal_entry(staged: &Path, original: &Path) -> FsResult<()>
 }
 
 #[cfg(not(target_os = "windows"))]
-fn remove_trash_stage_journal_entry(staged: &Path, original: &Path) -> FsResult<()> {
+pub(super) fn remove_trash_stage_journal_entry(staged: &Path, original: &Path) -> FsResult<()> {
     let _guard = trash_stage_journal_lock().lock().map_err(|_| {
         FsError::new(
             FsErrorCode::TrashFailed,
@@ -401,6 +406,14 @@ pub fn cleanup_stale_trash_staging() {
 
 #[cfg(not(target_os = "windows"))]
 pub(super) fn cleanup_stale_trash_staging_at(path: &Path) {
+    cleanup_stale_trash_staging_with_backend_at(path, &super::backend::SystemTrashBackend);
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(super) fn cleanup_stale_trash_staging_with_backend_at<B: TrashBackend>(
+    path: &Path,
+    backend: &B,
+) {
     let _guard = match trash_stage_journal_lock().lock() {
         Ok(guard) => guard,
         Err(_) => {
@@ -421,17 +434,39 @@ pub(super) fn cleanup_stale_trash_staging_at(path: &Path) {
     }
 
     let mut retained = Vec::new();
+    let mut catalog = None;
     for entry in entries {
         let staged_meta = std::fs::symlink_metadata(&entry.staged);
         if let Err(err) = staged_meta {
-            if err.kind() != std::io::ErrorKind::NotFound {
+            if err.kind() == std::io::ErrorKind::NotFound {
+                // A crash or delayed catalog can leave the payload already in
+                // trash. Keep the mapping until its restore metadata is fixed.
+                let items = catalog.get_or_insert_with(|| backend.list_items());
+                let repaired = items
+                    .as_ref()
+                    .ok()
+                    .and_then(|items| {
+                        let mut matching = items
+                            .iter()
+                            .filter(|item| item.original_path() == entry.staged);
+                        let item = matching.next()?;
+                        if matching.next().is_some() {
+                            return None;
+                        }
+                        Some(backend.rewrite_original_path(item, &entry.original).is_ok())
+                    })
+                    .unwrap_or(false);
+                if repaired {
+                    continue;
+                }
+            } else {
                 warn!(
                     "Failed to inspect staged trash path {}: {}",
                     entry.staged.display(),
                     err
                 );
-                retained.push(entry);
             }
+            retained.push(entry);
             continue;
         }
 

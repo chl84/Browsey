@@ -1,6 +1,7 @@
-import { writable } from 'svelte/store'
+import { get, writable } from 'svelte/store'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useExplorerNavigation } from './useExplorerNavigation'
+import type { Entry } from '../model/types'
 
 const entryKindMock = vi.fn()
 const isMountUriMock = vi.fn()
@@ -21,7 +22,7 @@ const createDeps = (currentPath = '~') => {
   const deps = {
     current: writable(currentPath),
     loading: writable(false),
-    filteredEntries: writable([]),
+    filteredEntries: writable<Entry[]>([]),
     selected: writable(new Set<string>()),
     anchorIndex: writable<number | null>(null),
     caretIndex: writable<number | null>(null),
@@ -178,5 +179,149 @@ describe('useExplorerNavigation cloud goToPath', () => {
     await nav.openPartition('sftp://alice@server-b/')
     expect(deps.loadRaw).not.toHaveBeenCalled()
     expect(deps.showToast).toHaveBeenCalledWith('Connect failed: Authentication failed')
+  })
+
+  it('does not open a late cloud file after the user chooses Recent', async () => {
+    const deps = createDeps('/demo')
+    const nav = useExplorerNavigation(deps)
+    let finish!: (entry: { path: string; kind: string }) => void
+    statCloudEntryMock.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    const pending = nav.goToPath('rclone://demo/report.txt')
+    await nav.loadRecent()
+    finish({ path: 'rclone://demo/report.txt', kind: 'file' })
+    await pending
+    expect(deps.open).not.toHaveBeenCalled()
+    expect(deps.setPathInput).not.toHaveBeenCalled()
+    expect(deps.loadRaw).not.toHaveBeenCalled()
+  })
+
+  it('does not open a late local path after newer navigation', async () => {
+    const deps = createDeps('/demo')
+    const nav = useExplorerNavigation(deps)
+    let finish!: (kind: string) => void
+    entryKindMock.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    const pending = nav.goToPath('/demo/report.txt')
+    await vi.waitFor(() => expect(entryKindMock).toHaveBeenCalled())
+    await nav.loadNetwork()
+    finish('file')
+    await pending
+    expect(deps.open).not.toHaveBeenCalled()
+    expect(deps.setPathInput).not.toHaveBeenCalled()
+  })
+
+  it('does not navigate to a phone when its connection completes after choosing Starred', async () => {
+    const deps = createDeps('/demo')
+    const nav = useExplorerNavigation(deps)
+    let finish!: (result: { kind: string; mountedPath: string }) => void
+    connectNetworkUriMock.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    const pending = nav.openPartition('mtp://DemoPhone/')
+    await nav.loadStarred()
+    finish({ kind: 'mountable', mountedPath: '/demo/phone' })
+    await pending
+    expect(deps.loadRaw).not.toHaveBeenCalled()
+  })
+
+  it('reuses a pending phone connection when the user returns to it after navigating away', async () => {
+    const deps = createDeps('/demo')
+    const nav = useExplorerNavigation(deps)
+    let finish!: (result: { kind: string; mountedPath: string }) => void
+    connectNetworkUriMock.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    const pending = nav.openPartition('mtp://DemoPhone/')
+    await nav.loadStarred()
+    await nav.openPartition('mtp://DemoPhone/')
+    expect(connectNetworkUriMock).toHaveBeenCalledOnce()
+    finish({ kind: 'mountable', mountedPath: '/demo/phone' })
+    await pending
+    await vi.waitFor(() => expect(deps.loadRaw).toHaveBeenCalledWith('/demo/phone', {}))
+    expect(deps.loadRaw).toHaveBeenCalledOnce()
+  })
+
+  it('does not show an obsolete connection error after the user chooses another place', async () => {
+    const deps = createDeps('/demo')
+    const nav = useExplorerNavigation(deps)
+    let fail!: (error: Error) => void
+    connectNetworkUriMock.mockReturnValueOnce(new Promise((_, reject) => { fail = reject }))
+    const pending = nav.openPartition('mtp://DemoPhone/')
+    await nav.loadTrash()
+    fail(new Error('Phone disconnected'))
+    await pending
+    expect(deps.showToast).not.toHaveBeenCalled()
+    expect(deps.loadRaw).not.toHaveBeenCalled()
+  })
+
+  it.each([true, false])('does not fall back to an obsolete cloud folder (lookup rejects=%s)', async rejects => {
+    const deps = createDeps('/demo')
+    const nav = useExplorerNavigation(deps)
+    let finish!: () => void
+    statCloudEntryMock.mockReturnValueOnce(new Promise((resolve, reject) => {
+      finish = () => rejects ? reject(new Error('Not found')) : resolve(null)
+    }))
+    const pending = nav.goToPath('rclone://demo/old-folder')
+    await nav.loadDir('/demo/new-folder')
+    deps.loadRaw.mockClear()
+    finish()
+    await pending
+    expect(deps.loadRaw).not.toHaveBeenCalled()
+  })
+
+  it('flushes only the newest queued partition target once loading finishes', async () => {
+    const deps = createDeps('/demo')
+    const nav = useExplorerNavigation(deps)
+    deps.loading.set(true)
+    await nav.loadDirIfIdle('/demo/old-phone')
+    await nav.loadDirIfIdle('/demo/new-phone')
+    deps.loading.set(false)
+    nav.flushPendingNavigation()
+    nav.flushPendingNavigation()
+    expect(deps.loadRaw).toHaveBeenCalledOnce()
+    expect(deps.loadRaw).toHaveBeenCalledWith('/demo/new-phone', {})
+  })
+
+  it.each(['local', 'cloud', 'cloud-unknown'])('queues an entered %s directory while another listing is busy', async kind => {
+    const deps = createDeps('/demo')
+    const nav = useExplorerNavigation(deps)
+    const path = kind === 'local' ? '/demo/next' : 'rclone://demo/next'
+    if (kind === 'local') entryKindMock.mockResolvedValueOnce('dir')
+    else statCloudEntryMock.mockResolvedValueOnce(kind === 'cloud' ? { path, kind: 'dir' } : null)
+    deps.loading.set(true)
+    await nav.goToPath(path)
+    expect(deps.loadRaw).not.toHaveBeenCalled()
+    deps.loading.set(false)
+    nav.flushPendingNavigation()
+    expect(deps.loadRaw).toHaveBeenCalledExactlyOnceWith(path, {})
+  })
+
+  it.each(['loadRecent', 'loadStarred', 'loadNetwork', 'loadTrash', 'goBack', 'goForward'] as const)(
+    '%s cancels a queued partition navigation', async action => {
+      const deps = createDeps('/demo')
+      const nav = useExplorerNavigation(deps)
+      deps.loading.set(true)
+      await nav.loadDirIfIdle('/demo/phone')
+      await nav[action]()
+      deps.loading.set(false)
+      nav.flushPendingNavigation()
+      expect(deps.loadRaw).not.toHaveBeenCalled()
+    },
+  )
+
+  it('keeps a new selection when an older folder request finishes late', async () => {
+    const deps = createDeps('/demo')
+    const nav = useExplorerNavigation(deps)
+    let finish!: () => void
+    const entry: Entry = { path: '/new/report.txt', name: 'report.txt', kind: 'file', iconId: 0 }
+    deps.loadRaw.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve }))
+    deps.loadRaw.mockImplementationOnce(async () => {
+      deps.current.set('/new')
+      deps.filteredEntries.set([entry])
+    })
+    const earlier = nav.loadDir('/old')
+    await nav.loadDir('/new')
+    deps.selected.set(new Set([entry.path]))
+    deps.anchorIndex.set(0)
+    deps.caretIndex.set(0)
+    finish()
+    await earlier
+    expect(get(deps.selected)).toEqual(new Set([entry.path]))
+    expect(get(deps.caretIndex)).toBe(0)
   })
 })

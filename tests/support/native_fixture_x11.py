@@ -53,16 +53,18 @@ def geometry(window):
     return {'id':window,'origin':[px.value,py.value],'size':[w.value,h.value]}
 
 try:
-    if command in ('window','place','wheel'):
+    if command in ('window','place','focus','wheel'):
         p=payload['pid'];assert isinstance(p,int) and p>0
         assert os.path.realpath(f'/proc/{p}/exe') == payload['executable']
         with open(f'/proc/{p}/environ','rb') as f:assert ('XDG_DATA_HOME='+payload['data']).encode() in f.read().split(b'\0')
         found=[w for w in windows() if pid(w)==p and min(geometry(w)['size'])>=300]
         assert len(found)==1, 'Expected exactly one owned main window'
         window=found[0]
-        if command=='place':
-            px,py,w,h=payload['bounds'];assert 0<=px<2000 and 0<=py<1100 and 300<=w<=2000 and 300<=h<=1100
-            x.XMoveResizeWindow(d,window,px,py,w,h);x.XSetInputFocus(d,window,1,0);x.XSync(d,False);time.sleep(.15)
+        if command in ('place','focus'):
+            if command=='place':
+                px,py,w,h=payload['bounds'];assert 0<=px<2000 and 0<=py<1100 and 300<=w<=2000 and 300<=h<=1100
+                x.XMoveResizeWindow(d,window,px,py,w,h)
+            x.XSetInputFocus(d,window,1,0);x.XSync(d,False);time.sleep(.15)
         elif command=='wheel':
             g=geometry(window);px,py=payload['point'];direction=payload['direction']
             assert isinstance(px,int) and isinstance(py,int) and direction in (-1,1)

@@ -2,6 +2,64 @@
 
 ## Unreleased
 
+- Move local items to system trash without copying their entire contents into
+  undo storage first. Preserve trees containing symlinks, unreadable children
+  and special files. Roll failed or cancelled batches back from the actual
+  trash payload, retain blocked restores for retry without overwriting newer
+  files, and resolve delayed trash catalogs without a second data copy.
+
+- Preserve progress and cancellation for overlapping operations. Restore the
+  older active task when a newer one ends, and scope completion, timers and
+  listener cleanup to the originating operation across file and cloud actions.
+
+- Discard stale Recent, Starred, Network and Wastebasket results, errors and
+  loading updates after newer navigation. Finish Network setup before publishing
+  the location so UI search resets cannot leave its loading indicator stuck.
+
+- Expand desktop Exec placeholders only once, preserving literal percent codes
+  in filenames and application names. Honor Linux Terminal=true entries through
+  GIO and reap console-launch children after they exit.
+
+- Keep dotfiles hidden and compound archive suffixes intact when generating
+  conflict names. Apply acyclic batch-rename chains in dependency order while
+  preserving reply order and undo/redo; reject cycles before changing files.
+
+- Update Vitest and its coordinated packages to 4.1.12 to resolve
+  GHSA-qxg6-89mg-rqv8 and GHSA-xp26-3454-mjgp in the development test tooling.
+
+- Keep newer navigation and selections when an older path lookup, device
+  connection or folder request completes. Cancel queued navigation when changing
+  places or using Back/Forward, and reuse connections that are already pending.
+  Flush the latest queued bookmark or entered folder once a busy listing ends.
+
+- Preserve reopened creation and rename dialogs when earlier operations finish,
+  suppress repeated batch-rename submission, and keep successful changes distinct
+  from listing-refresh failures. Avoid returning to a folder or changing the
+  selection after the user has navigated elsewhere. Refresh Recent and Starred
+  in place after renaming.
+
+- Report listing-refresh errors after completed permanent deletion separately
+  from deletion failures, including when deleting items from Wastebasket.
+
+- Measure extraction free space on the actual target filesystem on Unix,
+  including mounts omitted from the disk inventory. Preserve the extraction
+  reserve, byte and entry limits, and runtime capacity checks.
+
+- Parse additional file-watcher roots as a platform path list instead of
+  splitting directory names at path separators. Resolve existing directories
+  consistently with the watched path, including spaces and Unicode names.
+
+- Release progress listeners that register after cleanup and ignore obsolete
+  cancellation errors. Keep rename/folder and cloud-loading cleanup and delayed
+  feedback tied to their operation so an older completion cannot hide a newer
+  task, including when opening cloud files.
+  Preserve manually chosen recovery destinations during
+  delayed startup lookups, and remove temporary clipboard fields on failure.
+  Make deferred drag-image cleanup tolerate images that have already detached.
+
+- Explicitly release abandoned-session cleanup locks and released session locks
+  even when a duplicate descriptor remains open. Keep active sessions protected.
+
 - Update ZIP to 9.0.4 to resolve RUSTSEC-2026-0367, RUSTSEC-2026-0368 and
   RUSTSEC-2026-0369 concerning extraction permissions and symbolic links.
 

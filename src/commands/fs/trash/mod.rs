@@ -15,6 +15,7 @@ mod tests;
 
 pub use listing::list_trash;
 pub(super) use move_ops::move_single_to_trash_with_system_backend;
+pub(crate) use move_ops::resolve_pending_trash;
 pub use move_ops::{move_to_trash, move_to_trash_many};
 pub use staging::cleanup_stale_trash_staging;
 

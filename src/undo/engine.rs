@@ -138,6 +138,23 @@ fn recovery_paths(action: &Action, paths: &mut Vec<String>) {
 pub(super) fn execute_action(action: &mut Action, direction: Direction) -> UndoResult<()> {
     match action {
         Action::Batch(actions) => execute_batch(actions, direction),
+        Action::PendingTrash {
+            from,
+            staged,
+            excluded_ids,
+        } => {
+            if matches!(direction, Direction::Forward) {
+                return Err(UndoError::unsupported_operation(
+                    "Trash catalog entry is not resolved yet",
+                ));
+            }
+            let to = crate::commands::fs::resolve_pending_trash(from, staged, excluded_ids)?;
+            *action = Action::Move {
+                from: from.clone(),
+                to,
+            };
+            execute_action(action, direction)
+        }
         Action::Rename { from, to } | Action::Move { from, to } => {
             let (src, dst) = match direction {
                 Direction::Forward => (from, to),

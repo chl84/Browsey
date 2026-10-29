@@ -17,6 +17,12 @@ export async function ownedWindow(ui,bounds) {
   const status=await ui.handshake(ui.desktop.plan.runId)
   return nativeInput(ui,bounds?'place':'window',{pid:status.pid,executable:ui.desktop.candidate,data:ui.desktop.env.XDG_DATA_HOME,...(bounds?{bounds}:{})})
 }
+export async function focusOwnedWindow(ui) {
+  const status=await ui.handshake(ui.desktop.plan.runId)
+  const window=await nativeInput(ui,'focus',{pid:status.pid,executable:ui.desktop.candidate,data:ui.desktop.env.XDG_DATA_HOME})
+  assert.equal(await ui.browser.execute(()=>document.hasFocus()),true,'The owned native window must have system focus')
+  return window
+}
 export async function observeDrag(ui) {
   await ui.browser.execute(async()=>{
     if(window.__nativeDragObservation) throw Error('Observation already active')

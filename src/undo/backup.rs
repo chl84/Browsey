@@ -136,6 +136,14 @@ struct BackupSession {
     access: Arc<super::backup_access::BackupAccess>,
 }
 
+impl Drop for BackupSession {
+    fn drop(&mut self) {
+        // A fork can retain a duplicate after this owner's descriptor closes.
+        // Release ownership explicitly, as the temporary recovery guards do.
+        let _ = self._lock.unlock();
+    }
+}
+
 static SESSIONS: OnceLock<Mutex<HashMap<PathBuf, BackupSession>>> = OnceLock::new();
 
 pub(super) struct OwnedSession {
@@ -300,14 +308,12 @@ fn cleanup_sessions(base: &Path, max_age: Option<Duration>) {
                 continue;
             }
         }
-        let lock_path = base.join(format!("{name}.lock"));
-        if !fs::symlink_metadata(&lock_path).is_ok_and(|meta| meta.file_type().is_file()) {
-            continue;
-        }
-        let Ok(lock) = OpenOptions::new().read(true).write(true).open(&lock_path) else {
+        let Ok(Some(lock)) = super::recovery::lock_session(base, name) else {
             continue;
         };
-        if lock.try_lock().is_err() {
+        // Recovery may borrow our own registry's lifetime lock. Cleanup must
+        // still leave that live session alone, even when it is currently empty.
+        if lock.current.is_some() {
             continue;
         }
         // Markers describe interrupted operations and retain their diagnostics.
@@ -331,6 +337,9 @@ fn cleanup_sessions(base: &Path, max_age: Option<Duration>) {
         }
         // This must stay nonrecursive: even a zero-byte file, an empty backed-up
         // folder or an entry added after the scan prevents session deletion.
+        if lock.verify().is_err() {
+            continue;
+        }
         if let Err(e) = fs::remove_dir(entry.path()) {
             if e.kind() == std::io::ErrorKind::DirectoryNotEmpty {
                 continue;
@@ -342,6 +351,7 @@ fn cleanup_sessions(base: &Path, max_age: Option<Duration>) {
             );
             continue;
         }
+        let lock_path = lock.lock_path.clone();
         drop(lock);
         let _ = fs::remove_file(lock_path);
         super::recovery_notice::remove(&entry.path());
@@ -684,6 +694,28 @@ mod tests {
         assert!(!directory.exists());
         assert!(base.join("legacy").exists());
         fs::remove_dir_all(base).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn released_session_does_not_stay_busy_through_a_duplicated_descriptor() {
+        let base = unique_base();
+        let session = BackupSession::create(&base).unwrap();
+        let directory = session.directory.clone();
+        // A concurrent fork can retain this same open-file description until
+        // exec. Releasing the owning session must release the lock immediately.
+        let inherited = session._lock.try_clone().unwrap();
+        cleanup_sessions(&base, None);
+        assert!(
+            directory.exists(),
+            "an active session must remain protected"
+        );
+        drop(session);
+        cleanup_sessions(&base, None);
+        let removed = !directory.exists();
+        drop(inherited);
+        fs::remove_dir_all(base).unwrap();
+        assert!(removed, "a released session must not remain falsely busy");
     }
 
     #[test]

@@ -81,8 +81,8 @@ export const createRecoveryBackupsModel = () => {
       }
     } finally {
       restoreIssued = false
-      activityApi.clearNow()
-      await activityApi.cleanup()
+      activityApi.clearNow(eventName)
+      await activityApi.cleanup(false, eventName)
       eventName = ''
       if (!disposed) restoring.set(false)
     }
@@ -97,7 +97,7 @@ export const createRecoveryBackupsModel = () => {
   const dispose = () => {
     disposed = true
     void cancel()
-    if (!get(restoring)) { activityApi.clearNow(); void activityApi.cleanup() }
+    if (!get(restoring)) void activityApi.cleanupAll()
   }
   return { overview, loading, restoring, error, notice, restoredPath, restoredName, activity: activityApi.activity,
     refresh, restore, cancel, openFolder, dispose }

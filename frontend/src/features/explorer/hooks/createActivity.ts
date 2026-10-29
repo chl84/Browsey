@@ -1,5 +1,5 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import { get, writable } from 'svelte/store'
+import { writable } from 'svelte/store'
 import { getErrorMessage, normalizeError } from '@/shared/lib/error'
 import { cancelTask } from '../services/activity.service'
 import { progressPresentation, type ProgressPayload } from './progress'
@@ -24,119 +24,152 @@ export const createActivity = (opts: Options = {}) => {
   const { onError } = opts
   const activity = writable<ActivityState | null>(null)
 
-  let activityHideTimer: ReturnType<typeof setTimeout> | null = null
-  let activityUnlisten: UnlistenFn | null = null
-  let activityGeneration = 0
-  let progressReporter: { eventName: string; report: (payload: ProgressPayload) => void } | null = null
+  type Active = {
+    eventName: string
+    state: ActivityState | null
+    active: boolean
+    unlisten: UnlistenFn | null
+    hideTimer: ReturnType<typeof setTimeout> | null
+    report: ((payload: ProgressPayload) => void) | null
+  }
+  const activities = new Map<string, Active>()
+  const visible = () => [...activities.values()].reverse().find(item => item.state !== null)
+  const resolve = (eventName?: string) => eventName === undefined ? visible() : activities.get(eventName)
+  const publish = () => activity.set(visible()?.state ?? null)
 
-  const queueActivityHide = () => {
-    if (activityHideTimer) {
-      clearTimeout(activityHideTimer)
+  const cleanup = async (preserveTimer = false, eventName?: string) => {
+    const item = resolve(eventName)
+    if (!item) return
+    item.active = false
+    item.report = null
+    const unlisten = item.unlisten
+    item.unlisten = null
+    if (preserveTimer && item.state) item.state = { ...item.state, cancel: null }
+    if (!preserveTimer) {
+      if (item.hideTimer) clearTimeout(item.hideTimer)
+      item.hideTimer = null
+      item.state = null
     }
-    activityHideTimer = setTimeout(() => {
-      activity.set(null)
-      activityHideTimer = null
+    if (!preserveTimer || item.state === null) activities.delete(item.eventName)
+    publish()
+    await unlisten?.()
+  }
+
+  const clearNow = (eventName?: string) => {
+    const item = resolve(eventName)
+    if (!item) return
+    item.state = null
+    if (item.hideTimer) clearTimeout(item.hideTimer)
+    item.hideTimer = null
+    if (!item.active) activities.delete(item.eventName)
+    publish()
+  }
+
+  const queueActivityHide = (eventName?: string) => {
+    const item = resolve(eventName)
+    if (!item) return
+    if (item.hideTimer) clearTimeout(item.hideTimer)
+    item.hideTimer = setTimeout(() => {
+      if (activities.get(item.eventName) !== item) return
+      item.hideTimer = null
+      clearNow(item.eventName)
+      void cleanup(false, item.eventName).catch(() => {})
     }, 1200)
   }
-
-  const hasHideTimer = () => activityHideTimer !== null
-
-  const cleanup = async (preserveTimer = false) => {
-    activityGeneration += 1
-    progressReporter = null
-    if (activityUnlisten) {
-      await activityUnlisten()
-      activityUnlisten = null
-    }
-    if (!preserveTimer && activityHideTimer) {
-      clearTimeout(activityHideTimer)
-      activityHideTimer = null
-    }
-  }
-
-  const clearNow = () => {
-    activity.set(null)
-    if (activityHideTimer) {
-      clearTimeout(activityHideTimer)
-      activityHideTimer = null
-    }
-  }
+  const hasHideTimer = (eventName?: string) => resolve(eventName)?.hideTimer != null
 
   const start = async (label: string, eventName: string, onCancel?: () => void,
     options?: { completeOnReply?: boolean }) => {
-    await cleanup()
-    if (activityHideTimer) {
-      clearTimeout(activityHideTimer)
-      activityHideTimer = null
+    // Restarting one operation replaces only its own registration. Other
+    // operations keep their state/listener and reappear when newer work ends.
+    const previous = activities.get(eventName)
+    const releasing = previous ? cleanup(false, eventName) : Promise.resolve()
+    const item: Active = {
+      eventName, state: { label, detail: null, percent: null, cancel: onCancel ?? null, cancelling: false },
+      active: true, unlisten: null, hideTimer: null, report: null,
     }
-    activity.set({ label, detail: null, percent: null, cancel: onCancel ?? null, cancelling: false })
+    activities.delete(eventName)
+    activities.set(eventName,item)
+    publish()
     let phaseLabel = label
-    const generation = activityGeneration
     const report = (payload: ProgressPayload) => {
-      if (generation !== activityGeneration) return
+      if (activities.get(eventName) !== item || !item.active || !item.state) return
       if (payload.phase) phaseLabel = payload.phase
       const { percent: pct, detail } = progressPresentation(payload)
-      const existing = get(activity)
-      const cancelling = existing?.cancelling ?? false
+      const existing = item.state
+      const cancelling = existing.cancelling ?? false
       const displayLabel = cancelling ? 'Cancelling…' : phaseLabel
       if (payload.finished && options?.completeOnReply) {
-        // A staged operation has more phases after a child transfer/archive
-        // finishes. Only the command reply owns final completion and cleanup.
-        activity.set({ label: displayLabel, detail: null, percent: null,
-          cancel: cancelling ? null : existing?.cancel ?? onCancel ?? null, cancelling })
+        item.state = { label: displayLabel, detail: null, percent: null,
+          cancel: cancelling ? null : existing.cancel ?? onCancel ?? null, cancelling }
       } else if (payload.finished) {
-        activity.set({
-          label: cancelling ? 'Cancelling…' : 'Finalizing…',
-          detail,
-          percent: pct ?? null,
-          cancel: null,
-          cancelling,
-        })
-        queueActivityHide()
+        item.state = { label: cancelling ? 'Cancelling…' : 'Finalizing…',
+          detail, percent: pct ?? null, cancel: null, cancelling }
+        queueActivityHide(eventName)
       } else {
-        activity.set({
-          label: displayLabel,
-          detail: cancelling ? null : detail,
-          percent: pct,
-          cancel: cancelling ? null : existing?.cancel ?? onCancel ?? null,
-          cancelling,
-        })
+        item.state = { label: displayLabel, detail: cancelling ? null : detail,
+          percent: pct, cancel: cancelling ? null : existing.cancel ?? onCancel ?? null, cancelling }
       }
+      publish()
     }
-    progressReporter = { eventName, report }
-    activityUnlisten = await listen<ProgressPayload>(eventName, (event) => report(event.payload))
+    item.report = report
+    try {
+      await releasing
+      if (activities.get(eventName) !== item || !item.active) return
+      const unlisten = await listen<ProgressPayload>(eventName, event => report(event.payload))
+      if (activities.get(eventName) !== item || !item.active) {
+        await unlisten()
+        return
+      }
+      item.unlisten = unlisten
+    } catch (error) {
+      if (activities.get(eventName) === item) {
+        clearNow(eventName)
+        await cleanup(false,eventName)
+      }
+      throw error
+    }
   }
 
   const reportProgress = (eventName: string, payload: ProgressPayload) => {
-    if (progressReporter?.eventName === eventName) progressReporter.report(payload)
+    activities.get(eventName)?.report?.(payload)
   }
 
   const requestCancel = async (eventName: string) => {
-    const current = get(activity)
-    if (!current || current.cancelling) return
-    activity.set({ ...current, label: 'Cancelling…', cancel: null, cancelling: true })
+    const item = activities.get(eventName)
+    if (!item?.state || !item.active || item.state.cancelling) return
+    const previous = item.state
+    item.state = { ...previous, label: 'Cancelling…', cancel: null, cancelling: true }
+    publish()
     try {
       await cancelTask(eventName)
     } catch (err) {
-      // The caller also records cancellation while preparing metadata or
-      // between roots. A task may not exist yet, or its reply may be pending.
-      // Keep the operation visible until that caller acknowledges completion.
+      if (activities.get(eventName) !== item || !item.active) return
       if (normalizeError(err).code === 'task_not_found') return
-      const msg = getErrorMessage(err)
-      onError?.(`Cancel failed: ${msg}`)
-      clearNow()
-      await cleanup()
+      if (visible() !== item) {
+        // Retain a background operation's controls so cancellation can be
+        // retried when it becomes visible, without changing newer feedback.
+        item.state = previous
+        publish()
+        return
+      }
+      onError?.(`Cancel failed: ${getErrorMessage(err)}`)
+      clearNow(eventName)
+      await cleanup(false,eventName)
     }
   }
 
-  return {
-    activity,
-    start,
-    requestCancel,
-    reportProgress,
-    cleanup,
-    clearNow,
-    hasHideTimer,
-    hideSoon: queueActivityHide,
+  const cleanupAll = async () => {
+    const all = [...activities.values()]
+    activities.clear()
+    activity.set(null)
+    await Promise.allSettled(all.map(async item => {
+      item.active = false
+      if (item.hideTimer) clearTimeout(item.hideTimer)
+      await item.unlisten?.()
+    }))
   }
+
+  return { activity, start, requestCancel, reportProgress, cleanup, cleanupAll,
+    clearNow, hasHideTimer, hideSoon: queueActivityHide }
 }

@@ -1,4 +1,4 @@
-import { writable } from 'svelte/store'
+import { get, writable } from 'svelte/store'
 import type { Entry } from '../model/types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -34,6 +34,7 @@ vi.mock('../services/listing.service', () => ({
 }))
 
 import { useExplorerData } from './useExplorerData'
+import { createActivity } from './createActivity'
 
 const asyncNoop = vi.fn(async () => {})
 
@@ -403,6 +404,27 @@ describe('useExplorerData cloud refresh event', () => {
     expect(loadPartitionsMock).toHaveBeenCalledOnce()
   })
 
+  it.each([false, true])('keeps newer progress when an earlier cloud listing settles (success=%s)', async success => {
+    const { loadDetailedMock } = installExplorerStateMock('~')
+    let finish!: (result: Awaited<ReturnType<typeof loadDetailedMock>>) => void
+    loadDetailedMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const activityApi = createActivity()
+    const explorer = useExplorerData({ activityApi })
+    const pending = explorer.load('rclone://work/old-folder')
+    await vi.waitFor(() => expect(loadDetailedMock).toHaveBeenCalledOnce())
+    await activityApi.start('New transfer…', 'new-transfer')
+    try {
+      finish({ ok: success, code: success ? undefined : 'cancelled', message: undefined })
+      await pending
+      expect(get(activityApi.activity)).toMatchObject({ label: 'New transfer…' })
+      expect(activityApi.hasHideTimer()).toBe(false)
+      expect(eventHandlers.has('new-transfer')).toBe(true)
+    } finally {
+      await activityApi.cleanup()
+      activityApi.clearNow()
+    }
+  })
+
   it('starts cancellable activity for interactive cloud directory loads and hides it on success', async () => {
     const { loadDetailedMock } = installExplorerStateMock('~')
     const activityApi = {
@@ -410,6 +432,7 @@ describe('useExplorerData cloud refresh event', () => {
       requestCancel: vi.fn(async () => {}),
       clearNow: vi.fn(),
       cleanup: vi.fn(async () => {}),
+      cleanupAll: vi.fn(async () => {}),
       hideSoon: vi.fn(),
       reportProgress: vi.fn(),
       hasHideTimer: vi.fn(() => false),
@@ -448,6 +471,7 @@ describe('useExplorerData cloud refresh event', () => {
       requestCancel: vi.fn(async () => {}),
       clearNow: vi.fn(),
       cleanup: vi.fn(async () => {}),
+      cleanupAll: vi.fn(async () => {}),
       hideSoon: vi.fn(),
       reportProgress: vi.fn(),
       hasHideTimer: vi.fn(() => false),

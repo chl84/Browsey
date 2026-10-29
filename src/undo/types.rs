@@ -84,6 +84,13 @@ pub enum Action {
         from: PathBuf,
         to: PathBuf,
     },
+    /// A completed trash move whose native catalog entry is not visible yet.
+    /// Resolve it lazily on Undo instead of copying every source in advance.
+    PendingTrash {
+        from: PathBuf,
+        staged: PathBuf,
+        excluded_ids: Vec<std::ffi::OsString>,
+    },
     Copy {
         from: PathBuf,
         to: PathBuf,

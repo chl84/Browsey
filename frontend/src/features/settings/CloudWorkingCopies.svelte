@@ -120,7 +120,7 @@
       message = saved.dirty ? 'Saved to the original cloud file. Newer local edits are waiting to save.' : 'Saved to the original cloud file.'
       await refresh()
     } catch (err) { error = getErrorMessage(err); await refresh() }
-    finally { uploading = false; activityApi?.clearNow(); await activityApi?.cleanup() }
+    finally { uploading = false; activityApi?.clearNow(event); await activityApi?.cleanup(false, event) }
   }
   const toggleAutomatic = async (copy: CloudWorkingCopy) => {
     if (uploading) return
@@ -142,7 +142,7 @@
       message = `${result.sourceChanged ? 'The cloud original changed. ' : ''}Saved as a new file: ${result.path}. The original and working copy were kept.`
       await refresh()
     } catch (err) { error = getErrorMessage(err) }
-    finally { uploading = false; activityApi?.clearNow(); await activityApi?.cleanup() }
+    finally { uploading = false; activityApi?.clearNow(event); await activityApi?.cleanup(false, event) }
   }
 
   const showStorage = async () => {

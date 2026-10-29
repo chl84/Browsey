@@ -7,6 +7,7 @@ type ActivityApi = Pick<SharedActivityApi, 'start' | 'hideSoon' | 'cleanup' | 'c
 
 type Deps = {
   loadPath: (path: string) => Promise<void>
+  reloadCurrent?: () => Promise<void>
   parentPath: (path: string) => string
   getCurrentPath?: () => string | null
   showToast?: (msg: string, durationMs?: number) => void
@@ -20,9 +21,10 @@ export type RenameModalState = {
 }
 
 export const createRenameModal = (deps: Deps) => {
-  const { loadPath, parentPath, getCurrentPath, showToast, activityApi } = deps
+  const { loadPath, reloadCurrent, parentPath, getCurrentPath, showToast, activityApi } = deps
   const state = writable<RenameModalState>({ open: false, target: null, error: '' })
   let busy = false
+  let dialogGeneration = 0
   const isCloudPath = (path: string) => path.startsWith('rclone://')
 
   const invokeErrorMessage = (err: unknown): string => {
@@ -55,10 +57,12 @@ export const createRenameModal = (deps: Deps) => {
   }
 
   const open = (entry: Entry) => {
+    ++dialogGeneration
     state.set({ open: true, target: entry, error: '' })
   }
 
   const close = () => {
+    ++dialogGeneration
     state.set({ open: false, target: null, error: '' })
   }
 
@@ -70,45 +74,46 @@ export const createRenameModal = (deps: Deps) => {
       return false
     }
     busy = true
+    const generation = dialogGeneration
+    const cloud = isCloudPath(current.target.path)
+    const refreshPath = getCurrentPath?.() ?? parentPath(current.target.path)
     state.update((s) => ({ ...s, error: '' }))
     const progressEvent = `rename-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
       if (activityApi) {
         await activityApi.start('Renaming…', progressEvent)
       }
-      if (isCloudPath(current.target.path)) await renameEntry(current.target.path, name, progressEvent)
+      if (generation !== dialogGeneration) return false
+      if (cloud) await renameEntry(current.target.path, name, progressEvent)
       else await renameEntry(current.target.path, name)
-      const refreshPath = parentPath(current.target.path)
-      if (isCloudPath(current.target.path)) {
-        void (async () => {
-          if (getCurrentPath && getCurrentPath() !== refreshPath) {
-            return
-          }
-          try {
-            await loadPath(refreshPath)
-          } catch {
-            if (getCurrentPath && getCurrentPath() !== refreshPath) {
-              return
-            }
-            showToast?.('Rename completed, but refresh took too long. Press F5 to refresh.', 3500)
-          }
-        })()
-      } else {
-        await loadPath(refreshPath)
+      if (generation === dialogGeneration) close()
+      activityApi?.hideSoon(progressEvent)
+      const refresh = async () => {
+        if (getCurrentPath && getCurrentPath() !== refreshPath) return
+        try {
+          if (reloadCurrent) await reloadCurrent()
+          else await loadPath(refreshPath)
+        } catch {
+          if (getCurrentPath && getCurrentPath() !== refreshPath) return
+          showToast?.(cloud
+            ? 'Rename completed, but refresh took too long. Press F5 to refresh.'
+            : 'Rename completed, but refresh failed. Press F5 to refresh.', 3500)
+        }
       }
-      close()
-      activityApi?.hideSoon()
+      if (cloud) void refresh()
+      else await refresh()
       return true
     } catch (err) {
       const msg = invokeErrorMessage(err)
-      state.update((s) => ({ ...s, error: msg }))
+      if (generation === dialogGeneration) state.update((s) => ({ ...s, error: msg }))
+      else showToast?.(`Rename failed: ${msg}`, 3500)
       return false
     } finally {
       if (activityApi) {
-        const hadTimer = activityApi.hasHideTimer()
-        await activityApi.cleanup(true)
+        const hadTimer = activityApi.hasHideTimer(progressEvent)
+        await activityApi.cleanup(true, progressEvent)
         if (!hadTimer) {
-          activityApi.clearNow()
+          activityApi.clearNow(progressEvent)
         }
       }
       busy = false

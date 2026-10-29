@@ -36,6 +36,10 @@ and service lifecycle are in `desktop-bootstrap.mjs` and `desktop.mjs`. Proof
 requires distinct host/test namespaces, unavailable personal config, an actual
 private bus and an Xvfb client rejected without the private Xauthority cookie.
 Exact owned PID/start/profile identities still gate UI control and teardown.
+After capturing the candidate identity, the runner gives only that verified
+window system focus, including after a restart. Xvfb has no window manager;
+WebDriver DOM focus alone may not deliver the focus event that reveals the
+address field in WebKitGTK. Window geometry is preserved.
 The namespace supervisor must exit after the test, eliminating service children.
 
 The separate approval covers only:
