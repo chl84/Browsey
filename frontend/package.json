@@ -31,7 +31,7 @@
     "eslint": "^9.39.1",
     "eslint-plugin-svelte": "^3.23.1",
     "jsdom": "^28.1.0",
-    "svelte": "^5.57.2",
+    "svelte": "^5.57.3",
     "svelte-check": "^4.7.7",
     "svelte-eslint-parser": "^1.10.0",
     "typescript": "~5.9.3",
