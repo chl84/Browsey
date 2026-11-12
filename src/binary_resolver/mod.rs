@@ -125,18 +125,9 @@ fn binary_name_matches(path: &Path, expected: &str) -> bool {
     };
     let actual = file_name.to_ascii_lowercase();
     let expected = expected.to_ascii_lowercase();
-    if actual == expected {
-        return true;
-    }
-
-    #[cfg(windows)]
-    {
-        for ext in [".exe", ".cmd", ".bat", ".com"] {
-            if actual == format!("{expected}{ext}") {
-                return true;
-            }
-        }
-    }
-
-    false
+    actual == expected
+        || (cfg!(windows)
+            && [".exe", ".cmd", ".bat", ".com"]
+                .iter()
+                .any(|ext| actual == format!("{expected}{ext}")))
 }
