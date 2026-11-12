@@ -22,6 +22,16 @@ This supersedes the original cleanup recommendation below; the measurements and
 historical verification results remain unchanged. See [backup recovery modal](backup-recovery-modal.md)
 for the current access rules and separate-process regression coverage.
 
+## Retention update, 2026-11-12
+
+Backups are no longer retained after their history entry is gone. A running
+instance releases a backup when its action leaves undo/redo history (50-action
+cap or discarded redo) and releases the rest on normal exit. Recovery markers,
+active overwrite protection, failed undo/redo and backups being read by a
+recovery are retained, as are backups left by a crash or an older build. This
+supersedes "no automatic expiry" above for backups the running instance owns;
+startup cleanup is unchanged.
+
 ## Reproduction
 
 The opt-in test uses the production action, backup, verification and history

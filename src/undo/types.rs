@@ -179,8 +179,7 @@ impl UndoManager {
         super::engine::execute_action(&mut action, Direction::Forward)?;
         super::engine::finalize_action(&mut action);
         self.undo_stack.push_back(action);
-        self.redo_stack.clear();
-        self.trim();
+        self.discard_redo_and_trim();
         Ok(())
     }
 
@@ -196,6 +195,7 @@ impl UndoManager {
                 Ok(())
             }
             Err(err) => {
+                super::release::retain(&action);
                 self.undo_stack.push_back(action);
                 Err(err)
             }
@@ -211,32 +211,51 @@ impl UndoManager {
             Ok(_) => {
                 super::engine::finalize_action(&mut action);
                 self.undo_stack.push_back(action);
-                self.trim();
+                super::release::release(self.trim());
                 Ok(())
             }
             Err(err) => {
+                super::release::retain(&action);
                 self.redo_stack.push_back(action);
                 Err(err)
             }
         }
     }
 
+    /// Forget history without releasing backups. "Delete all" removes them.
     #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.undo_stack.clear();
         self.redo_stack.clear();
     }
 
-    pub fn record_applied(&mut self, action: Action) {
-        self.undo_stack.push_back(action);
-        self.redo_stack.clear();
-        self.trim();
+    /// End history, handing every action to the caller for backup release.
+    pub(super) fn take_all(&mut self) -> Vec<Action> {
+        self.undo_stack
+            .drain(..)
+            .chain(self.redo_stack.drain(..))
+            .collect()
     }
 
-    fn trim(&mut self) {
+    pub fn record_applied(&mut self, action: Action) {
+        self.undo_stack.push_back(action);
+        self.discard_redo_and_trim();
+    }
+
+    /// A new action makes redo unreachable; the cap drops the oldest undo.
+    /// Their backups can no longer be used by history, so release them.
+    fn discard_redo_and_trim(&mut self) {
+        let mut dropped: Vec<Action> = self.redo_stack.drain(..).collect();
+        dropped.extend(self.trim());
+        super::release::release(dropped);
+    }
+
+    fn trim(&mut self) -> Vec<Action> {
+        let mut dropped = Vec::new();
         while self.undo_stack.len() > MAX_HISTORY {
-            let _ = self.undo_stack.pop_front();
+            dropped.extend(self.undo_stack.pop_front());
         }
+        dropped
     }
 }
 

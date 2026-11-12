@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Release undo backups once Undo/Redo can no longer reach them: when an action
+  leaves the 50-action history, when a new action discards Redo, and on normal
+  exit. Permanent deletion and overwrites no longer accumulate in
+  `undo-sessions` indefinitely. Keep backups with recovery markers or active
+  overwrite protection, after a failed Undo/Redo, while a recovery reads them,
+  and after a crash. Release unlinks nested symlinks without following them and
+  never crosses into another mounted filesystem.
+
 - Move local items to system trash without copying their entire contents into
   undo storage first. Preserve trees containing symlinks, unreadable children
   and special files. Roll failed or cancelled batches back from the actual

@@ -518,6 +518,11 @@ fn main() {
                 app_handle,
                 std::time::Duration::from_millis(250),
             );
+            // History ends with this process. Release backups it could reach;
+            // interrupted operations keep theirs for manual recovery.
+            if let Some(undo) = app_handle.try_state::<UndoState>() {
+                undo::release_on_exit(undo.inner());
+            }
         }
     });
 }

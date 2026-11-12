@@ -70,6 +70,22 @@ impl BackupAccess {
         Ok(())
     }
 
+    /// Like `write`, but report an active reader instead of waiting for it.
+    fn try_write(self: &Arc<Self>, key: &std::path::Path) -> UndoResult<bool> {
+        let mut uses = self
+            .uses
+            .lock()
+            .map_err(|_| UndoError::lock_failed("Backup access registry poisoned"))?;
+        if uses
+            .iter()
+            .any(|(other, usage)| overlaps(key, other) && usage.readers > 0)
+        {
+            return Ok(false);
+        }
+        uses.entry(key.to_path_buf()).or_default().writers += 1;
+        Ok(true)
+    }
+
     fn release(&self, key: &std::path::Path, reader: bool) {
         let Ok(mut uses) = self.uses.lock() else {
             return;
@@ -120,4 +136,19 @@ pub(crate) fn write_backups(paths: &[&std::path::Path]) -> UndoResult<BackupWrit
         }
     }
     Ok(guard)
+}
+
+/// Guard one current-session backup without waiting for active readers, such
+/// as a recovery copy. `None` means the backup is not owned or is in use.
+pub(super) fn try_write_backup(path: &std::path::Path) -> UndoResult<Option<BackupWriteGuard>> {
+    let Some(session) = super::backup::owned_session(path)? else {
+        return Ok(None);
+    };
+    let key = session.bucket(path)?;
+    if !session.access.try_write(&key)? {
+        return Ok(None);
+    }
+    Ok(Some(BackupWriteGuard {
+        guards: vec![(session.access, key)],
+    }))
 }
