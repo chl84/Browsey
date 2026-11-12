@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Release undo backups once Undo/Redo can no longer reach them: when an action
+  leaves the 50-action history, when a new action discards Redo, and on normal
+  exit. Permanent deletion and overwrites no longer accumulate in
+  `undo-sessions` indefinitely. Keep backups with recovery markers or active
+  overwrite protection, after a failed Undo/Redo, while a recovery reads them,
+  and after a crash. Release unlinks nested symlinks without following them and
+  never crosses into another mounted filesystem.
+
 - Update rusqlite to 0.41.1 (bundled SQLite via libsqlite3-sys 0.39.1) to
   resolve RUSTSEC-2026-0459, and rustix to 1.1.6 for RUSTSEC-2026-0486.
   Update webdriverio to 10.2.0 and pin minimatch 10.x consumers to 11.0.8 in

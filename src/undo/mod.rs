@@ -12,6 +12,7 @@ mod purge;
 mod recovery;
 mod recovery_notice;
 mod recovery_state;
+mod release;
 mod security;
 mod storage;
 mod types;
@@ -27,6 +28,7 @@ pub(crate) use path_ops::move_by_copy_delete_noreplace;
 pub use path_ops::move_with_fallback;
 pub use purge::delete_all_recovery_backups;
 pub use recovery::{list_recovery_backups, restore_recovery_backup};
+pub(crate) use release::release_on_exit;
 #[cfg(all(unix, target_os = "linux"))]
 pub(crate) use security::set_unix_mode_nofollow;
 pub(crate) use security::{apply_ownership, apply_permissions, set_ownership_nofollow};

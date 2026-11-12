@@ -14,7 +14,7 @@
 
 <div class="form-label backup-label">Undo backups</div>
 <div class="form-control column undo-storage" aria-busy={$busy}>
-  <small>Undo up to 50 actions in the current session. Backups are kept across restarts.</small>
+  <small>Undo up to 50 actions in the current session. Backups are deleted once they can no longer be undone, and when Browsey closes.</small>
   <div role="status" aria-live="polite">
     {#if $error}
       <div class="error">{$error}</div>
@@ -40,7 +40,7 @@
         <div>{describeUndoStorage($summary)}</div>
         <TextField value={$summary.directory} readonly aria-label="Undo backup directory" />
       {/if}
-      <small>Stored backups have no automatic expiry. Startup cleanup only removes completely empty sessions. The 50-action limit applies to undo history, not storage.</small>
+      <small>Backups are released when their action leaves undo/redo history and when Browsey closes normally. Interrupted operations, failed undo/redo and backups left after a crash are kept until you recover or delete them. Startup cleanup only removes completely empty sessions.</small>
       <small>Recover restores to the original location. If that is unavailable, Recover to… lets you choose another folder. Completed backups from this instance are available immediately; active file operations and other running instances are unavailable. Recovery does not recreate undo history or reverse the original operation.</small>
       <small>Storage measurements may be partial. Filesystem allocation can differ from file sizes, especially on compressed or copy-on-write filesystems. Legacy backup folders are excluded.</small>
       <small>Verified recovered backups leave the list. Backup data and protection markers remain for undo. Older builds may delete backups on startup; recover needed files before downgrading.</small>

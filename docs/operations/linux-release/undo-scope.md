@@ -59,9 +59,14 @@ history on Linux:
 The Linux 1.0 undo/redo claim is subject to these hard boundaries:
 
 - undo/redo history is not persisted across app restart
+- a running instance releases a backup once no undo/redo entry can reach it
+  (history cap, discarded redo) and releases its remaining history on normal
+  exit. Recovery markers, active overwrite protection, failed undo/redo and
+  backups being read by recovery are retained. Release unlinks nested symlinks
+  without following them and never crosses into another filesystem
 - startup cleanup removes only completely empty abandoned, unlocked sessions;
-  all stored backups survive restart without automatic expiry, with or without
-  recovery markers. Nonrecursive removal preserves every remaining entry,
+  backups left by a crash or an older build survive restart without automatic
+  expiry, with or without recovery markers. Nonrecursive removal preserves every remaining entry,
   including zero-byte files and empty backed-up folders. Backups belonging to
   running instances are protected by OS file locks
 - copy recovery markers also preserve abandoned sessions after failed or

@@ -179,6 +179,14 @@ impl CopyReceipt {
         }
     }
 
+    /// A completed recovery copy; an uncleared marker keeps it for inspection.
+    pub(super) fn releasable_backup(&self) -> Option<&Path> {
+        self.backup
+            .as_ref()
+            .filter(|backup| backup.marker.is_none())
+            .map(|backup| backup.path.as_path())
+    }
+
     pub(super) fn recovery_path(&self) -> Option<&Path> {
         self.backup
             .as_ref()

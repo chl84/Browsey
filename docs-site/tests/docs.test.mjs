@@ -95,7 +95,8 @@ test('archive/password and cloud-cache guidance does not regress to obsolete cla
 test('undo lifecycle describes retained backups independently of session-only history', () => {
   const lifecycle = text(section('known-limitations', 'undo-lifecycle'))
   assert.match(lifecycle, /history is in-memory.*resets when the app restarts/)
-  assert.match(lifecycle, /survive restart without automatic expiry, with or without recovery markers/)
+  assert.match(lifecycle, /released when their action leaves undo\/redo history and when Browsey exits normally/)
+  assert.match(lifecycle, /backups left after a crash are kept/)
   assert.match(lifecycle, /Startup cleanup removes only completely empty abandoned sessions/)
   assert.match(lifecycle, /Recover in Settings restores to the original location; Recover to… offers another folder/)
 })
