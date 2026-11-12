@@ -10,6 +10,12 @@
   and after a crash. Release unlinks nested symlinks without following them and
   never crosses into another mounted filesystem.
 
+- Update rusqlite to 0.41.1 (bundled SQLite via libsqlite3-sys 0.39.1) to
+  resolve RUSTSEC-2026-0459, and rustix to 1.1.6 for RUSTSEC-2026-0486.
+  Update webdriverio to 10.2.0 and pin minimatch 10.x consumers to 11.0.8 in
+  the frontend and docs-site development tooling for GHSA-g3hv-75wg-m249 and
+  GHSA-3g3m-2fjr-6pw4. The low-severity deepmerge advisory has no fix yet.
+
 - Move local items to system trash without copying their entire contents into
   undo storage first. Preserve trees containing symlinks, unreadable children
   and special files. Roll failed or cancelled batches back from the actual
