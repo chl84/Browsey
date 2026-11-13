@@ -24,6 +24,7 @@ const pasteClipboardCmdMock = vi.fn()
 const setClipboardCmdMock = vi.fn()
 const clearSystemClipboardMock = vi.fn()
 const getSystemClipboardPathsMock = vi.fn()
+const copyPathsToSystemClipboardMock = vi.fn()
 const previewMixedTransferConflictsMock = vi.fn()
 const copyMixedEntriesMock = vi.fn()
 const moveMixedEntriesMock = vi.fn()
@@ -62,6 +63,7 @@ vi.mock('../services/clipboard.service', () => ({
   pasteClipboardCmd: (...args: unknown[]) => pasteClipboardCmdMock(...args),
   pasteClipboardPreview: (...args: unknown[]) => pasteClipboardPreviewMock(...args),
   getSystemClipboardPaths: (...args: unknown[]) => getSystemClipboardPathsMock(...args),
+  copyPathsToSystemClipboard: (...args: unknown[]) => copyPathsToSystemClipboardMock(...args),
 }))
 
 vi.mock('../services/transfer.service', () => ({
@@ -92,6 +94,9 @@ vi.mock('../services/activity.service', () => ({
 
 import { clipboardState, clearClipboardState, setClipboardPathsState } from './clipboard.store'
 import { useExplorerFileOps } from './useExplorerFileOps'
+import { resetSystemClipboardSyncForTests, settleSystemClipboardWritesForTests, writeSystemClipboard } from './systemClipboardSync'
+
+beforeEach(() => resetSystemClipboardSyncForTests())
 
 type ActivityApi = {
   start: (label: string, eventName: string, onCancel?: () => void, options?: { completeOnReply?: boolean }) => Promise<void>
@@ -613,7 +618,8 @@ describe('useExplorerFileOps local conflict preview', () => {
     const pending = ops.pasteIntoCurrent()
     expect(get(ops.pasteBusy)).toBe(true)
     expect(await ops.pasteIntoCurrent()).toBe(false)
-    expect(pasteClipboardPreviewMock).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => expect(pasteClipboardPreviewMock).toHaveBeenCalledTimes(1))
+    expect(get(ops.pasteBusy)).toBe(true)
     resolvePreview([])
     await vi.waitFor(() => expect(pasteClipboardCmdMock).toHaveBeenCalledTimes(1))
     expect(get(ops.pasteBusy)).toBe(true)
@@ -1515,5 +1521,142 @@ describe('invalid batch metadata is not reported as completion evidence', () => 
     const ops=useExplorerFileOps(deps);await ops.handlePasteOrMove('/dest')
     expect(deps.showToast).toHaveBeenLastCalledWith('Paste failed: original failure')
     expect([...get(clipboardState).paths]).toEqual(['/source/file'])
+  })
+})
+
+describe('desktop clipboard shared between Browsey instances', () => {
+  const localDeps = () => {
+    const deps = createDeps()
+    deps.getCurrentPath = () => '/tmp/dest'
+    return deps
+  }
+  const pastedInput = () => pasteClipboardCmdMock.mock.calls.at(-1)?.[3]
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    clearClipboardState()
+    setClipboardCmdMock.mockResolvedValue(undefined)
+    pasteClipboardCmdMock.mockResolvedValue(undefined)
+    pasteClipboardPreviewMock.mockResolvedValue([])
+    copyPathsToSystemClipboardMock.mockResolvedValue(undefined)
+  })
+
+  it('pastes a newer copy from another instance instead of the previously imported one', async () => {
+    const fileOps = useExplorerFileOps(localDeps())
+    getSystemClipboardPathsMock.mockResolvedValue({ mode: 'copy', paths: ['/home/u/A.txt'] })
+    expect(await fileOps.pasteIntoCurrent()).toBe(true)
+    expect(pastedInput()).toEqual({ mode: 'copy', paths: ['/home/u/A.txt'] })
+
+    getSystemClipboardPathsMock.mockResolvedValue({ mode: 'copy', paths: ['/home/u/B.txt'] })
+    expect(await fileOps.pasteIntoCurrent()).toBe(true)
+    expect(setClipboardCmdMock).toHaveBeenLastCalledWith(['/home/u/B.txt'], 'copy')
+    expect(pastedInput()).toEqual({ mode: 'copy', paths: ['/home/u/B.txt'] })
+    expect(Array.from(get(clipboardState).paths)).toEqual(['/home/u/B.txt'])
+  })
+
+  it('repeats the same imported copy while the desktop clipboard is unchanged', async () => {
+    const fileOps = useExplorerFileOps(localDeps())
+    getSystemClipboardPathsMock.mockResolvedValue({ mode: 'copy', paths: ['/home/u/A.txt'] })
+    await fileOps.pasteIntoCurrent()
+    await fileOps.pasteIntoCurrent()
+    expect(setClipboardCmdMock).toHaveBeenCalledTimes(1)
+    expect(pasteClipboardCmdMock).toHaveBeenCalledTimes(2)
+    expect(pastedInput()).toEqual({ mode: 'copy', paths: ['/home/u/A.txt'] })
+  })
+
+  it('takes a newer cut from another instance and keeps its mode', async () => {
+    const fileOps = useExplorerFileOps(localDeps())
+    getSystemClipboardPathsMock.mockResolvedValue({ mode: 'copy', paths: ['/home/u/A.txt'] })
+    await fileOps.pasteIntoCurrent()
+    getSystemClipboardPathsMock.mockResolvedValue({ mode: 'cut', paths: ['/home/u/B.txt'] })
+    clearSystemClipboardMock.mockResolvedValue(undefined)
+    expect(await fileOps.pasteIntoCurrent()).toBe(true)
+    expect(pastedInput()).toEqual({ mode: 'cut', paths: ['/home/u/B.txt'] })
+  })
+
+  it('keeps its own copy when the desktop read-back uses a different path form', async () => {
+    const fileOps = useExplorerFileOps(localDeps())
+    getSystemClipboardPathsMock.mockResolvedValue({ mode: 'copy', paths: ['/real/B.txt'] })
+    setClipboardPathsState('copy', ['/link/B.txt'])
+    await writeSystemClipboard(['/link/B.txt'], 'copy')
+
+    expect(await fileOps.pasteIntoCurrent()).toBe(true)
+    expect(setClipboardCmdMock).not.toHaveBeenCalled()
+    expect(pastedInput()).toEqual({ mode: 'copy', paths: ['/link/B.txt'] })
+  })
+
+  it('does not let a stale payload left by a failed desktop write replace its own copy', async () => {
+    const fileOps = useExplorerFileOps(localDeps())
+    getSystemClipboardPathsMock.mockResolvedValue({ mode: 'copy', paths: ['/home/u/A.txt'] })
+    copyPathsToSystemClipboardMock.mockRejectedValueOnce(new Error('xclip not found'))
+    setClipboardPathsState('copy', ['/home/u/B.txt'])
+    await expect(writeSystemClipboard(['/home/u/B.txt'], 'copy')).rejects.toThrow('xclip not found')
+
+    expect(await fileOps.pasteIntoCurrent()).toBe(true)
+    expect(setClipboardCmdMock).not.toHaveBeenCalled()
+    expect(pastedInput()).toEqual({ mode: 'copy', paths: ['/home/u/B.txt'] })
+  })
+
+  it('waits for its own pending desktop write before comparing', async () => {
+    const fileOps = useExplorerFileOps(localDeps())
+    let desktop = ''
+    getSystemClipboardPathsMock.mockImplementation(async () => ({ mode: 'copy', paths: [desktop] }))
+    copyPathsToSystemClipboardMock.mockImplementation(async (paths: string[]) => { desktop = paths[0] })
+    await writeSystemClipboard(['/home/u/X.txt'], 'copy')
+    await settleSystemClipboardWritesForTests()
+    desktop = '/home/u/A.txt' // Copied in another instance afterwards.
+    getSystemClipboardPathsMock.mockClear()
+
+    let finishWrite: () => void = () => {}
+    copyPathsToSystemClipboardMock.mockImplementationOnce((paths: string[]) => new Promise<void>((resolve) => {
+      finishWrite = () => { desktop = paths[0]; resolve() }
+    }))
+    setClipboardPathsState('copy', ['/home/u/B.txt'])
+    const write = writeSystemClipboard(['/home/u/B.txt'], 'copy')
+    const paste = fileOps.pasteIntoCurrent()
+    for (let i = 0; i < 5; i += 1) await Promise.resolve()
+    expect(getSystemClipboardPathsMock).not.toHaveBeenCalled()
+    finishWrite()
+    await write
+
+    expect(await paste).toBe(true)
+    expect(setClipboardCmdMock).not.toHaveBeenCalled()
+    expect(pastedInput()).toEqual({ mode: 'copy', paths: ['/home/u/B.txt'] })
+  })
+
+  it('stops instead of pasting the older selection when a foreign copy cannot be used', async () => {
+    const deps = localDeps()
+    const fileOps = useExplorerFileOps(deps)
+    getSystemClipboardPathsMock.mockResolvedValue({ mode: 'copy', paths: ['/home/u/A.txt'] })
+    await fileOps.pasteIntoCurrent()
+    pasteClipboardCmdMock.mockClear()
+    getSystemClipboardPathsMock.mockResolvedValue({ mode: 'copy', paths: ['/gone/B.txt'] })
+    setClipboardCmdMock.mockRejectedValueOnce(new Error('Path is unavailable: /gone/B.txt'))
+
+    expect(await fileOps.pasteIntoCurrent()).toBe(false)
+    expect(pasteClipboardCmdMock).not.toHaveBeenCalled()
+    expect(deps.showToast).toHaveBeenCalledWith('Paste failed: Path is unavailable: /gone/B.txt')
+  })
+
+  it('falls back to the internal clipboard when the desktop clipboard cannot be read', async () => {
+    const deps = localDeps()
+    const fileOps = useExplorerFileOps(deps)
+    getSystemClipboardPathsMock.mockResolvedValue({ mode: 'copy', paths: ['/home/u/A.txt'] })
+    await fileOps.pasteIntoCurrent()
+    getSystemClipboardPathsMock.mockRejectedValue(new Error('wl-paste not found'))
+
+    expect(await fileOps.pasteIntoCurrent()).toBe(true)
+    expect(pastedInput()).toEqual({ mode: 'copy', paths: ['/home/u/A.txt'] })
+    expect(deps.showToast).not.toHaveBeenCalledWith(expect.stringContaining('System clipboard'), expect.anything())
+  })
+
+  it('keeps the internal clipboard when the desktop clipboard holds text instead of files', async () => {
+    const fileOps = useExplorerFileOps(localDeps())
+    getSystemClipboardPathsMock.mockResolvedValue({ mode: 'copy', paths: ['/home/u/A.txt'] })
+    await fileOps.pasteIntoCurrent()
+    getSystemClipboardPathsMock.mockRejectedValue(new Error('No file paths found in system clipboard'))
+
+    expect(await fileOps.pasteIntoCurrent()).toBe(true)
+    expect(pastedInput()).toEqual({ mode: 'copy', paths: ['/home/u/A.txt'] })
   })
 })

@@ -6,7 +6,7 @@ import type { ClipboardApi } from './createClipboard'
 
 const services = vi.hoisted(() => ({
   deleteEntries: vi.fn(), moveToTrashMany: vi.fn(), purgeTrashItems: vi.fn(),
-  copyPathsToSystemClipboard: vi.fn(),
+  copyPathsToSystemClipboard: vi.fn(), getSystemClipboardPaths: vi.fn(),
 }))
 vi.mock('../services/trash.service', () => ({
   ...services,

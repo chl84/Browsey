@@ -65,6 +65,15 @@ export async function services(plan,fixture,ui,record) {
         result.phase='verification'
         await verifyTree(fixture,to,expectedClipboard);await verifyTree(fixture,from,mode==='cut'?new Map():expectedClipboard)
         if(mode==='cut'){await ui.browser.waitUntil(async()=>{const cleared=await exec(path.join(ui.desktop.repo,'target/native-tools/bin/xclip'),['-selection','clipboard','-o'],{env:ui.desktop.env,timeout:3000,maxBuffer:65536});return cleared.stdout.length===0},{timeout:5000,interval:100,timeoutMsg:'Cut completion did not clear the real clipboard'});part.cleared=true}
+        if(mode==='copy'){
+          // The peer now holds the first selection internally; a newer copy made in the other instance must still win.
+          result.phase='setup';const newer=child(from,'newer.txt');await fixture.write(newer,'newer\n')
+          await ui.populateClipboard(from,[newer],false)
+          await ui.browser.waitUntil(async()=>{try {const c=await clipboard(ui);return c.mode==='copy'&&c.paths.length===1&&c.paths[0]===newer}catch{return false}},{timeout:15_000,interval:100,timeoutMsg:'Second copy did not reach the private X clipboard'})
+          result.phase='ui';await peer.paste(to,child(to,'newer.txt'));await peer.idle()
+          result.phase='verification';const both=new Map([...expectedClipboard,['newer.txt','newer\n']])
+          await verifyTree(fixture,to,both);await verifyTree(fixture,from,both);part.newerCopy='INDEPENDENT_MATCH'
+        }
         await releasedResources(peer,plan.runId);part.ui='ACKNOWLEDGED';part.verification='INDEPENDENT_MATCH'
       })
     })
