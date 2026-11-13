@@ -17,7 +17,7 @@ vi.mock('./services/trash.service', () => ({
   moveToTrashMany: mocks.move, deleteEntries: vi.fn(), purgeTrashItems: vi.fn(),
   needsNetworkDeleteConfirmation: () => false,
 }))
-vi.mock('./services/clipboard.service', () => ({copyPathsToSystemClipboard: vi.fn()}))
+vi.mock('./services/clipboard.service', () => ({copyPathsToSystemClipboard: vi.fn(), getSystemClipboardPaths: vi.fn()}))
 beforeEach(() => { vi.useFakeTimers(); vi.clearAllMocks(); mocks.handlers.clear(); mocks.move.mockResolvedValue(undefined) })
 afterEach(() => vi.useRealTimers())
 const actions = (activityApi: ReturnType<typeof createActivity>) => createSelectionActions({
