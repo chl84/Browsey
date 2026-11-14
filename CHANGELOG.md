@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v1.0.7 — 2026-11-14
+
 - Update compatible Rust dependencies: notify 8.2.2, trash 5.3.0, ZIP 9.5.0,
   aes 0.9.4, flate2 1.1.11 and mime 0.3.18. Update frontend and docs-site
   development tooling: Svelte 5.57.3, Vite 7.3.8, Playwright 1.65.0, ESLint
