@@ -6,7 +6,7 @@
 %global _missing_build_ids_terminate_build 0
 
 Name:           browsey
-Version:        1.0.6
+Version:        1.0.7
 Release:        1%{?dist}
 Summary:        Minimalist and fast file explorer built with Tauri
 
@@ -71,6 +71,9 @@ install -m 0644 resources/icons/icon.png %{buildroot}%{_datadir}/icons/hicolor/5
 %{_datadir}/icons/hicolor/512x512/apps/browsey.png
 
 %changelog
+* Sat Nov 14 2026 Browsey Maintainers <maintainers@example.com> - 1.0.7-1
+- Release 1.0.7; see CHANGELOG.md and docs/releases/1.0.7.md
+
 * Sat Oct 10 2026 Browsey Maintainers <maintainers@example.com> - 1.0.6-1
 - Release 1.0.6; see CHANGELOG.md and docs/releases/1.0.6.md
 
