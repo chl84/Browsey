@@ -152,7 +152,9 @@ fn encrypted_zip_missing_wrong_correct_and_legacy_passwords() {
         writer.write_all(b"secret").unwrap();
         writer.finish().unwrap();
         expect_password_error(&path, None, "archive_password_required");
-        expect_password_error(&path, Some("wrong"), "archive_invalid_password");
+        // The password verifier (one ZipCrypto byte, two AES bytes) accepts a few
+        // wrong passwords; those then fail as damaged encrypted data.
+        expect_wrong_password_error(&path, "wrong");
         let result = extract_password(&path, Some("pass")).unwrap();
         assert_eq!(
             fs::read(Path::new(&result.destination).join("secret.txt")).unwrap(),
@@ -163,6 +165,55 @@ fn encrypted_zip_missing_wrong_correct_and_legacy_passwords() {
             b"public"
         );
     }
+}
+
+fn expect_wrong_password_error(path: &Path, password: &str) -> &'static str {
+    let error = extract_password(path, Some(password))
+        .err()
+        .expect("wrong password must fail");
+    let code = error.code_str();
+    assert!(
+        matches!(
+            code,
+            "archive_invalid_password" | "archive_password_or_corrupt"
+        ),
+        "{error}"
+    );
+    assert_eq!(
+        fs::read_dir(path.parent().unwrap()).unwrap().count(),
+        1,
+        "failed extraction left outputs"
+    );
+    code
+}
+
+#[test]
+fn zipcrypto_wrong_password_past_the_check_byte_offers_a_password_retry() {
+    // ZipCrypto verifies one byte, so about 1 in 256 wrong passwords reach the
+    // deflate decoder with garbage. That must still offer a password retry, not
+    // a generic extraction failure. 4096 candidates miss with p < 1e-6.
+    use zip::{unstable::write::FileOptionsExt, write::SimpleFileOptions, CompressionMethod};
+    let root = Fixture::new();
+    let path = root.0.join("legacy.zip");
+    let mut writer = zip::ZipWriter::new(File::create(&path).unwrap());
+    writer
+        .start_file(
+            "secret.txt",
+            SimpleFileOptions::default()
+                .compression_method(CompressionMethod::Deflated)
+                .with_deprecated_encryption(b"pass")
+                .unwrap(),
+        )
+        .unwrap();
+    writer.write_all(&b"secret payload ".repeat(64)).unwrap();
+    writer.finish().unwrap();
+    let accepted = (0..4096).map(|i| format!("wrong-{i}")).find(|password| {
+        expect_wrong_password_error(&path, password) == "archive_password_or_corrupt"
+    });
+    assert!(
+        accepted.is_some(),
+        "no wrong password passed the ZipCrypto check byte"
+    );
 }
 
 #[test]
