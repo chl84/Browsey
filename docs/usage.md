@@ -246,10 +246,15 @@ owning instance. Recovery copies the stored data; it does not undo an interrupte
 operation or guarantee that the stored backup was originally complete.
 
 Expand **Advanced details** for allocation, paths and retention information.
-Stored backups survive app restarts without automatic expiry, with or without
-recovery markers. Startup cleanup only removes completely empty abandoned
-sessions; undo/redo history remains limited to the current session. Older builds
-may delete backups on startup, so recover needed data before downgrading. Startup logs
+Backups are released once Undo/Redo can no longer reach them: when an action
+falls outside the 50-action history, when a new action discards Redo, and when
+Browsey exits normally. Permanent deletion therefore frees its space by the end
+of the session at the latest. Backups of interrupted operations (recovery
+markers), of a failed Undo/Redo and of a recovery still reading them are kept.
+Backups left by a crash or forced quit, and those from earlier builds,
+also remain: startup cleanup only removes completely empty abandoned sessions,
+so recover or delete them in Settings. Older builds may delete backups on
+startup, so recover needed data before downgrading. Startup logs
 unchanged recovery findings at Debug; new/changed or uncertain findings produce one
 combined log warning. No startup dialog or toast is shown. Diagnostic notices
 do not authorize backup deletion or reconstruct undo history. Do not remove

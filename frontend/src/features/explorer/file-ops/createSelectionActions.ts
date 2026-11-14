@@ -4,7 +4,7 @@ import type { CurrentView } from '../context/createContextActions'
 import type { DeleteConfirmMode } from '../modals/deleteConfirmModal'
 import type { ActivityApi } from '../hooks/createActivity'
 import { mustUsePermanentDelete } from '../helpers/deletionPolicy'
-import { copyPathsToSystemClipboard } from '../services/clipboard.service'
+import { writeSystemClipboard } from './systemClipboardSync'
 import { deleteEntries, moveToTrashMany, purgeTrashItems, needsNetworkDeleteConfirmation } from '../services/trash.service'
 import type { ClipboardApi } from './createClipboard'
 
@@ -39,7 +39,7 @@ export const createSelectionActions = (deps: Deps) => {
     showToast(label, 1500)
     if (!paths.some(isCloudPath)) {
       // Failure here must not discard Browsey's already populated clipboard.
-      void copyPathsToSystemClipboard(paths, mode === 'cut' ? 'cut' : undefined).catch(error => {
+      void writeSystemClipboard(paths, mode).catch(error => {
         showToast(`${label} (system clipboard unavailable: ${getErrorMessage(error)})`, 2500)
       })
     }

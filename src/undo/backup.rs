@@ -264,8 +264,9 @@ impl BackupSession {
     }
 }
 
-/// Remove only completely empty abandoned sessions. Stored backups have no
-/// automatic expiry, whether or not a recovery marker is present. `max_age`
+/// Remove only completely empty abandoned sessions. Startup never expires
+/// stored backups, whether or not a recovery marker is present; the owning
+/// instance releases unreachable ones itself (see `release.rs`). `max_age`
 /// restricts empty-session cleanup; it never authorizes deleting backup data.
 /// Never remove another running instance's session.
 /// Legacy `undo/` backups are deliberately left intact: old versions have no
