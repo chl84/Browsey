@@ -411,6 +411,82 @@ pub(crate) fn delete_entry_nofollow_io(path: &Path) -> UndoResult<()> {
     delete_nofollow_io(path).map_err(|error| map_delete_nofollow_error(path, error))
 }
 
+/// Remove a released backup tree. Unlike user-path deletion, nested symlinks
+/// are backup data: unlink them without following. Never cross into another
+/// filesystem mounted below the backup; such a tree is retained.
+#[cfg(all(unix, target_os = "linux"))]
+pub(super) fn delete_backup_tree_nofollow(path: &Path) -> Result<(), std::io::Error> {
+    fn remove_children(dir_fd: &OwnedFd, dev: libc::dev_t) -> Result<(), std::io::Error> {
+        for child_name in read_dir_entry_names(dir_fd)? {
+            let child_stat = match fstatat_nofollow(dir_fd.as_raw_fd(), &child_name) {
+                Ok(stat) => stat,
+                Err(err) if err.kind() == ErrorKind::NotFound => continue,
+                Err(err) => return Err(err),
+            };
+            if child_stat.st_dev != dev {
+                return Err(std::io::Error::other(
+                    "Backup contains another filesystem; retained",
+                ));
+            }
+            if child_stat.st_mode & libc::S_IFMT == libc::S_IFDIR {
+                remove_dir_at(dir_fd.as_raw_fd(), &child_name, dev)?;
+            } else {
+                match unlinkat_nofollow(dir_fd.as_raw_fd(), &child_name, 0) {
+                    Ok(()) => {}
+                    Err(err) if err.kind() == ErrorKind::NotFound => {}
+                    Err(err) => return Err(err),
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn remove_dir_at(
+        parent_fd: libc::c_int,
+        name: &CString,
+        dev: libc::dev_t,
+    ) -> Result<(), std::io::Error> {
+        let raw = unsafe {
+            libc::openat(
+                parent_fd,
+                name.as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        };
+        if raw < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        let dir_fd = unsafe { OwnedFd::from_raw_fd(raw) };
+        let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+        if unsafe { libc::fstat(dir_fd.as_raw_fd(), stat.as_mut_ptr()) } != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        // The opened directory, not the earlier lookup, decides the boundary.
+        if unsafe { stat.assume_init() }.st_dev != dev {
+            return Err(std::io::Error::other(
+                "Backup contains another filesystem; retained",
+            ));
+        }
+        remove_children(&dir_fd, dev)?;
+        unlinkat_nofollow(parent_fd, name, libc::AT_REMOVEDIR)
+    }
+
+    let (parent_fd, name) = parent_fd_and_name(path)?;
+    let stat = fstatat_nofollow(parent_fd.as_raw_fd(), &name)?;
+    match stat.st_mode & libc::S_IFMT {
+        libc::S_IFLNK => Err(std::io::Error::other(UndoError::symlink_unsupported(path))),
+        libc::S_IFDIR => remove_dir_at(parent_fd.as_raw_fd(), &name, stat.st_dev),
+        _ => unlinkat_nofollow(parent_fd.as_raw_fd(), &name, 0),
+    }
+}
+
+/// Other platforms keep the conservative user-path deletion: a backup that
+/// contains a symlink is retained rather than unlinked through a path lookup.
+#[cfg(not(all(unix, target_os = "linux")))]
+pub(super) fn delete_backup_tree_nofollow(path: &Path) -> Result<(), std::io::Error> {
+    delete_nofollow_io(path)
+}
+
 #[cfg(all(unix, target_os = "linux"))]
 pub(super) fn open_nofollow_path_fd(path: &Path) -> UndoResult<OwnedFd> {
     use std::io;
