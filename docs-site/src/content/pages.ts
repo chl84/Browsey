@@ -935,7 +935,7 @@ capabilities/default.json`,
           "Follow bounded HTTPS redirect chains when opening OneDrive files, without forwarding OAuth credentials to download links. Preserve working-copy version checks and log opening failures without exposing signed download URLs.",
           "Use CLI metadata checks for OneDrive to avoid rclone RC misclassifying folders as files and rejecting local-to-cloud copies. Preserve file/missing-path checks, cancellation and bounded metadata timeouts.",
         ],
-        note: 'See CHANGELOG.md and docs/releases/1.0.7.md for full changes. Release preparation does not confirm testing or publication; review validation evidence before publishing.',
+        note: 'RPM, DEB and SHA256SUMS are published on GitHub. See CHANGELOG.md and docs/releases/1.0.7.md for full changes, validation evidence and remaining platform acceptance checks.',
       },
       {
         id: 'v1-0-6',
