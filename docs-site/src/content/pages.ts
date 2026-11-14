@@ -1427,7 +1427,7 @@ capabilities/default.json`,
         title: 'Undo Lifecycle',
         bullets: [
           'Undo/redo history is in-memory and therefore resets when the app restarts',
-          'Stored backups under browsey/undo-sessions survive restart without automatic expiry, with or without recovery markers. Startup cleanup removes only completely empty abandoned sessions. Recover in Settings restores to the original location; Recover to… offers another folder when necessary',
+          'Backups under browsey/undo-sessions are released when their action leaves undo/redo history and when Browsey exits normally. Interrupted operations, failed undo/redo and backups left after a crash are kept. Startup cleanup removes only completely empty abandoned sessions. Recover in Settings restores to the original location; Recover to… offers another folder when necessary',
           'When atomic no-replace rename is unavailable on a platform/filesystem, move/rename fallback is copy+delete and therefore non-atomic',
           'Copy/move and recovery are not whole-operation transactions or power-loss guarantees. Stop concurrent edits to sources and destinations during operations',
         ],

@@ -34,6 +34,7 @@ import {
 import { checkDuplicatesStream, type DuplicateScanProgress } from '../services/duplicates.service'
 import { cancelTask } from '../services/activity.service'
 import { clipboardState, setClipboardState, setClipboardPathsState, clearClipboardState } from './clipboard.store'
+import { foreignSystemClipboard, markSystemClipboardCleared, markSystemClipboardSeen, type SystemClipboardPaths } from './systemClipboardSync'
 import { normalizePath, parentPath } from '../utils'
 import type { Entry } from '../model/types'
 import type { CurrentView } from '../context/createContextActions'
@@ -166,6 +167,7 @@ export const useExplorerFileOps = (deps: Deps) => {
     deps.setClipboardPaths(remaining)
     try {
       await clearSystemClipboard()
+      markSystemClipboardCleared()
     } catch {
       // Ignore; move already succeeded.
     }
@@ -640,27 +642,56 @@ export const useExplorerFileOps = (deps: Deps) => {
     const internalClipboard = get(clipboardState)
     const preferInternalClipboard = internalClipboard.paths.size > 0
 
-    // Attempt to sync from system clipboard only when Browsey has no internal clipboard paths.
-    // When Browsey already has local/cut/copy entries, keep that as source of truth to avoid
-    // racing against stale system clipboard contents.
-    if (!isCloudPath(deps.getCurrentPath()) && !preferInternalClipboard) {
+    const adoptSystemClipboard = async (sys: SystemClipboardPaths) => {
+      await setClipboardCmd([...sys.paths], sys.mode)
+      const stubEntries = sys.paths.map((path) => ({
+        path,
+        name: cloudLeafName(path),
+        kind: 'file',
+        iconId: 12,
+      }))
+      setClipboardState(sys.mode, stubEntries as unknown as Entry[])
+      markSystemClipboardSeen(sys)
+    }
+
+    if (!isCloudPath(deps.getCurrentPath())) {
+      if (get(pasteBusy) || conflictOperation) {
+        deps.showToast('Finish or cancel the current transfer first')
+        return false
+      }
+      // Stay busy while the desktop clipboard is read, so a repeated paste
+      // cannot start a second transfer in the meantime.
+      pasteBusy.set(true)
       try {
-        const sys = await getSystemClipboardPaths()
-        if (sys.paths.length > 0) {
-          await setClipboardCmd(sys.paths, sys.mode)
-          const stubEntries = sys.paths.map((path) => ({
-            path,
-            name: cloudLeafName(path),
-            kind: 'file',
-            iconId: 12,
-          }))
-          setClipboardState(sys.mode, stubEntries as unknown as Entry[])
+        if (preferInternalClipboard) {
+          // A non-empty internal clipboard stays the source of truth unless the
+          // desktop clipboard changed since this instance last wrote or read it:
+          // the newer copy was then made in another Browsey instance or application.
+          const foreign = await foreignSystemClipboard()
+          if (foreign) {
+            try {
+              await adoptSystemClipboard(foreign)
+            } catch (err) {
+              // Falling back to the older internal selection would paste the wrong items.
+              deps.showToast(`Paste failed: ${getErrorMessage(err)}`)
+              return false
+            }
+          }
+        } else {
+          try {
+            const sys = await getSystemClipboardPaths()
+            if (sys.paths.length > 0) {
+              await adoptSystemClipboard(sys)
+            }
+          } catch (err) {
+            const msg = getErrorMessage(err)
+            if (!msg.toLowerCase().includes('no file paths found')) {
+              deps.showToast(`System clipboard unavailable: ${msg}`, 2000)
+            }
+          }
         }
-      } catch (err) {
-        const msg = getErrorMessage(err)
-        if (!msg.toLowerCase().includes('no file paths found')) {
-          deps.showToast(`System clipboard unavailable: ${msg}`, 2000)
-        }
+      } finally {
+        pasteBusy.set(false)
       }
     }
 

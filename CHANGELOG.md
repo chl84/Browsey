@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- Paste the newest desktop copy when several Browsey instances share the
+  clipboard. An instance that had already pasted from another instance kept
+  that selection internally and pasted it again after a newer copy elsewhere.
+  Each instance now remembers what the desktop clipboard held when it last
+  wrote, imported or cleared it, and takes the desktop selection only when it
+  has changed since. Its own pending writes, read-back path forms and payloads
+  left by failed writes never count as newer. A newer selection that cannot be
+  used stops the paste instead of falling back to the older one.
+
+- Release undo backups once Undo/Redo can no longer reach them: when an action
+  leaves the 50-action history, when a new action discards Redo, and on normal
+  exit. Permanent deletion and overwrites no longer accumulate in
+  `undo-sessions` indefinitely. Keep backups with recovery markers or active
+  overwrite protection, after a failed Undo/Redo, while a recovery reads them,
+  and after a crash. Release unlinks nested symlinks without following them and
+  never crosses into another mounted filesystem.
+
 - Update rusqlite to 0.41.1 (bundled SQLite via libsqlite3-sys 0.39.1) to
   resolve RUSTSEC-2026-0459, and rustix to 1.1.6 for RUSTSEC-2026-0486.
   Update webdriverio to 10.2.0 and pin minimatch 10.x consumers to 11.0.8 in
