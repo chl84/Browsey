@@ -1059,20 +1059,17 @@ mod tests {
             return;
         }
         result.unwrap();
+        // The wrapper's shell creates the file before printf writes to it, so
+        // poll until the complete argument list has arrived.
+        let mut args = String::new();
         for _ in 0..200 {
-            if let Ok(args) = fs::read_to_string(root.join("terminal.args")) {
-                assert!(
-                    args.lines().any(|arg| arg == viewer.to_str().unwrap()),
-                    "{args}"
-                );
-                assert!(
-                    args.lines().any(|arg| arg == target.to_str().unwrap()),
-                    "{args}"
-                );
+            args = fs::read_to_string(root.join("terminal.args")).unwrap_or_default();
+            let has = |expected: &Path| args.lines().any(|arg| arg == expected.to_str().unwrap());
+            if has(&viewer) && has(&target) {
                 return;
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
-        panic!("Terminal=true did not use the terminal wrapper");
+        panic!("Terminal=true did not pass the viewer and target through the terminal wrapper: {args:?}");
     }
 }

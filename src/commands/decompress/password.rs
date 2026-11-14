@@ -1,5 +1,7 @@
 //! Mark decoder read failures separately from destination write failures.
-//! Legacy encryption can only detect a bad password through a checksum failure.
+//! Legacy encryption can only detect a bad password through a checksum failure:
+//! ZIP's ZipCrypto accepts about 1 in 256 wrong passwords at its check byte, and
+//! the garbage then fails in the decompressor (flate2 reports `InvalidInput`).
 use std::{
     fmt,
     io::{self, Read},
@@ -27,6 +29,7 @@ impl<R: Read> Read for PasswordReader<R> {
                 && matches!(
                     error.kind(),
                     io::ErrorKind::InvalidData
+                        | io::ErrorKind::InvalidInput
                         | io::ErrorKind::Other
                         | io::ErrorKind::UnexpectedEof
                 )
@@ -60,6 +63,7 @@ mod tests {
         for encrypted in [false, true] {
             for kind in [
                 io::ErrorKind::InvalidData,
+                io::ErrorKind::InvalidInput,
                 io::ErrorKind::PermissionDenied,
                 io::ErrorKind::Interrupted,
             ] {
@@ -71,7 +75,11 @@ mod tests {
                 .unwrap_err();
                 assert_eq!(
                     is_password_read_error(&error),
-                    encrypted && kind == io::ErrorKind::InvalidData
+                    encrypted
+                        && matches!(
+                            kind,
+                            io::ErrorKind::InvalidData | io::ErrorKind::InvalidInput
+                        )
                 );
             }
         }

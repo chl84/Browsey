@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Offer a password retry when a wrong password passes the one-byte ZipCrypto
+  check of a legacy encrypted ZIP entry and the decompressor then rejects the
+  data. Report it as an incorrect password or damaged archive instead of a
+  generic extraction failure. Stabilize this test and the Terminal=true launch
+  test, which could read the fake terminal's arguments before they were written.
+
 ## v1.0.7 — 2026-11-14
 
 - Update compatible Rust dependencies: notify 8.2.2, trash 5.3.0, ZIP 9.5.0,
